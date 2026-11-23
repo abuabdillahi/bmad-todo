@@ -65,7 +65,7 @@ An individual can manage their personal tasks without any onboarding and trust t
 
 ## Notes
 
-- Assumption: Completion is a toggle: a completed todo can be returned to active (prd ¶2 says only completion).
+- Assumption: Completion can be undone: a completed todo can be marked active again (prd ¶2 says only completion). The control is a UX choice.
 - Assumption: A description is required (non-empty after trimming) and capped at 200 characters to keep it short, on create and on edit.
 - Assumption: The list is ordered by creation time, newest first.
 - Assumption: Delete is immediate, with no confirmation dialog and no undo.
