@@ -624,7 +624,7 @@ Each spec lists anatomy, then appearance per state. Token values are in the fron
 
 **Add button.** `{colors.action-primary}` fill, `{colors.on-action-primary}` label "Add" in `button-add` type, `{rounded.card}`, 59px tall, 22px side padding, and no border. Hover: `{colors.action-primary-hover}`. Pressed: `{colors.action-primary-pressed}` plus scale. Focus-visible: ring on the page. It is never shown disabled.
 
-**Todo list.** A `<ul role="list">` with no bullets or padding, a flex column with a `{spacing.3}` gap. The explicit role keeps list semantics in WebKit, which drops them when a list's bullets are removed (`list-style: none`). While loading, a separate skeleton list holds the skeleton cards.
+**Todo list.** A `<ul role="list">` with no bullets or padding, a flex column with a `{spacing.3}` gap. The explicit role keeps list semantics in WebKit, which drops them when a list's bullets are removed (`list-style: none`). While loading, a separate skeleton list holds the skeleton cards. It carries `tabindex="-1"` as a programmatic focus target only (EXPERIENCE.md Focus management) and, unlike the Page heading, shows the global focus ring when focused that way after keyboard use, so a keyboard user can see that focus landed on the list. **[ASSUMPTION]**
 
 **Todo card.** An `<li>` wrapper holding the card, so the 12px gap lives inside the wrapper and collapses with the card on delete. Phone: the check-and-text line on top (check, 12px gap, text), then the actions row. Wide: a single flex row with the check-and-text line (flex 1, `{components.todo-card.check-row-nudge-wide}` top nudge) and inline actions. Text in `todo` type wraps fully, and the check aligns to the first line. The text sits in its own element, and the Done chip is a sibling of it, not inside it. States:
 - **Active (rest):** `{colors.surface-card}` fill, 1.5px `{colors.border-card}` hairline, `{rounded.card}`, card shadow, `{colors.text-primary}` text, an empty check, and soft Edit and Delete.
@@ -658,7 +658,7 @@ Each spec lists anatomy, then appearance per state. Token values are in the fron
 - **Cancel button:** the same soft style as Edit, used in both the Edit form and the Delete confirm.
 - **Done-card variant (Edit and Delete on a done card):** transparent fill, a 1.5px `{colors.border-done}` edge, and a `{colors.text-done}` label. Hover: `{colors.done-button-hover}`. Pressed: `{colors.done-button-pressed}`. Delete loses its red on a done card, deliberately, so the card recedes.
 
-**Empty panel.** A `<p>` "No todos yet." in `body` type and `{colors.text-muted}`, centred, with 32px padding, a 1.5px `{colors.border-card}` outline, `{rounded.card}`, and no fill. It has no illustration, icon, or button.
+**Empty panel.** A `<p>` "No todos yet." in `body` type and `{colors.text-muted}`, centred, with 32px padding, a 1.5px `{colors.border-card}` outline, `{rounded.card}`, and no fill. It has no illustration, icon, or button. It carries `tabindex="-1"` as a programmatic focus target only, with the same focus ring rule as the Todo list. **[ASSUMPTION]**
 
 **Skeleton card.** Three cards in the skeleton list while loading. Each has the active card's fill, hairline, radius, and 12×16px padding, a `{components.skeleton-card.circle-size}` `{colors.skeleton}` circle, a 12px gap, and a 12px-tall `{colors.skeleton}` bar at `{rounded.bar}`. The bar widths are 62%, 44%, and 54%. Breathing animates per EXPERIENCE.md Motion. There is no visible loading text.
 
