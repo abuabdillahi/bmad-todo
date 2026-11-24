@@ -15,7 +15,7 @@ sources: ['../initiative-todo-app.md', '../architecture-todo-app/architecture-to
 | Form factor | Single-surface responsive web SPA, used at phone and desktop widths (R8). There is no native app. |
 | UI system | None. React with **CSS Modules plus CSS custom-property tokens** (architecture spine, Conventions › Styling). There is no CSS framework, component library, CSS-in-JS, or animation library. |
 | Visual reference | `DESIGN.md` (tokens, contrast, component visuals). This file owns behaviour, wording, focus, and flows. Both win over any mock. |
-| Data path | Components read and write only through the todos hooks (AD-11), and every write goes through the one optimistic-mutation helper (AD-13). List state comes from the todos store (AD-11). Outcome wording comes from `apps/web/src/todos/messages.ts` (AD-14). |
+| Data path | Components read and write only through the todos hooks (AD-11), and every write goes through the one optimistic-mutation helper (AD-13). List state comes from one selector over the todos store and the cache (AD-11). Outcome wording comes from `apps/web/src/todos/messages.ts` (AD-14). |
 | Colour mode | Light and dark, following `prefers-color-scheme`. There is no toggle. |
 | Quality bar | WCAG 2.2 AA (R14), and unguided first use (the ticket's Done when section). The stakes are an internal or team project with a public URL. **[ASSUMPTION]** |
 | Glossary | **done** = `completed: true`; **open** or **active** = `completed: false`; **reopen** = R4's return to active (the architecture's "reactivate"); **decision log** = the UX decision log (`.memlog.md`), cited after an **[ASSUMPTION]** that it records. |
@@ -58,11 +58,11 @@ There is one surface, the list page, with no routes, modal dialogs, menus, or se
 
 ## Voice and Tone
 
-Plain and specific, with no exclamation marks, no blame, and no jargon. A failure says what didn't happen and what the list shows now. All runtime strings live in one `messages.ts` (AD-14), keyed by action and by failure kind: each problem type, `network`, and generic (AD-9). It holds the leads and reasons below, the `deletedElsewhere` override, the status messages (`added`, `deleted`), the List error panel line, and the inline field strings. `conflict` has no key of its own and maps to the generic reason.
+Plain and specific, with no exclamation marks, no blame, and no jargon. A failure says what didn't happen and what the list shows now. All runtime strings live in one `messages.ts` (AD-14), keyed by action and by `FailureKind` (AD-9): a problem type name, `network`, or `generic`. It holds the leads and reasons below, the `deletedElsewhere` override, the status messages (`added`, `deleted`), the List error panel line, and the inline field strings. `conflict` has no key of its own and maps to the generic reason.
 
 **When a failure may not be final.** A write that fails with `network`, `unavailable`, or a generic error may still have been applied on the server (architecture spine, Deferred). The leads still state the failure plainly, because they describe what the list shows now, and that case is rare. The next successful refetch shows what the server holds (State Patterns › Row states › Landed after all).
 
-**Composition.** `message = lead[action] + " " + reason[type]`, except where a full-message override applies.
+**Composition.** `message = lead[action] + " " + reason[kind]`, where `kind` is the failure's `FailureKind` (AD-9), except where a full-message override applies.
 
 **`{t}`, the quoted todo text.** It is the todo's description, wrapped in curly double quotes `“` (U+201C) and `”` (U+201D). If it is longer than 40 characters, it is cut at 40 and gets "…" (U+2026) inside the closing quote. **[ASSUMPTION]** Characters are counted as Unicode code points, the AD-8 unit, and trailing whitespace is trimmed before "…". Apostrophes are the ASCII `'`, as approved.
 
@@ -80,7 +80,7 @@ Plain and specific, with no exclamation marks, no blame, and no jargon. A failur
 
 For `edit`, `{t}` is the restored, pre-edit text. **[ASSUMPTION]**
 
-**Reasons, per failure kind** (AD-9, AD-14).
+**Reasons, per `FailureKind`** (AD-9, AD-14).
 
 | Kind | Reason |
 |---|---|
@@ -101,9 +101,9 @@ For `edit`, `{t}` is the restored, pre-edit text. **[ASSUMPTION]**
 | Add succeeded (`201`, or a `200` idempotent replay) (status) | Added “{t}”. |
 | Edit, complete, or reopen succeeded | No message. The list shows it. |
 
-**List error panel text:** `lead.load + " " + reason[kind]`, then the button "Try again". The kind is the last recorded fetch failure's, read from the todos store, never from the query's `error`, which an optimistic add resets (pending flag 11). A later failed fetch with a different kind updates the reason in place, silently.
+**List error panel text:** `lead.load + " " + reason[kind]`, then the button "Try again". `kind` is the todos store's **last fetch failure** (AD-11), never the query's `error`, which an optimistic add resets. A later failed fetch with a different kind updates the reason in place. It is not an entry into Error, so the Loading status doesn't speak it (AD-14).
 
-**Loading status text:** "Loading your todos" while loading, the List error panel text on error, and "Your todos are loaded." once when the list becomes loaded after the status has spoken (pending flag 12). **[ASSUMPTION]** (the loaded wording)
+**Loading status text:** "Loading your todos" while loading, the List error panel text on error, and the recovery line "Your todos are loaded." at most once, when the list becomes loaded (Component Patterns › Loading status says when). **[ASSUMPTION]** (the loaded wording)
 
 **Inline (never in the Announcer, AD-8).**
 
@@ -191,9 +191,17 @@ Behaviour only. Visual specs are under the same names, in the same order, in `DE
 
 **Skeleton card.** Shown per List states. Each is hidden from assistive tech. Breathing: see Motion.
 
-**Loading status.** The list's one hidden loading status, the only live region beside the Announcer and the Field statuses (AD-14). Mounted empty. It speaks whenever the list **enters** its loading or error state while not loaded, so a Try again and a failed Try again are spoken too. Each entry empties it and cancels any pending 500 ms or 5 s timer before starting its own, so an old timer never clears a newer line. On entering loading, if the list is still loading after about 500 ms, it says "Loading your todos", so fast loads stay silent and the text is never present at mount. On entering error, it says the List error panel's message, then empties again 5 s later so browse mode doesn't read the message twice. **[ASSUMPTION]** (the 500 ms delay and the 5 s clear) A repeat of the same text is cleared and set again on the next frame. When the list becomes loaded, it says "Your todos are loaded." once, if it had spoken since the page loaded and focus was not moved to the list (which already says what loaded), then empties 5 s later (pending flag 12). Otherwise it is emptied when the list or Empty panel renders. After that it is silent.
+**Loading status.** The list's one hidden loading status, the only live region beside the Announcer and the Field statuses (AD-14). The list area renders it, always mounted, visually hidden, and empty at first, outside the part that swaps between list states and outside the `aria-busy` skeleton list (AD-14). It reads the list state from the one list-state selector (AD-11). It speaks whenever the list **enters** its loading or error state while not loaded, so a Try again and a failed Try again are spoken too. A new failure kind while the list is already in Error is not an entry: the panel's reason changes and the status says nothing (AD-14). Each entry empties it and cancels any pending 500 ms or 5 s timer before starting its own, so an old timer never clears a newer line. On entering loading, if the list is still loading after about 500 ms, it says "Loading your todos", so fast loads stay silent and the text is never present at mount. On entering error, it says the List error panel's message, then empties again 5 s later so browse mode doesn't read the message twice. **[ASSUMPTION]** (the 500 ms delay and the 5 s clear) A repeat of the same text is cleared and set again on the next frame.
 
-**List error panel.** Shown per List states. It holds the load message and the Try again button. A focus, reconnect, or settle-time refetch can replace it with the list or the Empty panel without Try again (AD-11). The panel stays, with no skeletons, while such a fetch runs, and is replaced only when it succeeds. If it fails with a different kind, only the reason changes (Voice and Tone › List error panel text). Focus: see Focus management.
+**Recovery line.** Becoming loaded cancels any pending 500 ms or 5 s timer (AD-14). Then, in the same commit as any focus move and after it (Interaction Primitives › Hand-off order), the list area picks the status's line. It says "Your todos are loaded." once, then empties 5 s later, only if both of these hold:
+- **It has spoken this page session** (AD-14): it has set a non-empty line, even one emptied since. A 500 ms timer that never fired doesn't count.
+- **Focus was not moved to the list.** The list area did not move focus to the Todo list or the Empty panel in that commit; focus there already says what loaded.
+
+Otherwise it is emptied when the list or Empty panel renders. Either way, it is then silent for the rest of the page session. So a load under 500 ms with nothing said before stays silent, a slow first load ends with the line, and a Try again or automatic refetch that succeeds after an error ends with it too, however long ago the error line was emptied.
+
+The line is spoken even when an Announcer message from the same action was set a moment before, such as "Added “{t}”." when an add made during a slow first load settles and the refetch that follows loads the list. VoiceOver may drop one of the two polite updates. This is accepted: skipping the line would make its loss certain, and the Announcer message stays on screen and in the DOM. **[ASSUMPTION]** (decision log)
+
+**List error panel.** Shown per List states. It holds the load message and the Try again button. A focus, reconnect, or settle-time refetch can replace it with the list or the Empty panel without Try again (AD-11). The panel stays, with no skeletons, while such a fetch runs, and is replaced only when it succeeds. If it fails with a different kind, only the reason changes, silently (Voice and Tone › List error panel text). Focus: see Focus management.
 
 **Try again button.** Calls the hooks' Try again function (AD-11). The panel is replaced by skeletons at once, and the Loading status speaks as above. Its fetch starts at once when no todo mutation is pending. Otherwise it waits until the pending mutations settle, and the refetch that runs then is its fetch (AD-11, AD-13), so the skeletons may show for as long as a save takes. There is no automatic retry (AD-11). Focus: see Focus management.
 
@@ -201,15 +209,20 @@ Behaviour only. Visual specs are under the same names, in the same order, in `DE
 
 → Visual reference: [mockups/key-list-states.html](mockups/key-list-states.html) (Empty, Loading, List error, add during first load) and [mockups/key-row-interactions.html](mockups/key-row-interactions.html) (edit over-limit, empty submit, Delete confirm, Reverted, Delete succeeded).
 
-**List states** (one at a time in the list area, with the exceptions under the IA table). The conditions read the todos store, never the cache (AD-11): **loaded** means a `['todos']` fetch has succeeded this page session, and **last fetch failed** and **retry requested** are recorded from fetch outcomes and Try again. A fetch the helper cancels before a mutation is neither a success nor a failure, so it changes no state and announces nothing.
+**List states** (one at a time in the list area, with the exceptions under the IA table). One selector in the todos hooks derives the state from the todos store and the cache, and every reader uses it: the list area, the List error panel, and the Loading status (AD-11). Whether the list is loaded, loading, or in error comes from the store, never from the cache:
+- **loaded** means a `['todos']` fetch has succeeded this page session;
+- **last fetch failure** is the `FailureKind` (AD-9) of the most recent recorded fetch failure, or none, and "the last fetch failed" means it is not none;
+- **retry requested** is set by Try again.
+
+All three are recorded from fetch outcomes and Try again, never from cache writes. Once loaded, the cache decides between Populated and Empty. A successful fetch writes the list into the cache before it sets loaded, so the first successful load never flashes the Empty panel when the server returned todos (AD-11). A fetch the helper cancels before a mutation is neither a success nor a failure, so it changes no state and announces nothing.
 
 | State | Condition | Treatment |
 |---|---|---|
-| Loading | Not loaded, and the last fetch didn't fail or a Try again is pending (AD-11) | 3 Skeleton cards, `aria-busy="true"`, Loading status after 500 ms. No visible text. Add form usable. |
+| Loading | Not loaded, and the last fetch didn't fail or a Try again is pending (AD-11) | 3 Skeleton cards, `aria-busy="true"`, Loading status after 500 ms. No visible text. Add form usable. When the load succeeds, the Loading status says "Your todos are loaded." only if it has spoken this page session: after a load slow enough to say "Loading your todos", or after a Try again that follows an error line (Component Patterns › Loading status › Recovery line). A load under 500 ms with nothing said before stays silent. |
 | Populated | Loaded, and the cache holds at least one todo | Todo list in server order. |
 | Empty | Loaded, and the cache holds zero todos (also after the last delete, once its leaving row has unmounted) | Empty panel "No todos yet." No onboarding (R3). |
 | Error | Not loaded, the last fetch failed, and no Try again is pending (AD-11) | List error panel with load message, reason, and Try again. The Loading status speaks the same line. Add form stays usable. Focus: see Focus management. |
-| Error, recovered without Try again | A focus, reconnect, or settle-time refetch succeeds while the List error panel shows (AD-11) | The panel is replaced by the Todo list or Empty panel, with no skeletons in between and no Announcer message. The Loading status says "Your todos are loaded." unless focus moved to the list (pending flag 12). Focus: see Focus management. |
+| Error, recovered without Try again | A focus, reconnect, or settle-time refetch succeeds while the List error panel shows (AD-11) | The panel is replaced by the Todo list or Empty panel, with no skeletons in between and no Announcer message. The Loading status, which spoke the error line on entering Error, says "Your todos are loaded." unless focus moved to the list. Focus: see Focus management. |
 | Try again while a save is pending | Try again is pressed while a todo mutation is pending | Skeletons at once. The fetch waits until the pending mutations settle, then runs as the settle-time refetch (AD-11, AD-13). |
 | Refresh failed | Loaded, and a background fetch failed (AD-11) | The list stays as it was. The query function announces the `refresh` lead plus the reason with kind `refresh`, which never replaces an undismissed failure (AD-14). |
 | Refetching | Loaded, and a background fetch is running | No indicator, and the list stays usable. **[ASSUMPTION]** |
@@ -299,7 +312,7 @@ Behaviour only. Visual specs are under the same names, in the same order, in `DE
 
 **Hand-off order.** Whenever the focused element is about to be removed, hidden, or made `inert` (delete, entering or leaving edit, opening or closing the Delete confirm, Dismiss, and Try again), focus moves to its target first, in the same task: in the event handler, using `flushSync` where the target must render first. Only then is the old element unmounted or made `inert`/`aria-hidden`. `document.activeElement` is never `<body>` in between, and a component test asserts it across those transitions.
 
-When a refetch or a failed add, not the user, removes the focused element (a row, or the List error panel when it is replaced), no handler runs first. The list area tracks which row, or the panel, holds focus, with `focusin` and `focusout` on the list area, because once the element is detached `document.activeElement` is already `<body>`. In a layout effect of the commit that removes it, before the next paint, it moves focus to the target only if that tracked element was removed. Focus targets skip Leaving rows. Focus moves before any `announce` call in the same update. A component test covers both sides: focus inside lands on the target, and focus elsewhere stays put.
+When a refetch or a failed add, not the user, removes the focused element (a row, or the List error panel when it is replaced), no handler runs first. The list area tracks which row, or the panel, holds focus, with `focusin` and `focusout` on the list area, because once the element is detached `document.activeElement` is already `<body>`. In a layout effect of the commit that removes it, before the next paint, it moves focus to the target only if that tracked element was removed. Focus targets skip Leaving rows. Focus moves before any `announce` call in the same update. In the same commit, after the focus move, the list area picks the Loading status line, so the recovery line knows whether focus went to the list (AD-14; Component Patterns › Loading status › Recovery line). A component test covers both sides: focus inside lands on the target, and focus elsewhere stays put.
 
 ## Motion
 
@@ -338,7 +351,7 @@ Behavioural. Contrast is in `DESIGN.md` Colors.
 | Native elements first: a checkbox for completion, buttons for actions, forms for add and edit, `<main>`, `<h1>`, and `<ul role="list">`/`<li>` (architecture spine, Conventions). | 1.3.1, 4.1.2 |
 | Every action is keyboard-operable with no traps. Tab order follows the IA table. | 2.1.1, 2.1.2, 2.4.3 |
 | The focus ring is visible on every control. Focus moves as the focus table says and never drops to `<body>`. The Announcer never covers the focused control (2.4.11). | 2.4.7, 2.4.11 |
-| Outcome messages go through the one Announcer (polite) without moving focus, by kind, and a refresh failure never replaces an undismissed failure (AD-14). Its live element is always mounted and holds only the message text, and repeats are cleared and set again. Field validation is spoken by each field's Field status (AD-8's inline exception). First-load progress, failure, and recovery are spoken by the one hidden Loading status (AD-14; recovery pending flag 12). | 4.1.3 |
+| Outcome messages go through the one Announcer (polite) without moving focus, by kind, and a refresh failure never replaces an undismissed failure (AD-14). Its live element is always mounted and holds only the message text, and repeats are cleared and set again. Field validation is spoken by each field's Field status (AD-8's inline exception). First-load progress, failure, and recovery are spoken by the one hidden Loading status (AD-14). | 4.1.3 |
 | No timers: messages stay until replaced or dismissed. | 2.2.1 |
 | The skeleton breathes three times (4.8 s) and stops. | 2.2.2 |
 | Field errors are inline, with `aria-invalid` and `aria-describedby`, and spoken on every blocked submit. The text and counter say what is wrong. Nothing is disabled. | 3.3.1, 3.3.2 |
@@ -351,7 +364,7 @@ Behavioural. Contrast is in `DESIGN.md` Colors.
 | Reduced motion is honoured. | 2.3.3 (best practice) |
 | `lang="en"` on `<html>`. **[ASSUMPTION]** | 3.1.1 |
 | axe-core in every e2e test with AD-20 tags. Every e2e project emulates reduced motion, so no scan lands mid-transition, and one motion-on spec runs without axe. A second project reruns every axe-bearing spec in the dark scheme (AD-20). | — |
-| A manual keyboard and screen-reader pass covers every core action (R14). Expected, not bugs: NVDA and JAWS may need a second Escape to leave forms mode before Escape cancels; JAWS may voice the curly quotes in names at its default punctuation level; on Android, Enter submits even while a word is composing; a `status` message such as "Added" can replace a failure before a polite screen reader has finished it (AD-14); when a failed write turns out to have landed, the list changes silently and the failure message stays (Row states › Landed after all). | — |
+| A manual keyboard and screen-reader pass covers every core action (R14). Expected, not bugs: NVDA and JAWS may need a second Escape to leave forms mode before Escape cancels; JAWS may voice the curly quotes in names at its default punctuation level; on Android, Enter submits even while a word is composing; a `status` message such as "Added" can replace a failure before a polite screen reader has finished it (AD-14); when a failed write turns out to have landed, the list changes silently and the failure message stays (Row states › Landed after all); VoiceOver may drop either "Your todos are loaded." or an Announcer message set a moment before it, such as "Added" during a slow first load (Component Patterns › Loading status › Recovery line). Revisit that last one if this pass loses either line. | — |
 
 ## Responsive & Platform
 
@@ -420,10 +433,10 @@ Priya, on a laptop the next morning, after an overnight deploy restarted the ser
 
 1. Priya opens a new browser session at the same URL.
 2. Skeleton cards breathe, three times at most, then hold still. If loading takes more than about half a second, screen readers hear "Loading your todos".
-3. The list renders in the same order as yesterday. The todo they added, edited, and completed shows its edited text and is still done.
+3. The list renders in the same order as yesterday. The todo they added, edited, and completed shows its edited text and is still done. Screen readers that heard "Loading your todos" now hear "Your todos are loaded."; after a fast load they heard nothing, and hear nothing now.
 4. **Climax:** nothing to re-enter, nothing to restore. The list is simply theirs again.
 
-**Failure path:** the laptop's Wi-Fi has dropped, so the first load's fetch fails at once as `network` (AD-11). The skeletons are replaced by the List error panel: "Couldn't load your todos. Check your connection and try again." with Try again. Focus stays where it was, and screen readers hear the same line through the Loading status. The add form still works. Priya presses Try again before the Wi-Fi is back: focus moves to the add field, the skeletons return, the fetch fails again, and the panel and its spoken line come back. When the Wi-Fi returns, the reconnect refetch loads the list on its own, with no second Try again. Focus stays in the add field, and screen readers hear "Your todos are loaded." (pending flag 12). (If instead the API were still restarting, nginx would answer `503` `unavailable` (AD-4), and the panel would read "Couldn't load your todos. The server isn't available right now. Try again in a moment.")
+**Failure path:** the laptop's Wi-Fi has dropped, so the first load's fetch fails at once as `network` (AD-11). The skeletons are replaced by the List error panel: "Couldn't load your todos. Check your connection and try again." with Try again. Focus stays where it was, and screen readers hear the same line through the Loading status. The add form still works. Priya presses Try again before the Wi-Fi is back: focus moves to the add field, the skeletons return, the fetch fails again, and the panel and its spoken line come back. When the Wi-Fi returns, the reconnect refetch loads the list on its own, with no second Try again. Focus stays in the add field, and screen readers hear "Your todos are loaded.", even though the error line was emptied long ago. (If instead the API were still restarting, nginx would answer `503` `unavailable` (AD-4), and the panel would read "Couldn't load your todos. The server isn't available right now. Try again in a moment.")
 
 ### Flow 4: A flaky connection
 
@@ -444,7 +457,7 @@ Jun, on a phone on a train between tunnels.
 
 ## Architecture flags for Winston
 
-All ten flags are resolved in the architecture spine (2026-11-24). Each one keeps its UX need, with the spine's decision under **Resolution**. The rationale is in the architecture `.memlog.md`.
+All twelve flags are resolved in the architecture spine (2026-11-24; flags 11 and 12 in commit 897a495). Each one keeps its UX need, with the spine's decision under **Resolution**. The rationale is in the architecture `.memlog.md`.
 
 **Flag 1 — Server validation errors after an optimistic write**
 - **UX need:** A server `400` after an optimistic add or edit has no open field to attach an error to. (For an add whose text is restored into an empty field, a field does exist, but the failure still arrives as an outcome, after the card has gone.)
@@ -464,7 +477,7 @@ All ten flags are resolved in the architecture spine (2026-11-24). Each one keep
   - (d) knowledge that a user-deleted row has left the cache, so the component can keep it rendered `{motion.duration-base}` longer (`inert`, `aria-hidden`) and hold the Empty panel until it unmounts.
 - **AD touched:** AD-13, AD-11, AD-7
 - **Resolution: amended** (AD-13, AD-11).
-  - (a) A **per-call promise** that never rejects and resolves with `ok`, `failed` (with its failure kind), or `dropped`. The add form and Edit form react to it. Per-call `mutate` callbacks are not used, because they fire only for the latest call and not after unmount.
+  - (a) A **per-call promise** that never rejects and resolves with `ok`, `failed` (with its `FailureKind`, AD-9), or `dropped`. The add form and Edit form react to it. Per-call `mutate` callbacks are not used, because they fire only for the latest call and not after unmount.
   - (b) The **helper itself** announces Added, Deleted, and every mutation failure. No component callback is involved.
   - (c) `revertedAt(id)`, read from the todos store outside the cache.
   - (d) Component-level (AD-11). If the id comes back into the cache after a failed delete, the leaving copy unmounts at once and the restored row mounts fresh.
@@ -472,7 +485,7 @@ All ten flags are resolved in the architecture spine (2026-11-24). Each one keep
 **Flag 4 — What "cached data" means**
 - **UX need:** A failed add during Loading or Error must never end at a false "No todos yet."
 - **AD touched:** AD-11, AD-13
-- **Resolution: amended mechanism, same behaviour** (AD-11, AD-13). List state comes from **loaded** (a `['todos']` fetch has succeeded), **last fetch failed**, and **retry requested** (set by Try again), all held in the one todos store and recorded from fetch outcomes, never from cache writes. Optimistic adds still go into the cache, before the first load too, and render above the skeletons or the List error panel while the list is not loaded. The separate pending list UX proposed was rejected. A fetch the helper cancels is neither a success nor a failure.
+- **Resolution: amended mechanism, same behaviour** (AD-11, AD-13). List state comes from **loaded** (a `['todos']` fetch has succeeded), **last fetch failed** (now **last fetch failure**, flag 11), and **retry requested** (set by Try again), all held in the one todos store and recorded from fetch outcomes, never from cache writes. Optimistic adds still go into the cache, before the first load too, and render above the skeletons or the List error panel while the list is not loaded. The separate pending list UX proposed was rejected. A fetch the helper cancels is neither a success nor a failure.
 
 **Flag 5 — A second live region for loading**
 - **UX need:** The hidden "Loading your todos" status, and the load-failure text on a failed first load, are spoken through a live region beside the Announcer.
@@ -504,17 +517,21 @@ All ten flags are resolved in the architecture spine (2026-11-24). Each one keep
 - **AD touched:** AD-14, AD-13
 - **Resolution: accepted in part** (AD-14). `announce(kind, text)` takes kind `failure`, `refresh`, or `status`. A `refresh` message never replaces an undismissed `failure` message and is dropped. The optional part, skipping the refetch after a failed mutation, was rejected: AD-13 still refetches after every settle, because that refetch is the only reconciliation when a failed write may have landed.
 
-**New flags from this update.** Two, both from the reviewer gate on this update (review-spine-consistency.md, review-accessibility.md). Each is marked "pending flag 11" or "pending flag 12" where EXPERIENCE depends on it.
+Flags 11 and 12 came from the reviewer gate on the first architecture update (review-spine-consistency.md, review-accessibility.md).
 
 **Flag 11 — Failure kind of the last fetch**
 - **UX need:** The List error panel and the Loading status say "Couldn't load your todos." plus the reason for the last fetch failure's kind (`network`, `unavailable`, or generic). The reason must survive optimistic adds during Error, because the helper's `setQueryData` resets the query's `error` to `null`. It must also follow a later failed fetch with a different kind.
 - **AD touched:** AD-11 (the todos store's contents), AD-9 (failure kinds)
 - **Proposal:** The query function records the kind with the failure, for example `lastFetchFailure: FailureKind | null` in place of the **last fetch failed** boolean. It is cleared on success, left unchanged by a cancellation, and never touched by cache writes. The list area reads it from the store, never from the query's `error`.
+- **Resolution: accepted** (AD-11, AD-9). The store's **last fetch failure** (a `FailureKind`, or none) replaces the boolean, and "the last fetch failed" means it is not none. The query function sets it on failure, a later failure overwrites the kind, success clears it, and Try again doesn't. The List error panel and the Loading status read the reason from it. `FailureKind` is the one type AD-9 names: a problem type name, `network`, or `generic`. The gate added two rules EXPERIENCE now states: a success writes the cache before it sets loaded, so the first success never flashes the Empty panel, and one list-state selector feeds every reader (State Patterns › List states).
 
 **Flag 12 — Speaking recovery from a failed or slow first load**
 - **UX need:** A screen-reader user whose last spoken state was "Couldn't load your todos. …" or "Loading your todos" hears nothing when the list loads, by Try again or by a focus, reconnect, or settle-time refetch, unless focus was in the panel. A sighted user sees the panel turn into the list, so the two experiences disagree, and the user may go on believing the list is down.
 - **AD touched:** AD-14 (the hidden loading status "speaks only while the list is not loaded")
 - **Proposal:** The hidden loading status may also speak once at the not-loaded → loaded transition, "Your todos are loaded.", and only if it had already spoken this page session and focus was not moved to the list. Fast loads stay silent, and the Announcer still never carries load outcomes.
+- **Resolution: amended** (AD-14). The loading status may say one recovery line when the list becomes loaded, only if it has spoken earlier in the page session: it has set a non-empty line, even one emptied since, and a delayed line that never fired doesn't count. Becoming loaded cancels any pending line or delay. A new failure kind while already in Error is not spoken. The list area renders the status and picks its line in the same commit as any focus move. The focus condition and the wording "Your todos are loaded." stay EXPERIENCE's (Component Patterns › Loading status › Recovery line). The spine left one risk to UX, a recovery line landing just after an Announcer message from the same action; EXPERIENCE accepts it rather than skipping the line.
+
+**New flags from this update.** None.
 
 ## Ticket changes for Sofia
 
@@ -523,12 +540,12 @@ All ten flags are resolved in the architecture spine (2026-11-24). Each one keep
 - **Test strategy, delete confirm (K4, E3).** Both scenarios still describe an immediate delete. Each needs the confirm step: Delete opens the confirm and sends nothing, Cancel and Escape close it, and Confirm delete removes the todo.
 - **Test strategy, control characters (K1, K3).** Added by this update. A pasted line break or tab shows as a space in the add and edit fields, and the counter counts after the replace and trim (AD-8). This is the component side of the architect's own U1 and I11 additions, which are already logged for you in the architecture memlog.
 - **Test strategy, list states (K5).** Added by this update. K5 should cover: Try again while a save is pending shows skeletons at once and loads after the save settles; a failed Try again speaks the error line again; a focus or reconnect refetch replaces the List error panel without Try again, and focus moves per Focus management; an add during Loading keeps the skeletons, because the cancelled first-load fetch is not a failure (AD-11).
-- **Test strategy, review fixes (K1, K5).** Added by the reviewer gate on this update. K1 should cover a mid-text paste containing a line break: the caret lands after the pasted text, and one undo removes it. It should also cover the add field clearing when a failed add's id later appears in the list and the field still holds its restored text. K5 should cover: an automatic recovery while focus is on Try again moves focus to the Todo list, or to the Empty panel when the list is empty; focus elsewhere stays put; an early card keeps focus and an open Edit form across the first successful load; and the "Your todos are loaded." line (once flag 12 is resolved).
+- **Test strategy, review fixes (K1, K5).** Added by the reviewer gate on this update. K1 should cover a mid-text paste containing a line break: the caret lands after the pasted text, and one undo removes it. It should also cover the add field clearing when a failed add's id later appears in the list and the field still holds its restored text. K5 should cover: an automatic recovery while focus is on Try again moves focus to the Todo list, or to the Empty panel when the list is empty; focus elsewhere stays put; and an early card keeps focus and an open Edit form across the first successful load. For the "Your todos are loaded." line, K5 should cover: it is spoken when a slow first load or a Try again succeeds, and when an automatic refetch replaces the List error panel while focus is elsewhere; it is not spoken when focus moved to the list; a load under 500 ms says nothing when it finishes; a recovery more than 5 s after the error line, once the status has emptied, still speaks; and a new failure kind while in Error changes the panel's reason without speaking. K5 should also cover the first successful load never rendering the Empty panel when the server returned todos (AD-11).
 - **Accepted risk under R7 (Notes).** Added by this update. A write that fails with `network`, `unavailable`, or a generic error may still have been applied (architecture spine, Deferred). R7's "a message says so" then holds at the time, but the next refetch may silently show the change, and resubmitting a failed add can create a second todo. The add field now clears its restored text when the add turns out to have landed, which closes the common duplicate path, but a resubmit of edited text can still duplicate. The ticket's Notes should record this as an accepted v1 risk, with the spine's revisit condition (a resubmit that reuses the failed id).
 
 ## Open Items
 
-Every item below is still **[ASSUMPTION]**. "Where" names the file and section that states it inline. Flags 11 and 12 are open with the architect.
+Every item below is still **[ASSUMPTION]**. "Where" names the file and section that states it inline. No architecture flags are open.
 
 **From the decision log:**
 
@@ -568,7 +585,8 @@ Every item below is still **[ASSUMPTION]**. "Where" names the file and section t
 | A failed write that landed after all is reconciled by the next refetch with no message, and the failure message is not retracted. A failed add that landed clears its restored text from the add field. | EXPERIENCE › State Patterns › Row states (Landed after all); Voice and Tone |
 | The crossing above 200 is spoken only on crossing; the Inline error clears on the next valid input. | EXPERIENCE › Component Patterns › Character counter, Inline error |
 | The Todo list and Empty panel show the focus ring when focused programmatically after keyboard use (the Page heading does not). | DESIGN › Components › Todo list, Empty panel |
-| "Your todos are loaded." wording (pending flag 12). | EXPERIENCE › Voice and Tone › Loading status text |
+| "Your todos are loaded." wording. | EXPERIENCE › Voice and Tone › Loading status text |
+| The recovery line is spoken even right after an Announcer message from the same action, accepting that VoiceOver may drop one of the two. | EXPERIENCE › Component Patterns › Loading status (Recovery line); Accessibility Floor |
 | An identical `refresh` message still showing is not re-set. | EXPERIENCE › Component Patterns › Announcer › Replacement |
 | Refetch removals unmount without motion; a failed delete re-enters with the Add motion; quick adds may reorder after a refetch. | EXPERIENCE › State Patterns › Row states; Motion; Component Patterns › Todo list |
 | No saving or refetching indicators. | EXPERIENCE › State Patterns |
