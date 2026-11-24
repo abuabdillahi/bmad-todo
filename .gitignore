@@ -1,3 +1,14 @@
 .DS_Store
 .claude/settings.local.json
 *.user.toml
+
+node_modules/
+dist/
+coverage/
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+e2e/test-results/
+e2e/playwright-report/
