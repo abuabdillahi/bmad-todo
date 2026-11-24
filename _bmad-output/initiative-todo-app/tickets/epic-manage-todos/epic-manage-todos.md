@@ -30,7 +30,7 @@ A user manages their whole list without guidance on any device, and it never los
 
 ## Boundaries
 
-- Belongs to epic-todo-foundation: the Docker, compose, CI and deploy setup, the test harness, the create and list endpoints, optimistic add, the `Problem` schema and its type URIs, the mutation helper, the announcer, and the design tokens for both colour modes. This epic uses them and changes them only where its own actions need it.
+- Belongs to epic-todo-foundation: the Docker, compose, CI and deploy setup, the test harness, the create and list endpoints, optimistic add, the `Problem` schema and its type URIs, the mutation helper, the announcer, AD-11's todos store, query function, list-state selector and query policy (with the refresh-failure announcement), and the design tokens for both colour modes. This epic renders the empty, loading and error states and the Loading status from that selector (K5; epic-todo-foundation Notes, decision 2026-11-24). This epic uses them and changes them only where its own actions need it.
 - Owns, in its share of shared ids: update and delete (R10), persistence of completion, edits and deletions (R11), edit validation, atomic update and delete, and client handling of failed saves (R12), and optimistic edit, complete and delete (R7).
 - Reuses, never duplicates: AD-13's mutation helper for every edit, complete and delete, and AD-14's announcer and `messages.ts` for every outcome message. It adds no second optimistic path, toast or alert, and no problem type outside AD-9's closed set.
 - Must not change: create and list behaviour, the API contract for create and list, and the health checks, all as epic 1 delivers them.

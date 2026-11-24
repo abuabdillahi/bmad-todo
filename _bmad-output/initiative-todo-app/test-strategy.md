@@ -55,6 +55,7 @@ Ids are permanent. A story's `covers` and criteria cite them.
   - The first successful load never renders the Empty panel when the server returned todos.
   - "Your todos are loaded." is spoken when a slow first load or a Try again succeeds, and when an automatic refetch replaces the List error panel while focus is elsewhere. It is not spoken when focus moved to the list. A load under 500 ms says nothing when it finishes. A recovery more than 5 s after the error line, once the status has emptied, still speaks it. A new failure kind while in Error changes the panel's reason without speaking.
 - K6 (R14): Every control has an accessible name and is reachable and operable by keyboard.
+- K7 (R12, R14; AD-11, AD-14): Once the list is loaded, a failed background fetch keeps the list and announces a refresh failure with its reason. A `refresh` message never replaces an undismissed `failure` message and is dropped, and an identical `refresh` message still showing is not set again. Dismiss clears the message (EXPERIENCE, Component Patterns, Announcer; State Patterns, List states, Refresh failed).
 
 ### End-to-end (qi T5, AD-20)
 

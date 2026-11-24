@@ -1,0 +1,141 @@
+# Stories of epic-todo-foundation (epic 1), in build order. Approved 2026-11-24 (epic Notes hold the split and order decisions).
+# covers = this epic's Requirements ids (numbered as their parent ids, R1 = parent R1, and so on).
+# Scenario ids (../../../test-strategy.md) and the parts of shared ones, AD ids, and UX sections are in `references`,
+# so a pulled story carries them. A = architecture spine, T = test strategy, X = EXPERIENCE.md, D = DESIGN.md.
+# Every story ships its own tests in the AD-20 harness (C8); the only test-only work is the harness itself, in story 1.
+
+[[entry]]
+id = 1
+type = "story"
+title = "A todo added in the browser is still there after a refresh, tested at every layer"
+description = "Tracer, after a person confirms the build machine's toolchain: the pnpm monorepo, contract package, Fastify API with GET and POST /api/todos on SQLite, React list and add form styled in light and dark, both Dockerfiles and the compose test profile, and the AD-20 harness for every layer behind pnpm test:all, with coverage, which story 2 runs in CI and deploys; the add waits for the server here (a failed add keeps its text and adds nothing) and moves onto AD-13's helper in story 6."
+verify = "Run pnpm test:all: every layer runs in todo-test and passes, and E1 is green at phone and desktop width in both colour schemes. Bring up the test profile, open http://127.0.0.1:8081, add a todo, refresh, open a private window: it is there both times. The coverage report is written per Vitest project and by scenario id."
+covers = ["R1", "R2", "R3", "R8", "R10", "R11", "R14", "R15", "R16", "R17", "R18"]
+after = []
+hitl = true
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: I1, I3, U2 whole; E1 create-and-reload (its 'appears at once' clause is story 6's); I7 healthy half (200 when storage is reachable); I9 for the success responses of GET /api/todos, POST /api/todos (201) and GET /api/health; K1 first clause (submits a valid description and clears itself); K6 for the add field and Add button; E7 for E1 (phone and desktop width); E8 for E1 (keyboard, axe-core in light and dark); R11's refresh and new-session parts (restart is story 7's I6)",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-2, AD-4 (same-origin /api through nginx, path unchanged; its 503 problem fallback is story 3), AD-5, AD-6 (GET, POST 201, health 200), AD-7, AD-10, AD-11 (one ['todos'] query in server order), AD-12, AD-15, AD-16 (test profile), AD-17 (health checks and restart policy for api and web-test), AD-19 (React escaping, Drizzle parameters, non-root images), AD-20 (every layer, Playwright projects for phone, desktop and dark, reducedMotion, coverage per Vitest project and by scenario id); Consistency Conventions; Stack; Structural Seed",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/DESIGN.md: Colors (light and dark), Typography, Layout & Spacing, Shapes, Components (Page heading, Add form, Todo list, Todo card text); EXPERIENCE.md: Foundation, Information Architecture, Component Patterns (Page heading, Add form submit, Todo list, Todo card text), Interaction Primitives (Focus management: Add valid, Page load), Component Patterns (Focus ring), Voice and Tone (Static strings and accessible names), Accessibility Floor (main landmark, lang, reflow at 320px); DESIGN.md Components (focus ring)",
+]
+
+[[entry]]
+id = 2
+type = "story"
+title = "A green push to main deploys the tested images behind the Cloudflare Tunnel"
+description = "After a person sets up the GitHub secrets, the Hetzner bootstrap and the Cloudflare Tunnel, one GitHub Actions workflow builds both images at the git SHA and runs pnpm test:all on every push, and on a green main pushes them to GHCR and deploys them over SSH to the Hetzner host under the prod profile, with cloudflared as the only ingress, the host .env rewritten from GitHub secrets, and the public health check; it deploys story 1's app, and story 7 adds log rotation to its prod services."
+verify = "Push to main: the commit shows the test job then the deploy job green, the running images are tagged with that commit's SHA, and at the public hostname a todo added in the browser is still there after a refresh and /api/health answers ok. Push a failing commit to main, then revert it: its test job is red, its deploy is skipped and production still serves the earlier SHA. Run the workflow by hand with an earlier SHA: production rolls back to it."
+covers = ["R15", "R16", "R21", "R22"]
+after = [1]
+hitl = true
+risk = "medium"
+references = [
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-1, AD-2 (never down -v in prod), AD-3, AD-5 (CI fails when regenerating openapi.json makes a diff), AD-16 (prod profile, project todo), AD-17 (health checks and restart policy for web and cloudflared), AD-18 (test then deploy, concurrency deploy-prod, workflow_dispatch rollback with an earlier SHA), AD-19 (secrets only in GitHub, host .env generated with mode 600, no registry credential on the host); Structural Seed (Environments and deployment); Deferred (public hostname, tunnel token, deploy user and key)",
+  "initiative — _bmad-output/initiative-todo-app/initiative-todo-app.md: Boundaries, touch points GitHub, Hetzner host, GHCR and Cloudflare",
+]
+
+[[entry]]
+id = 3
+type = "story"
+title = "The API refuses an invalid or conflicting create with a problem response"
+description = "Adds AD-8's strict validation and the shared description.ts check (which story 4 imports), the one Problem schema with all five type URIs and one error handler, the idempotent create replay and 409, the unhealthy health answer, and nginx's 503 unavailable problem, all documented in openapi.json; story 5 classifies these problems on the client, and story 7 adds config validation and headers to the same API and nginx config."
+verify = "pnpm test:all passes and lists a passing test for each of U1, I2, I7, I8, I9, I10 and I11. With the test profile up and the api container stopped, http://127.0.0.1:8081/api/todos answers the unavailable problem JSON, not an HTML page."
+covers = ["R10", "R12", "R15", "R17", "R20"]
+after = [1]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: U1, I2, I10 whole; I7 unhealthy half (503 unavailable when storage is unreachable); I8 for create and list; I9 for the error responses of create, list and health (400, 409, the 200 replay, 503); I11 create half, control-character rejection included",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-4 (the /api 503 problem from nginx), AD-5 (description.ts, the one runtime import the web may make), AD-6 (POST 200 replay and 409; 503 documented on every route), AD-8 (server side, and the client check in description.ts), AD-9 (Problem schema, all five types, one error handler, no stack, SQL or todo text), AD-10 (service owns replay), AD-15 (atomic create)",
+]
+
+[[entry]]
+id = 4
+type = "story"
+title = "The add form cleans and checks a description before sending it"
+description = "The add field replaces line breaks, tabs and separators with spaces as they arrive, counts code points after the trim, refuses an empty or over-limit description inline with its spoken message, and sends exactly the checked value, using story 3's description.ts; it creates messages.ts with the inline field strings, which story 5 extends, and story 6 restores failed text into this field."
+verify = "On the test profile: Add with an empty field shows 'Enter a description.' and adds nothing; pasting two lines shows them joined by a space and the counter counts them; past 200 characters the counter turns to its over state and Add adds nothing. The same holds by keyboard alone."
+covers = ["R1", "R8", "R12", "R14", "R17"]
+after = [3]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: K1 validation, paste, counter and mid-text paste (caret and one undo) clauses; E6 add part 'an invalid description is refused with its message'; E8 for that state (keyboard, axe-core in light and dark)",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-8 (client side: replace, trim, check, send that exact value; inline, never through the announcer), AD-14 (the one hidden Field status for the add field)",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: Component Patterns (Add form, Text field, Character counter, Inline error, Field status, Add button), Voice and Tone (Inline), State Patterns (Add form states: Rest, Typing, Over-limit, Empty submit), Interaction Primitives (Keyboard map, Pointer and touch, Focus management: Add invalid); DESIGN.md Components (Add form, Text field, counter, inline error)",
+]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Failures are classified, and the announcer reports a failed refresh"
+description = "Builds AD-9's client failure classification, AD-11's todos store, query function, list-state selector and query policy, and AD-14's announcer, adding the leads and reasons to story 4's messages.ts and classifying story 3's problems, all of which story 6's helper uses; once the list is loaded a failed background fetch keeps the list and is announced."
+verify = "On the test profile with a todo listed, stop the api container, switch to another tab and back: the list stays and the bottom banner says the refresh failed and why. Dismiss, by mouse or keyboard, clears it and focus lands on the add field."
+covers = ["R8", "R12", "R14", "R17"]
+after = [3, 4]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: K7 whole; K6 for the Dismiss button; epic 2's K5 tests the list states it renders from this selector",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-9 (FailureKind; a cancellation is never network), AD-11 (todos store, query function, selector, query policy; refresh failure announced once loaded), AD-14 (announcer: three kinds, replacement rule, messages.ts)",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: Component Patterns (Announcer, Dismiss button), Voice and Tone (Composition, Leads, Reasons, Overrides), State Patterns (List states: Refresh failed, Refetching; Announcer states), Motion (Announcer in, Announcer replaced, Dismiss), Information Architecture (regions in DOM and tab order), Interaction Primitives (Focus management: Dismiss, Announcer message appears; Pointer and touch); DESIGN.md Components (Announcer, Dismiss button), Layout & Spacing (Announcer placement per width)",
+]
+
+[[entry]]
+id = 6
+type = "story"
+title = "An add shows at once and reverts with a message when saving fails"
+description = "Builds AD-13's mutation helper on story 5's store and announcer and moves story 1's add onto it, so the card shows on top at once, 'Added' is announced on confirmation, and a failed add removes its card, announces why and restores the text into story 4's field."
+verify = "On the test profile: an added todo appears on top at once and 'Added' shows after. Stop the api container and add another: it appears, then goes, the banner says the add failed, the text is back in the field, and the earlier todos stay."
+covers = ["R7", "R8", "R12", "R14", "R17"]
+after = [4, 5]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: U4 whole; E1's 'appears at once' clause; U5 create-ordering and failed-create (dropped follow-ups) half; K1 failed-add restore and add-landed-after-all clauses; E6 add part (failing and unreachable, reverts with a message, list stays usable); E8 for those states (keyboard, axe-core in light and dark)",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-7 (client-minted id), AD-11 (optimistic add on top, also before the first load), AD-13 (the helper whole: order per todo, pending count, revert, dropped follow-ups, per-call promise, revertedAt, invalidate at 0), AD-14 (Added status), AD-20 (the motion-on spec; the offline spec for an offline add and an offline refetch)",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: State Patterns (Add form states: Submitted, Add failed, Add landed after all; List states: Add during Loading, Add during Error, Add fails before a first successful load), Information Architecture (List area exceptions), Motion (Add), Interaction Primitives (Focus management: Add failed), Voice and Tone ({t} quoting, the add lead, the Added status)",
+  "initiative — _bmad-output/initiative-todo-app/initiative-todo-app.md: Notes, Decision 2026-11-24 accepted risk under R7",
+]
+
+[[entry]]
+id = 7
+type = "story"
+title = "Every profile starts healthy and hardened, with readable logs, and todos survive a restart"
+description = "Adds the dev profile, startup config validation and a complete .env.example, log rotation and pino request ids on every service, nginx's CSP and security headers, and I6's restart proof, on top of story 2's prod services and story 3's API and nginx config."
+verify = "docker compose -p todo-dev --profile dev up -d --wait shows every service healthy and http://127.0.0.1:5173 reloads on a source change; on the test profile, the API logs are JSON lines with request ids and no todo text, and a response from http://127.0.0.1:8081 carries the Content-Security-Policy header; starting the API with an invalid PORT exits with an error; pnpm test:all passes I6."
+covers = ["R11", "R15", "R16", "R17", "R20"]
+after = [2, 3]
+hitl = false
+risk = "low"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: I6 whole; R11's restart part",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-2 (one replica), AD-4 (the Vite dev proxy forwards /api unchanged; api-dev publishes no port and enables no CORS), AD-16 (dev profile, env validated at startup with a non-zero exit, .env.example), AD-17 (web-dev and api-dev health checks, json-file rotation on every service, pino JSON with a request id), AD-19 (CSP default-src 'self' and the standard headers, no todo text in logs at info, no secrets in images or compose)",
+]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Refactor sweep"
+description = "Cleanup only, its scope set at its start from the plans and review findings epic 1 deferred; scope pushed out of another story becomes a new story."
+verify = "pnpm test:all passes after the cleanup, and the story lists each deferred finding as fixed or moved to a named new story."
+covers = []
+after = [1, 2, 3, 4, 5, 6, 7]
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 9
+type = "story"
+title = "Epic 1's quality reports and README are written, with every finding settled"
+description = "Writes the coverage, accessibility (Lighthouse), performance (first load profiled and documented, API p95 from at least 100 requests per endpoint) and security reports under docs/quality/ on the swept code, fixes or accepts each finding, and writes the README to run, test, read logs, deploy, roll back and extend."
+verify = "docs/quality/ holds four dated reports naming epic-todo-foundation, each finding fixed or accepted with a reason, API p95 under 300 ms; a teammate following only the README from a clean clone starts the dev and test profiles healthy and runs pnpm test:all."
+covers = ["R14", "R18", "R19", "R20"]
+after = [8]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: Reports (Coverage, Performance, Accessibility without the manual pass, which is epic 2's, Security)",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-19, AD-20 (at each epic's close); Consistency Conventions (Reports naming); Structural Seed (README contents)",
+]
