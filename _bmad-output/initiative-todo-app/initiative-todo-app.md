@@ -1,4 +1,6 @@
 ---
+tracker_id: "milestone-1"
+remote: "https://github.com/abuabdillahi/bmad-todo/milestone/1"
 id:
 type: initiative
 title: "Individuals manage personal todos in a simple, durable full-stack app"

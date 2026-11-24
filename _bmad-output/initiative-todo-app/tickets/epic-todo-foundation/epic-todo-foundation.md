@@ -1,4 +1,6 @@
 ---
+tracker_id: "2"
+remote: "https://github.com/abuabdillahi/bmad-todo/issues/2"
 type: epic
 title: "A todo is saved and comes back, deployed and tested"
 parent: initiative-todo-app

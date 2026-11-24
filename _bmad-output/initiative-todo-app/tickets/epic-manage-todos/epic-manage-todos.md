@@ -1,4 +1,6 @@
 ---
+tracker_id: "3"
+remote: "https://github.com/abuabdillahi/bmad-todo/issues/3"
 type: epic
 title: "A user manages their whole list, instantly, on any device"
 parent: initiative-todo-app
