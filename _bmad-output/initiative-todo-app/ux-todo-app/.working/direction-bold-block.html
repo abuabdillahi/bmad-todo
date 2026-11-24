@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction 4: Bold Block — Todo list screen</title>
+<style>
+/*
+DIRECTION 4: BOLD BLOCK — design tokens
+
+Colour roles            light      dark
+  --bg                   #FFFFFF    #0B1020
+  --surface              #F3F4F7    #1A2138
+  --text                 #14213D    #F3F5FA
+  --muted                #4F5566    #AEB5C7
+  --cb                   #4F5566    #AEB5C7
+  --panel                #14213D    #1A2B55
+  --panel-label          #C9CDD8    #C9CDD8
+  --panel-field          #FFFFFF    #0B1020
+  --panel-field-text     #14213D    #F3F5FA
+  --panel-field-edge     #FFFFFF    #AEB5C7
+  --placeholder          #4F5566    #AEB5C7
+  --cta                  #FFC93C    #FFC93C
+  --on-cta               #14213D    #14213D
+  --focus                #1D4ED8    #FFC93C
+  --panel-focus          #FFC93C    #FFC93C
+  --danger               #B42318    #FF8F80
+  --on-danger            #FFFFFF    #0B1020
+  --done                 #4F5566    #AEB5C7
+  --done-edge            #D5D8E0    #2A3350
+  --check-bg             #14213D    #FFC93C
+  --dock                 #B42318    #FFB4A9
+  --on-dock              #FFFFFF    #2A0F0C
+  --skel                 #E3E6ED    #222A44
+
+Key contrast ratios (WCAG 2.2 AA: 4.5 text, 3.0 UI/focus/large)   light / dark
+  active todo text on block                            14.52 / 14.60
+  heading, Edit label                                  15.97 / 17.36
+  completed text (block is hollow)                      7.44 /  9.23
+  form label on panel                                  10.05 /  8.69
+  input text                                           15.97 / 17.36
+  placeholder                                           7.44 /  9.23
+  Add label                                            10.40 / 10.40
+  Add button vs panel (UI)                             10.40 /  8.99
+  input edge vs panel (UI)                             15.97 /  6.73
+  unchecked box edge (UI)                               6.76 /  7.76
+  checked box vs page                                  15.97 / 12.33
+  Delete label/edge, error text                         6.57 /  8.56
+  announcer dock text                                   6.57 / 10.54
+  focus ring on page                                    6.70 / 12.33
+  focus ring on row block                               6.09 / 10.37
+  focus ring inside panel                              10.40 /  8.99
+
+Decorative (exempt): --done-edge (outline of a completed row) and --skel are decorative; the completed cue is the shape/weight change plus the filled check, which are not colour-dependent.
+
+Metrics: Radius 18px panel, 14px rows, 16px dock, 12px add input/button, 10px row buttons, 9px checkbox. Spacing base 4px; 8px gap between row blocks, rows min 60px; gutter 16px phone, 760px column desktop. Type: h1 42px/800 -0.035em (56 desktop); todo 18px/650 active, 16px/400 done on desktop (19px desktop active); phone 17px/650 active, 15.5px/400 done; row buttons 14px on phone; buttons 15px/700, Add 18px/800; label 15px/700; dock 15.5px/600. Focus: 3px solid outline, 2px offset (yellow inside the navy panel in light mode).
+Completed treatment: 'Recede': filled row block becomes an empty outline, text weight drops 650 to 400 and one size smaller, muted text (7.4:1 light / 9.2:1 dark), solid filled check square. Shape and weight carry it, not colour; the subtlest of the four, judge it at a glance.
+*/
+
+/* ---- gallery chrome (not part of the design) ---- */
+*{box-sizing:border-box}
+body{margin:0;background:#E6E6E9;color:#1A1A1C;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.g-head{padding:32px 40px 8px;max-width:1100px}
+.g-kicker{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#46464C;margin:0}
+.g-title{font-size:30px;font-weight:750;margin:4px 0 10px;letter-spacing:-.01em}
+.g-rationale{font-size:16.5px;max-width:820px;margin:0 0 6px}
+.g-note{font-size:13.5px;color:#46464C;max-width:820px;margin:0}
+.g-sec{padding:20px 40px 36px}
+.g-sec h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#38383D;margin:0 0 14px}
+.g-row{display:flex;gap:40px;align-items:flex-start;overflow-x:auto;padding-bottom:12px}
+.g-row.wrap{flex-wrap:wrap;overflow:visible}
+.frame{margin:0;flex:none}
+.g-cap{font-size:13px;color:#38383D;margin:10px 4px 0;max-width:400px}
+.g-dark{background:#18181B;color:#E4E4E7}
+.g-dark h2,.g-dark .g-cap{color:#C9C9CE}
+.phone{width:414px;padding:12px;border-radius:54px;background:#0E0E10;box-shadow:0 18px 40px rgba(0,0,0,.22),inset 0 0 0 2px #2A2A2E}
+.ph{width:390px;border-radius:42px;overflow:hidden;position:relative}
+.sbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 30px 0 36px;font:600 15px/1 system-ui,-apple-system,sans-serif;color:var(--text)}
+.bat{display:inline-block;width:25px;height:12px;border:1.5px solid currentColor;border-radius:3.5px;position:relative}
+.bat::after{content:"";position:absolute;top:1.5px;bottom:1.5px;left:1.5px;right:6px;background:currentColor;border-radius:1px}
+.vp{position:relative;height:calc(100% - 44px);overflow:hidden}
+.browser{width:1200px;border-radius:12px;overflow:hidden;background:#FFF;box-shadow:0 18px 40px rgba(0,0,0,.18),0 0 0 1px rgba(0,0,0,.08)}
+.bbar{height:44px;background:#DCDCE0;display:flex;align-items:center;padding:0 14px;gap:14px}
+.dots{display:flex;gap:8px}.dots i{width:12px;height:12px;border-radius:50%;background:#B5B5BB;display:block}
+.url{flex:1;max-width:520px;margin:0 auto;height:28px;border-radius:8px;background:#F4F4F6;color:#3A3A40;font:13px system-ui,sans-serif;display:flex;align-items:center;padding:0 12px}
+.bvp{position:relative;height:760px;overflow:hidden}
+/* ---- shared app resets ---- */
+.app{background:var(--bg);color:var(--text)}
+.app *{box-sizing:border-box}
+.app h1,.app p,.app ul{margin:0}
+.app button,.app input{font:inherit;color:inherit;letter-spacing:inherit}
+.app button{cursor:pointer}
+.vh{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;padding:0!important;border:0!important;margin:-1px!important}
+
+/* ---- direction tokens ---- */
+.app.light{--bg:#FFFFFF;--surface:#F3F4F7;--text:#14213D;--muted:#4F5566;--cb:#4F5566;--panel:#14213D;--panel-label:#C9CDD8;--panel-field:#FFFFFF;--panel-field-text:#14213D;--panel-field-edge:#FFFFFF;--placeholder:#4F5566;--cta:#FFC93C;--on-cta:#14213D;--focus:#1D4ED8;--panel-focus:#FFC93C;--danger:#B42318;--on-danger:#FFFFFF;--done:#4F5566;--done-edge:#D5D8E0;--check-bg:#14213D;--dock:#B42318;--on-dock:#FFFFFF;--skel:#E3E6ED;--check:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.4l3 3 6-6.8' fill='none' stroke='%23FFC93C' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+.app.dark{color-scheme:dark;--bg:#0B1020;--surface:#1A2138;--text:#F3F5FA;--muted:#AEB5C7;--cb:#AEB5C7;--panel:#1A2B55;--panel-label:#C9CDD8;--panel-field:#0B1020;--panel-field-text:#F3F5FA;--panel-field-edge:#AEB5C7;--placeholder:#AEB5C7;--cta:#FFC93C;--on-cta:#14213D;--focus:#FFC93C;--panel-focus:#FFC93C;--danger:#FF8F80;--on-danger:#0B1020;--done:#AEB5C7;--done-edge:#2A3350;--check-bg:#FFC93C;--dock:#FFB4A9;--on-dock:#2A0F0C;--skel:#222A44;--check:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.4l3 3 6-6.8' fill='none' stroke='%2314213D' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+/* ---- direction styles ---- */
+
+.app{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+.app :focus-visible,.app .fx{outline:3px solid var(--focus);outline-offset:2px}
+.add :focus-visible,.add .fx{outline-color:var(--panel-focus)}
+.wrap{padding:8px 16px 40px}
+.has-dock .wrap{padding-bottom:130px}
+.desk .wrap{max-width:760px;margin:0 auto;padding:56px 0}
+.app h1{font-size:42px;font-weight:800;letter-spacing:-.035em;line-height:1;margin:8px 2px 18px}
+.desk h1{font-size:56px;margin-bottom:24px}
+.add{background:var(--panel);border-radius:18px;padding:14px 14px 16px}
+.add .lbl{display:block;color:var(--panel-label);font-size:15px;font-weight:700;margin:0 2px 8px}
+.add-row{display:flex;gap:10px}
+.add .field{flex:1;min-width:0;height:54px;border:2px solid var(--panel-field-edge);border-radius:12px;background:var(--panel-field);color:var(--panel-field-text);padding:0 14px;font-size:18px;font-weight:500}
+.field::placeholder{color:var(--placeholder);opacity:1}
+.b-add{flex:none;height:54px;min-width:84px;padding:0 20px;border:0;border-radius:12px;background:var(--cta);color:var(--on-cta);font-size:18px;font-weight:800}
+.list{list-style:none;padding:0;margin-top:18px;display:flex;flex-direction:column;gap:8px}
+.row{display:flex;align-items:center;gap:4px;background:var(--surface);border:2px solid var(--surface);border-radius:14px;padding:6px 6px 6px 0;min-height:60px}
+.rm{display:flex;align-items:center;flex:1;min-width:0}
+.check{flex:none;width:48px;height:48px;display:grid;place-items:center;cursor:pointer}
+.check input{appearance:none;-webkit-appearance:none;width:30px;height:30px;margin:0;border-radius:9px;border:2.5px solid var(--cb);background:var(--bg);cursor:pointer}
+.check input:checked{background:var(--check-bg) var(--check) center/20px no-repeat;border-color:var(--check-bg)}
+.desc{flex:1;min-width:0;font-size:18px;font-weight:650;line-height:1.3;letter-spacing:-.01em}
+.desk .desc{font-size:19px}
+.done{background:transparent;border-color:var(--done-edge)}
+.done .desc,.desk .done .desc{font-weight:400;font-size:16px;color:var(--done);letter-spacing:0}
+.ra{display:flex;flex:none;gap:6px}
+.b-edit,.b-del,.b-cancel{min-height:44px;min-width:44px;padding:0 11px;border:2px solid var(--text);border-radius:10px;background:var(--bg);font-size:15px;font-weight:700}
+.b-del{border-color:var(--danger);color:var(--danger)}
+.b-save{min-height:44px;padding:0 18px;border:2px solid var(--text);border-radius:10px;background:var(--text);color:var(--bg);font-size:15px;font-weight:800}
+.dock{position:absolute;left:12px;right:12px;bottom:16px;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:16px;background:var(--dock);color:var(--on-dock);font-size:15.5px;font-weight:600;line-height:1.4;box-shadow:0 10px 28px rgba(11,16,32,.30)}
+.dock-i{flex:none;width:26px;height:26px;border-radius:8px;background:var(--on-dock);color:var(--dock);display:grid;place-items:center;font-weight:900}
+.desk .dock{left:50%;right:auto;width:760px;transform:translateX(-50%);bottom:24px}
+.editing{align-items:flex-start;padding:8px 8px 12px 0;background:var(--bg);border-color:var(--text)}
+.editing .check{margin-top:2px}
+.edit{flex:1;min-width:0;padding-top:2px}
+.edit .field{width:100%;height:50px;border:2.5px solid var(--danger);border-radius:10px;background:var(--bg);padding:0 12px;font-size:17px;font-weight:600}
+.err{display:flex;gap:8px;margin-top:8px;color:var(--danger);font-size:15px;font-weight:700;line-height:1.35}
+.err-i{flex:none;width:20px;height:20px;border-radius:6px;background:var(--danger);color:var(--on-danger);display:grid;place-items:center;font-size:13px;font-weight:900}
+.ea{display:flex;gap:8px;margin-top:12px}
+.empty{margin-top:30px;font-size:22px;font-weight:800;letter-spacing:-.02em;color:var(--muted)}
+.loading{margin-top:18px;font-size:16px;font-weight:700;color:var(--muted)}
+.skel{height:60px;border-radius:14px;background:var(--surface);margin-top:8px;display:flex;align-items:center;gap:14px;padding:0 16px}
+.skel i{display:block;flex:none;width:30px;height:30px;border-radius:9px;background:var(--skel)}
+.skel b{display:block;height:14px;border-radius:7px;background:var(--skel)}
+/* phone tuning: keep descriptions to ~2 lines beside always-visible actions */
+.ph .desc{font-size:17px}
+.ph .done .desc{font-size:15.5px}
+.ph .b-edit,.ph .b-del{padding:0 10px;font-size:14px}
+
+</style>
+</head>
+<body>
+<header class="g-head">
+<p class="g-kicker">Visual direction 4 of 4 · Todo list screen</p>
+<p class="g-title">Bold Block</p>
+<p class="g-rationale">Confident and high-energy: a heavy display heading and a dark navy panel make adding a todo the hero of the screen, with a big yellow Add button. Active rows are solid blocks of bold text; when completed they recede: the block empties to an outline, the text drops from bold to regular and one size smaller, and the check fills. Failures surface in a floating dock pinned to the bottom of the screen, always in view and within thumb reach without pushing the list around.</p>
+<p class="g-note"><strong>Completed todos:</strong> 'Recede': filled row block becomes an empty outline, text weight drops 650 to 400 and one size smaller, muted text (7.4:1 light / 9.2:1 dark), solid filled check square. Shape and weight carry it, not colour; the subtlest of the four, judge it at a glance. <strong>Announcer:</strong> floating dock pinned to the bottom of the viewport. Hex values, contrast ratios, radius, spacing and type sizes are in the &lt;style&gt; comment at the top of this file. Frames marked “focus ring shown” render the keyboard focus style statically so you can judge it.</p>
+</header>
+
+<section class="g-sec">
+<h2>Light · phone and desktop, populated</h2>
+<div class="g-row">
+<figure class="frame"><div class="phone"><div class="ph app light " style="height:844px"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="wrap"><h1>Todos</h1><form class="add" action="#"><label class="lbl" for="bold-block-pl-new">New todo</label><div class="add-row"><input class="field" id="bold-block-pl-new" type="text" autocomplete="off" placeholder="What needs doing?"><button type="button" class="b-add">Add</button></div></form><ul class="list" aria-label="Todos"><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pl-d0"></label><span class="desc" id="bold-block-pl-d0">Renew passport before the March trip</span></div><div class="ra"><button type="button" class="b-edit fx" aria-label="Edit “Renew passport before the March trip”">Edit</button><button type="button" class="b-del" aria-label="Delete “Renew passport before the March trip”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pl-d1"></label><span class="desc" id="bold-block-pl-d1">Book dentist for Thursday</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Book dentist for Thursday”">Edit</button><button type="button" class="b-del" aria-label="Delete “Book dentist for Thursday”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-pl-d2"></label><span class="desc" id="bold-block-pl-d2">Return library books</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Return library books”">Edit</button><button type="button" class="b-del" aria-label="Delete “Return library books”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pl-d3"></label><span class="desc" id="bold-block-pl-d3">Call Mum about Sunday lunch</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Call Mum about Sunday lunch”">Edit</button><button type="button" class="b-del" aria-label="Delete “Call Mum about Sunday lunch”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-pl-d4"></label><span class="desc" id="bold-block-pl-d4">Pay the electricity bill</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Pay the electricity bill”">Edit</button><button type="button" class="b-del" aria-label="Delete “Pay the electricity bill”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pl-d5"></label><span class="desc" id="bold-block-pl-d5">Buy birthday card for Sam</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Buy birthday card for Sam”">Edit</button><button type="button" class="b-del" aria-label="Delete “Buy birthday card for Sam”">Delete</button></div></li></ul></main></div></div></div><figcaption class="g-cap">Phone 390 × 844 · light · focus ring shown on Edit (first row)</figcaption></figure>
+<figure class="frame"><div class="browser"><div class="bbar" aria-hidden="true"><span class="dots"><i></i><i></i><i></i></span><span class="url">todos.example.com</span></div><div class="bvp app light desk"><main class="wrap"><h1>Todos</h1><form class="add" action="#"><label class="lbl" for="bold-block-dl-new">New todo</label><div class="add-row"><input class="field" id="bold-block-dl-new" type="text" autocomplete="off" placeholder="What needs doing?"><button type="button" class="b-add">Add</button></div></form><ul class="list" aria-label="Todos"><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-dl-d0"></label><span class="desc" id="bold-block-dl-d0">Renew passport before the March trip</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Renew passport before the March trip”">Edit</button><button type="button" class="b-del" aria-label="Delete “Renew passport before the March trip”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" class="fx" aria-labelledby="bold-block-dl-d1"></label><span class="desc" id="bold-block-dl-d1">Book dentist for Thursday</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Book dentist for Thursday”">Edit</button><button type="button" class="b-del" aria-label="Delete “Book dentist for Thursday”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-dl-d2"></label><span class="desc" id="bold-block-dl-d2">Return library books</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Return library books”">Edit</button><button type="button" class="b-del" aria-label="Delete “Return library books”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-dl-d3"></label><span class="desc" id="bold-block-dl-d3">Call Mum about Sunday lunch</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Call Mum about Sunday lunch”">Edit</button><button type="button" class="b-del" aria-label="Delete “Call Mum about Sunday lunch”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-dl-d4"></label><span class="desc" id="bold-block-dl-d4">Pay the electricity bill</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Pay the electricity bill”">Edit</button><button type="button" class="b-del" aria-label="Delete “Pay the electricity bill”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-dl-d5"></label><span class="desc" id="bold-block-dl-d5">Buy birthday card for Sam</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Buy birthday card for Sam”">Edit</button><button type="button" class="b-del" aria-label="Delete “Buy birthday card for Sam”">Delete</button></div></li></ul></main></div></div><figcaption class="g-cap">Desktop 1200 wide · light · focus ring shown on the second row's checkbox</figcaption></figure>
+</div>
+</section>
+
+<section class="g-sec g-dark">
+<h2>Dark · phone, populated</h2>
+<div class="g-row">
+<figure class="frame"><div class="phone"><div class="ph app dark " style="height:844px"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="wrap"><h1>Todos</h1><form class="add" action="#"><label class="lbl" for="bold-block-pd-new">New todo</label><div class="add-row"><input class="field" id="bold-block-pd-new" type="text" autocomplete="off" placeholder="What needs doing?"><button type="button" class="b-add">Add</button></div></form><ul class="list" aria-label="Todos"><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pd-d0"></label><span class="desc" id="bold-block-pd-d0">Renew passport before the March trip</span></div><div class="ra"><button type="button" class="b-edit fx" aria-label="Edit “Renew passport before the March trip”">Edit</button><button type="button" class="b-del" aria-label="Delete “Renew passport before the March trip”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pd-d1"></label><span class="desc" id="bold-block-pd-d1">Book dentist for Thursday</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Book dentist for Thursday”">Edit</button><button type="button" class="b-del" aria-label="Delete “Book dentist for Thursday”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-pd-d2"></label><span class="desc" id="bold-block-pd-d2">Return library books</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Return library books”">Edit</button><button type="button" class="b-del" aria-label="Delete “Return library books”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pd-d3"></label><span class="desc" id="bold-block-pd-d3">Call Mum about Sunday lunch</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Call Mum about Sunday lunch”">Edit</button><button type="button" class="b-del" aria-label="Delete “Call Mum about Sunday lunch”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-pd-d4"></label><span class="desc" id="bold-block-pd-d4">Pay the electricity bill</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Pay the electricity bill”">Edit</button><button type="button" class="b-del" aria-label="Delete “Pay the electricity bill”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pd-d5"></label><span class="desc" id="bold-block-pd-d5">Buy birthday card for Sam</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Buy birthday card for Sam”">Edit</button><button type="button" class="b-del" aria-label="Delete “Buy birthday card for Sam”">Delete</button></div></li></ul></main></div></div></div><figcaption class="g-cap">Phone 390 × 844 · dark · focus ring shown on Edit (first row)</figcaption></figure>
+<figure class="frame"><div class="phone"><div class="ph app dark has-dock" style="height:844px"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="wrap"><h1>Todos</h1><form class="add" action="#"><label class="lbl" for="bold-block-pde-new">New todo</label><div class="add-row"><input class="field" id="bold-block-pde-new" type="text" autocomplete="off" placeholder="What needs doing?"><button type="button" class="b-add fx">Add</button></div></form><ul class="list" aria-label="Todos"><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pde-d0"></label><span class="desc" id="bold-block-pde-d0">Renew passport before the March trip</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Renew passport before the March trip”">Edit</button><button type="button" class="b-del" aria-label="Delete “Renew passport before the March trip”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pde-d1"></label><span class="desc" id="bold-block-pde-d1">Book dentist for Thursday</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Book dentist for Thursday”">Edit</button><button type="button" class="b-del" aria-label="Delete “Book dentist for Thursday”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-pde-d2"></label><span class="desc" id="bold-block-pde-d2">Return library books</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Return library books”">Edit</button><button type="button" class="b-del" aria-label="Delete “Return library books”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pde-d3"></label><span class="desc" id="bold-block-pde-d3">Call Mum about Sunday lunch</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Call Mum about Sunday lunch”">Edit</button><button type="button" class="b-del" aria-label="Delete “Call Mum about Sunday lunch”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-pde-d4"></label><span class="desc" id="bold-block-pde-d4">Pay the electricity bill</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Pay the electricity bill”">Edit</button><button type="button" class="b-del" aria-label="Delete “Pay the electricity bill”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-pde-d5"></label><span class="desc" id="bold-block-pde-d5">Buy birthday card for Sam</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Buy birthday card for Sam”">Edit</button><button type="button" class="b-del" aria-label="Delete “Buy birthday card for Sam”">Delete</button></div></li></ul></main><div class="dock" role="status" aria-live="polite"><span class="dock-i" aria-hidden="true">!</span><p>Couldn't save your change, so it was undone. Check your connection and try again.</p></div></div></div></div><figcaption class="g-cap">Phone · dark · announcer showing a failure, focus ring on Add</figcaption></figure>
+</div>
+</section>
+
+<section class="g-sec">
+<h2>States · light phone</h2>
+<div class="g-row wrap">
+<figure class="frame"><div class="phone"><div class="ph app light " style="height:660px"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="wrap"><h1>Todos</h1><form class="add" action="#"><label class="lbl" for="bold-block-se-new">New todo</label><div class="add-row"><input class="field" id="bold-block-se-new" type="text" autocomplete="off" placeholder="What needs doing?"><button type="button" class="b-add">Add</button></div></form><ul class="list" aria-label="Todos"><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-se-d0"></label><span class="desc" id="bold-block-se-d0">Renew passport before the March trip</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Renew passport before the March trip”">Edit</button><button type="button" class="b-del" aria-label="Delete “Renew passport before the March trip”">Delete</button></div></li><li class="row editing"><div class="rm"><label class="check"><input type="checkbox" aria-label="Book dentist for Thursday"></label><div class="edit"><label class="vh" for="bold-block-se-e1">Edit description</label><input class="field fx" id="bold-block-se-e1" type="text" value="Book dentist for Thursday at 4pm and ask about the cracked filling on the lower left, whether the cleaning can happen at the same visit, and if they take the new insurance card or still need the old one" aria-invalid="true" aria-describedby="bold-block-se-e1-err"><p class="err" id="bold-block-se-e1-err"><span class="err-i" aria-hidden="true">!</span><span>Keep it to 200 characters or fewer — you're at 214.</span></p><div class="ea"><button type="button" class="b-save">Save</button><button type="button" class="b-cancel">Cancel</button></div></div></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-se-d2"></label><span class="desc" id="bold-block-se-d2">Return library books</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Return library books”">Edit</button><button type="button" class="b-del" aria-label="Delete “Return library books”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-se-d3"></label><span class="desc" id="bold-block-se-d3">Call Mum about Sunday lunch</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Call Mum about Sunday lunch”">Edit</button><button type="button" class="b-del" aria-label="Delete “Call Mum about Sunday lunch”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-se-d4"></label><span class="desc" id="bold-block-se-d4">Pay the electricity bill</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Pay the electricity bill”">Edit</button><button type="button" class="b-del" aria-label="Delete “Pay the electricity bill”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-se-d5"></label><span class="desc" id="bold-block-se-d5">Buy birthday card for Sam</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Buy birthday card for Sam”">Edit</button><button type="button" class="b-del" aria-label="Delete “Buy birthday card for Sam”">Delete</button></div></li></ul></main></div></div></div><figcaption class="g-cap">(a) Edit mode on “Book dentist for Thursday”: input (focused) with Save and Cancel; inline error, too long: “Keep it to 200 characters or fewer — you're at 214.”</figcaption></figure>
+<figure class="frame"><div class="phone"><div class="ph app light " style="height:660px"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="wrap"><h1>Todos</h1><form class="add" action="#"><label class="lbl" for="bold-block-sm-new">New todo</label><div class="add-row"><input class="field" id="bold-block-sm-new" type="text" autocomplete="off" placeholder="What needs doing?"><button type="button" class="b-add">Add</button></div></form><p class="empty">Nothing on the list.</p></main></div></div></div><figcaption class="g-cap">(b) Empty: add form stays on top, one short line, no onboarding</figcaption></figure>
+<figure class="frame"><div class="phone"><div class="ph app light has-dock" style="height:660px"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="wrap"><h1>Todos</h1><form class="add" action="#"><label class="lbl" for="bold-block-sr-new">New todo</label><div class="add-row"><input class="field" id="bold-block-sr-new" type="text" autocomplete="off" placeholder="What needs doing?"><button type="button" class="b-add">Add</button></div></form><ul class="list" aria-label="Todos"><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-sr-d0"></label><span class="desc" id="bold-block-sr-d0">Renew passport before the March trip</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Renew passport before the March trip”">Edit</button><button type="button" class="b-del" aria-label="Delete “Renew passport before the March trip”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-sr-d1"></label><span class="desc" id="bold-block-sr-d1">Book dentist for Thursday</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Book dentist for Thursday”">Edit</button><button type="button" class="b-del" aria-label="Delete “Book dentist for Thursday”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-sr-d2"></label><span class="desc" id="bold-block-sr-d2">Return library books</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Return library books”">Edit</button><button type="button" class="b-del" aria-label="Delete “Return library books”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-sr-d3"></label><span class="desc" id="bold-block-sr-d3">Call Mum about Sunday lunch</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Call Mum about Sunday lunch”">Edit</button><button type="button" class="b-del" aria-label="Delete “Call Mum about Sunday lunch”">Delete</button></div></li><li class="row done"><div class="rm"><label class="check"><input type="checkbox" checked aria-labelledby="bold-block-sr-d4"></label><span class="desc" id="bold-block-sr-d4">Pay the electricity bill</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Pay the electricity bill”">Edit</button><button type="button" class="b-del" aria-label="Delete “Pay the electricity bill”">Delete</button></div></li><li class="row"><div class="rm"><label class="check"><input type="checkbox" aria-labelledby="bold-block-sr-d5"></label><span class="desc" id="bold-block-sr-d5">Buy birthday card for Sam</span></div><div class="ra"><button type="button" class="b-edit" aria-label="Edit “Buy birthday card for Sam”">Edit</button><button type="button" class="b-del" aria-label="Delete “Buy birthday card for Sam”">Delete</button></div></li></ul></main><div class="dock" role="status" aria-live="polite"><span class="dock-i" aria-hidden="true">!</span><p>Couldn't save your change, so it was undone. Check your connection and try again.</p></div></div></div></div><figcaption class="g-cap">(c) Failure in the announcer: floating dock pinned to the bottom of the viewport</figcaption></figure>
+<figure class="frame"><div class="phone"><div class="ph app light " style="height:660px"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="wrap"><h1>Todos</h1><form class="add" action="#"><label class="lbl" for="bold-block-sl-new">New todo</label><div class="add-row"><input class="field" id="bold-block-sl-new" type="text" autocomplete="off" placeholder="What needs doing?"><button type="button" class="b-add">Add</button></div></form><p class="loading">Loading your todos…</p><div class="skel"><i></i><b style="width:58%"></b></div><div class="skel"><i></i><b style="width:40%"></b></div><div class="skel"><i></i><b style="width:50%"></b></div></main></div></div></div><figcaption class="g-cap">(d) Loading: add form usable, list region shows a loading line</figcaption></figure>
+</div>
+</section>
+</body>
+</html>

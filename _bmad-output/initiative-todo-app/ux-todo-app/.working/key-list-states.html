@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BMad Todos — key screen: list states</title>
+<style>
+/*
+KEY SCREEN: key-list-states — the list area's non-populated states (phones, light and dark).
+Governing spine sections:
+  DESIGN.md   Layout & Spacing (gap table: add form group -> list / empty panel / skeleton list / list error panel = 24,
+              those blocks at zero margin); Elevation & Depth (skeleton card, empty panel and list error panel are flat);
+              Shapes (rounded.card, rounded.bar); Colors (Announcer roles reused by the list error panel; skeleton;
+              contrast rows text-muted on page, on-announcer on surface-announcer, danger on surface-announcer,
+              focus-ring on surface-announcer); Components: Empty panel, Skeleton card, Loading status, List error panel,
+              Try again button, Add form, Text field (rest), Character counter, Add button, Todo card (Active).
+  EXPERIENCE.md  Information Architecture (region 4 list area and its two exceptions: pending added cards above the
+              skeleton list or List error panel); Voice and Tone (load lead + network reason; "No todos yet.";
+              "Try again"; Loading status "Loading your todos" is hidden); Component Patterns: Empty panel, Skeleton
+              card, Loading status, List error panel, Try again button, Add form (enabled in every list state);
+              State Patterns: List states › Loading, Empty, Error, Add during Loading; Motion › Loading (shown at its
+              held rest state); Key Flows: Flow 1 steps 1-2, Flow 3 step 2 and failure path, Flow 4 failure path.
+
+*/
+
+/* ---------- gallery chrome (not part of the design; every hex is a DESIGN.md value) ---------- */
+*{box-sizing:border-box}
+body{margin:0;background:#E1E3EE;color:#1B1D2A;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+.g-head{padding:32px 40px 4px;max-width:1180px}
+.g-title{font-size:26px;line-height:32px;font-weight:700;margin:0 0 8px;letter-spacing:-.01em}
+.g-note{font-size:14px;color:#3A3F55;margin:0 0 6px;max-width:1000px}
+.g-sec{padding:20px 40px 36px}
+.g-sec>h2{font-size:15px;font-weight:700;color:#1B1D2A;margin:0 0 4px}
+.g-sec>p{font-size:13.5px;color:#3A3F55;margin:0 0 16px;max-width:1000px}
+.g-row{display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start}
+.frame{margin:0;flex:none}
+.g-cap{font-size:13px;line-height:1.45;color:#3A3F55;margin:10px 4px 0;max-width:414px}
+.frame.wide .g-cap{max-width:1200px}
+.phone{width:414px;padding:12px;border-radius:54px;background:#12131A;box-shadow:0 18px 40px rgba(10,12,30,.22),inset 0 0 0 2px #3A3E58}
+.ph{width:390px;height:844px;border-radius:42px;overflow:hidden;position:relative;--safe-bottom:34px}
+.sbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 30px 0 36px;font:600 15px/1 system-ui,-apple-system,sans-serif;color:var(--color-text-primary)}
+.bat{display:inline-block;width:25px;height:12px;border:1.5px solid currentColor;border-radius:3.5px;position:relative}
+.bat::after{content:"";position:absolute;top:1.5px;bottom:1.5px;left:1.5px;right:6px;background:currentColor;border-radius:1px}
+.vp{position:relative;height:800px;overflow:hidden}
+.home{position:absolute;z-index:20;bottom:8px;left:50%;width:134px;height:5px;margin-left:-67px;border-radius:9999px;background:var(--color-text-primary)}
+.browser{width:1200px;border-radius:12px;overflow:hidden;box-shadow:0 18px 40px rgba(10,12,30,.18),0 0 0 1px rgba(10,12,30,.08)}
+.bbar{height:44px;display:flex;align-items:center;padding:0 14px;gap:14px;background:#E3E5F0}
+.bbar.dk{background:#22253A}
+.dots{display:flex;gap:8px}.dots i{width:12px;height:12px;border-radius:50%;background:#80869E;display:block}
+.bbar.dk .dots i{background:#666B8A}
+.url{flex:1;max-width:520px;margin:0 auto;height:28px;border-radius:8px;background:#F1F2F8;color:#565B70;font:13px system-ui,sans-serif;display:flex;align-items:center;padding:0 12px}
+.bbar.dk .url{background:#12131A;color:#A4A8BD}
+.bvp{position:relative;overflow:hidden;--safe-bottom:0px}
+
+/* ---------- tokens: 1:1 custom properties (DESIGN.md Colors, token-to-CSS rule) ----------
+   Production declares light on :root and reassigns the same names inside
+   @media (prefers-color-scheme: dark). This mock scopes them to .light / .dark so both modes sit side by side. */
+.app.light{color-scheme:light;--color-surface-page:#F1F2F8;--color-surface-card:#FFFFFF;--color-border-card:#E1E3EE;--color-text-primary:#1B1D2A;--color-text-muted:#565B70;--color-border-field:#80869E;--color-border-check:#6E7391;--color-border-check-hover:#4F5470;--color-surface-check-pressed:#E3E5F0;--color-action-primary:#4B4FD6;--color-action-primary-hover:#3F43C4;--color-action-primary-pressed:#3438B0;--color-on-action-primary:#FFFFFF;--color-action-soft:#ECEDFB;--color-action-soft-hover:#E0E2F8;--color-action-soft-pressed:#D3D6F4;--color-on-action-soft:#3B3FB8;--color-action-danger-soft:#FCEBEA;--color-action-danger-soft-hover:#F9DEDC;--color-action-danger-soft-pressed:#F5D0CD;--color-focus-ring:#4B4FD6;--color-danger:#B3261E;--color-danger-hover:#9E211A;--color-danger-pressed:#8A1C16;--color-on-danger:#FFFFFF;--color-surface-announcer:#FDECEA;--color-on-announcer:#7A1712;--color-announcer-button-hover:#F9DCD9;--color-announcer-button-pressed:#F4CBC7;--color-text-done:#565B70;--color-border-done:#80869E;--color-done-button-hover:#E6E8F1;--color-done-button-pressed:#DADDE9;--color-surface-done-chip:#E3E5F0;--color-on-done-chip:#3A3F55;--color-surface-done-check:#E3E5F0;--color-border-done-check:#80869E;--color-glyph-done-check:#3A3F55;--color-skeleton:#E3E5F0}
+.app.dark{color-scheme:dark;--color-surface-page:#12131A;--color-surface-card:#22253A;--color-border-card:#3A3E58;--color-text-primary:#F0F1F8;--color-text-muted:#A4A8BD;--color-border-field:#8B90AD;--color-border-check:#8B90AD;--color-border-check-hover:#B0B4CC;--color-surface-check-pressed:#2A2D42;--color-action-primary:#9A9DFF;--color-action-primary-hover:#8C8FF5;--color-action-primary-pressed:#7F82EB;--color-on-action-primary:#12131A;--color-action-soft:#2E3250;--color-action-soft-hover:#363B5D;--color-action-soft-pressed:#3F4469;--color-on-action-soft:#C8CAFF;--color-action-danger-soft:#3A1F22;--color-action-danger-soft-hover:#47262A;--color-action-danger-soft-pressed:#552D31;--color-focus-ring:#B9BBFF;--color-danger:#FF8A80;--color-danger-hover:#F27D73;--color-danger-pressed:#E57066;--color-on-danger:#12131A;--color-surface-announcer:#3A1715;--color-on-announcer:#FFD7D3;--color-announcer-button-hover:#4A1E1B;--color-announcer-button-pressed:#5A2622;--color-text-done:#8F94AA;--color-border-done:#666B8A;--color-done-button-hover:#1C1E2B;--color-done-button-pressed:#262938;--color-surface-done-chip:#1C1E2B;--color-on-done-chip:#A9ADC2;--color-surface-done-check:#1C1E2B;--color-border-done-check:#6F7494;--color-glyph-done-check:#A9ADC2;--color-skeleton:#4A4F6B}
+.app{
+  --font-base-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;
+  --space-content-max:720px;--space-target-min:44px;--space-target-min-wide:40px;
+  --radius-card:16px;--radius-button:12px;--radius-flag:20px;--radius-bar:6px;--radius-full:9999px;
+  --focus-ring-color:var(--color-focus-ring);--focus-ring-width:3px;--focus-ring-offset:3px;
+  --todo-card-shadow:0 1px 3px rgba(10,12,30,0.10);
+  --announcer-shadow:0 -4px 16px rgba(10,12,30,0.16);
+  --revert-flag-width:2px;--revert-flag-outset:5px;
+  background:var(--color-surface-page);color:var(--color-text-primary);font-family:var(--font-base-family)
+}
+
+/* ---------- resets at ZERO specificity (DESIGN.md Do's and Don'ts): component classes always win ---------- */
+:where(.app) :where(*,*::before,*::after){box-sizing:border-box}
+:where(.app) :where(h1,p,ul,li,form){margin:0;padding:0}
+:where(.app) :where(ul){list-style:none}
+:where(.app) :where(button,input,textarea){font:inherit;color:inherit;letter-spacing:inherit}
+:where(.app) :where(button){cursor:pointer}
+.vh{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;padding:0!important;border:0!important;margin:-1px!important}
+
+/* ---------- focus ring (global): 3px outline at 3px offset, outside the fill. .fx = the mock's frozen :focus-visible ---------- */
+.app :focus-visible,.app .fx{outline:var(--focus-ring-width) solid var(--focus-ring-color);outline-offset:var(--focus-ring-offset)}
+.heading:focus{outline:0}
+
+/* ---------- page ---------- */
+.page{padding:var(--space-2) var(--space-4) calc(var(--space-6) + var(--announcer-block-size,0px))}
+.desk .page{max-width:var(--space-content-max);margin:0 auto;padding-top:var(--space-6);padding-inline:0}
+.heading{font-size:30px;line-height:36px;font-weight:700;letter-spacing:-0.02em;color:var(--color-text-primary);margin-bottom:var(--space-4)}
+.desk .heading{font-size:36px;line-height:44px}
+
+/* ---------- Announcer: bottom overlay (position:fixed in product; absolute to the frame viewport here) ---------- */
+.ann{position:absolute;z-index:10;left:var(--space-4);right:var(--space-4);bottom:calc(var(--safe-bottom,0px) + var(--space-2));max-width:var(--space-content-max);margin:0 auto;
+  display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border:1px solid;border-radius:var(--radius-card);box-shadow:var(--announcer-shadow);font-size:15.5px;line-height:1.45;font-weight:400}
+.ann.fail{background:var(--color-surface-announcer);color:var(--color-on-announcer);border-color:var(--color-danger)}
+.ann.status{background:var(--color-surface-card);color:var(--color-text-primary);border-color:var(--color-border-field)}
+.ann-i{flex:none;width:24px;height:24px;border-radius:var(--radius-full);background:var(--color-danger);color:var(--color-on-danger);display:grid;place-items:center;font-size:14px;font-weight:800;line-height:1;margin-top:4px}
+.ann-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
+.ann-msg{padding-top:var(--space-1)}
+.desk .ann-body{flex-direction:row;align-items:flex-start;gap:var(--space-4)}
+.desk .ann-msg{flex:1}
+.b-dismiss{flex:none;align-self:flex-end;min-height:var(--space-target-min);padding:0 var(--space-4);border-radius:var(--radius-button);font-size:15px;font-weight:600;
+  background:transparent;border:1.5px solid var(--color-danger);color:var(--color-on-announcer)}
+.status .b-dismiss{background:var(--color-action-soft);border-color:transparent;color:var(--color-on-action-soft)}
+
+/* ---------- add form + text field + counter + inline error ---------- */
+.add{margin-bottom:var(--space-5)}
+.add-label{display:block;font-size:15px;line-height:20px;font-weight:600;color:var(--color-text-primary);margin-bottom:var(--space-2)}
+.add-row{display:flex;gap:var(--space-2);align-items:flex-start}
+.field{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--color-surface-card);color:var(--color-text-primary);border:1.5px solid var(--color-border-field);border-radius:var(--radius-card)}
+.field:focus-within{outline:var(--focus-ring-width) solid var(--focus-ring-color);outline-offset:var(--focus-ring-offset)}
+.field.invalid{border-color:var(--color-danger);box-shadow:inset 0 0 0 1px var(--color-danger)} /* 1.5 -> 2.5px, inward */
+.ta{display:block;width:100%;field-sizing:content;min-height:32px;resize:none;overflow:hidden;border:0;outline:0;background:transparent;
+  padding:var(--space-2) var(--space-3) 0;font-size:16px;line-height:24px;font-weight:400;overflow-wrap:anywhere;border-radius:var(--radius-card) var(--radius-card) 0 0}
+.ta:focus-visible{outline:0}
+.foot{display:flex;justify-content:flex-end;padding:0 var(--space-3) var(--space-2)}
+.count{display:inline-flex;align-items:center;gap:var(--space-1);font-size:13px;line-height:16px;font-weight:500;color:var(--color-text-muted);font-variant-numeric:tabular-nums}
+.count.over{color:var(--color-danger);font-weight:700}
+.warn{width:14px;height:14px;flex:none}
+.warn .t{fill:var(--color-danger)}.warn .x{fill:none;stroke:var(--color-surface-card);stroke-width:1.8;stroke-linecap:round}
+.err{display:flex;gap:var(--space-2);align-items:flex-start;margin-top:var(--space-2);font-size:14.5px;line-height:20px;font-weight:500;color:var(--color-danger)}
+.err-i{flex:none;width:18px;height:18px;border-radius:var(--radius-full);background:var(--color-danger);color:var(--color-on-danger);font-size:12px;font-weight:800;line-height:1;display:grid;place-items:center;margin-top:1px}
+.b-add{flex:none;height:59px;padding:0 22px;border:0;border-radius:var(--radius-card);background:var(--color-action-primary);color:var(--color-on-action-primary);font-size:16px;font-weight:600}
+
+/* ---------- list + cards ---------- */
+.list{display:flex;flex-direction:column;gap:var(--space-3)}
+.card{position:relative;background:var(--color-surface-card);color:var(--color-text-primary);border:1.5px solid var(--color-border-card);border-radius:var(--radius-card);padding:var(--space-3) var(--space-4);box-shadow:var(--todo-card-shadow)}
+.main{display:flex;align-items:flex-start;gap:var(--space-3)}
+.txt{flex:1;min-width:0;padding-top:1px;font-size:17px;line-height:24px;font-weight:400;overflow-wrap:anywhere}
+.check{position:relative;flex:none;width:44px;height:44px;margin:-9px;display:grid;place-items:center}
+.check input{position:absolute;inset:0;margin:0;opacity:0;appearance:none;-webkit-appearance:none;cursor:pointer}
+.ck{width:26px;height:26px;display:block;border-radius:var(--radius-full);overflow:visible}
+.ck circle{fill:var(--color-surface-card);stroke:var(--color-border-check);stroke-width:2}
+.ck path{fill:none;stroke:var(--color-glyph-done-check);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:14;stroke-dashoffset:14}
+.check input:checked+.ck circle{fill:var(--color-surface-done-check);stroke:var(--color-border-done-check)}
+.check input:checked+.ck path{stroke-dashoffset:0}
+.check input:focus-visible+.ck,.ck.fx{outline:var(--focus-ring-width) solid var(--focus-ring-color);outline-offset:var(--focus-ring-offset)}
+.chip{display:inline-block;margin-left:var(--space-2);padding:0 9px;border-radius:var(--radius-full);background:var(--color-surface-done-chip);color:var(--color-on-done-chip);font-size:13px;line-height:20px;font-weight:600;vertical-align:1px}
+.acts{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-2)}
+.btn{min-height:var(--space-target-min);min-width:64px;padding:0 var(--space-4);border:1.5px solid transparent;border-radius:var(--radius-button);font-size:15px;font-weight:600}
+.b-edit,.b-cancel{background:var(--color-action-soft);color:var(--color-on-action-soft)}
+.b-del{background:var(--color-action-danger-soft);color:var(--color-danger)}
+.b-confirm{background:var(--color-danger);color:var(--color-on-danger);border:0}
+.b-save{background:var(--color-action-primary);color:var(--color-on-action-primary);border:0;padding:0 20px}
+/* done: recedes (no fill, no shadow, dashed outline, quiet text, grey tick, chip, outline buttons) */
+.card.done{background:transparent;box-shadow:none;border:1.5px dashed var(--color-border-done);color:var(--color-text-done)}
+.done .b-edit,.done .b-del{background:transparent;border-color:var(--color-border-done);color:var(--color-text-done)}
+/* wide: actions inline on the first line, top-aligned */
+.desk .card{display:flex;align-items:flex-start;gap:var(--space-3)}
+.desk .main{flex:1;min-width:0;padding-top:7px}
+.desk .acts{margin-top:0}
+.desk .btn{min-height:var(--space-target-min-wide)}
+/* edit mode: always the active treatment; check nudged; Save/Cancel 8 below the field */
+.editing .check{margin-top:-2px}
+.edit{flex:1;min-width:0}
+/* delete confirm: replaces Edit/Delete in place; wraps on narrow cards */
+.confirm{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:var(--space-2);margin-top:var(--space-2)}
+.confirm .q{font-size:16px;line-height:24px;color:var(--color-text-primary)}
+.done .confirm .q{color:var(--color-text-done)}
+/* revert flag: 2px danger outline, 5px outside the padding box (~3.5px clear of the 1.5px edge), radius 20; static here */
+.card.reverted::before{content:"";position:absolute;inset:calc(-1 * (var(--revert-flag-outset) + var(--revert-flag-width)));border:var(--revert-flag-width) solid var(--color-danger);border-radius:var(--radius-flag);pointer-events:none}
+
+/* ---------- empty panel, skeleton, list error panel ---------- */
+.empty{padding:var(--space-6);text-align:center;color:var(--color-text-muted);font-size:16px;line-height:24px;border:1.5px solid var(--color-border-card);border-radius:var(--radius-card)}
+.skel-list{display:flex;flex-direction:column;gap:var(--space-3)}
+.skel{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--space-4);background:var(--color-surface-card);border:1.5px solid var(--color-border-card);border-radius:var(--radius-card)}
+.skel i{flex:none;width:26px;height:26px;border-radius:var(--radius-full);background:var(--color-skeleton)}
+.skel b{display:block;height:12px;border-radius:var(--radius-bar);background:var(--color-skeleton)}
+.pending-stack{display:flex;flex-direction:column;gap:var(--space-3)}
+.lerr{display:flex;flex-direction:column;align-items:center;gap:var(--space-4);padding:var(--space-6);text-align:center;background:var(--color-surface-announcer);color:var(--color-on-announcer);border:1px solid var(--color-danger);border-radius:var(--radius-card);font-size:15.5px;line-height:1.45}
+.b-retry{min-height:var(--space-target-min);padding:0 var(--space-4);border-radius:var(--radius-button);border:1.5px solid var(--color-danger);background:transparent;color:var(--color-on-announcer);font-size:15px;font-weight:600}
+
+/* ---------- forced colours (DESIGN.md Colors) ---------- */
+@media (forced-colors: active){
+  .ann,.empty,.lerr{border:1px solid CanvasText}
+  .field.invalid{border-width:2.5px;box-shadow:none}
+  .ck circle{stroke:CanvasText}.ck path{stroke:CanvasText}
+  .card.reverted::before{border:0;outline:var(--revert-flag-width) solid CanvasText}
+}
+</style>
+</head>
+<body>
+<header class="g-head"><h1 class="g-title">BMad Todos — key screen: list states</h1><p class="g-note">Key-screen mock. It illustrates the spines; DESIGN.md and EXPERIENCE.md are the contract and win over this file. Light and dark are shown side by side by class; production follows <code>prefers-color-scheme</code>. The Announcer is first in the DOM (IA region 1) but drawn as the bottom overlay; here it is positioned against the frame viewport instead of <code>position: fixed</code>. Frozen focus rings use a class standing in for <code>:focus-visible</code>. Static frames: no motion is shown.</p></header>
+<section class="g-sec"><h2>Empty</h2><p>Query succeeded with zero todos. No onboarding, no illustration, no button.</p><div class="g-row"><figure class="frame"><div class="phone"><div class="ph app light"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="page"><div class="ann-empty"><p class="vh" role="status" aria-live="polite"></p></div><h1 class="heading" tabindex="-1">BMad Todos</h1><form class="add" action="#"><label class="add-label" for="el-n">New todo</label><div class="add-row"><div class="field"><textarea class="ta" id="el-n" rows="1" enterkeyhint="done" aria-describedby="el-nc el-nh"></textarea><div class="foot"><span class="count" id="el-nc">0/200</span></div></div><button type="submit" class="b-add">Add</button></div><span class="vh" id="el-nh">Press Enter to add.</span><p class="vh" role="status" aria-live="polite"></p></form><p class="vh" role="status"></p><p class="empty">No todos yet.</p></main><span class="home" aria-hidden="true"></span></div></div></div><figcaption class="g-cap">Phone, light: Empty panel “No todos yet.”, outline only, 24 below the add form group; no focus (page load does not autofocus).</figcaption></figure><figure class="frame"><div class="phone"><div class="ph app dark"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="page"><div class="ann-empty"><p class="vh" role="status" aria-live="polite"></p></div><h1 class="heading" tabindex="-1">BMad Todos</h1><form class="add" action="#"><label class="add-label" for="ed-n">New todo</label><div class="add-row"><div class="field"><textarea class="ta" id="ed-n" rows="1" enterkeyhint="done" aria-describedby="ed-nc ed-nh"></textarea><div class="foot"><span class="count" id="ed-nc">0/200</span></div></div><button type="submit" class="b-add">Add</button></div><span class="vh" id="ed-nh">Press Enter to add.</span><p class="vh" role="status" aria-live="polite"></p></form><p class="vh" role="status"></p><p class="empty">No todos yet.</p></main><span class="home" aria-hidden="true"></span></div></div></div><figcaption class="g-cap">Phone, dark: Empty panel; muted text on the page, hairline outline.</figcaption></figure></div></section>
+<section class="g-sec"><h2>Loading</h2><p>First load in flight, no cached data. Three skeleton cards; no visible loading text (the hidden Loading status speaks after ~500 ms).</p><div class="g-row"><figure class="frame"><div class="phone"><div class="ph app light"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="page"><div class="ann-empty"><p class="vh" role="status" aria-live="polite"></p></div><h1 class="heading" tabindex="-1">BMad Todos</h1><form class="add" action="#"><label class="add-label" for="ll-n">New todo</label><div class="add-row"><div class="field"><textarea class="ta" id="ll-n" rows="1" enterkeyhint="done" aria-describedby="ll-nc ll-nh"></textarea><div class="foot"><span class="count" id="ll-nc">0/200</span></div></div><button type="submit" class="b-add">Add</button></div><span class="vh" id="ll-nh">Press Enter to add.</span><p class="vh" role="status" aria-live="polite"></p></form><p class="vh" role="status">Loading your todos</p><ul class="skel-list" aria-busy="true" aria-hidden="true"><li class="skel"><i></i><b style="width:62%"></b></li><li class="skel"><i></i><b style="width:44%"></b></li><li class="skel"><i></i><b style="width:54%"></b></li></ul></main><span class="home" aria-hidden="true"></span></div></div></div><figcaption class="g-cap">Phone, light: loading skeleton at rest (after its three breaths it holds at opacity 1); bars 62 / 44 / 54%; add form usable; no visible text.</figcaption></figure><figure class="frame"><div class="phone"><div class="ph app dark"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="page"><div class="ann-empty"><p class="vh" role="status" aria-live="polite"></p></div><h1 class="heading" tabindex="-1">BMad Todos</h1><form class="add" action="#"><label class="add-label" for="ld-n">New todo</label><div class="add-row"><div class="field"><textarea class="ta" id="ld-n" rows="1" enterkeyhint="done" aria-describedby="ld-nc ld-nh"></textarea><div class="foot"><span class="count" id="ld-nc">0/200</span></div></div><button type="submit" class="b-add">Add</button></div><span class="vh" id="ld-nh">Press Enter to add.</span><p class="vh" role="status" aria-live="polite"></p></form><p class="vh" role="status">Loading your todos</p><ul class="skel-list" aria-busy="true" aria-hidden="true"><li class="skel"><i></i><b style="width:62%"></b></li><li class="skel"><i></i><b style="width:44%"></b></li><li class="skel"><i></i><b style="width:54%"></b></li></ul></main><span class="home" aria-hidden="true"></span></div></div></div><figcaption class="g-cap">Phone, dark: loading skeleton at rest, raised skeleton-dark so the cards read as loading.</figcaption></figure></div></section>
+<section class="g-sec"><h2>List error</h2><p>First load failed and there is no data from a successful fetch (AD-11). Focus is not moved to the panel.</p><div class="g-row"><figure class="frame"><div class="phone"><div class="ph app light"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="page"><div class="ann-empty"><p class="vh" role="status" aria-live="polite"></p></div><h1 class="heading" tabindex="-1">BMad Todos</h1><form class="add" action="#"><label class="add-label" for="rl-n">New todo</label><div class="add-row"><div class="field"><textarea class="ta" id="rl-n" rows="1" enterkeyhint="done" aria-describedby="rl-nc rl-nh"></textarea><div class="foot"><span class="count" id="rl-nc">0/200</span></div></div><button type="submit" class="b-add">Add</button></div><span class="vh" id="rl-nh">Press Enter to add.</span><p class="vh" role="status" aria-live="polite"></p></form><p class="vh" role="status"></p><div class="lerr"><p>Couldn't load your todos. Check your connection and try again.</p><button type="button" class="b-retry">Try again</button></div></main><span class="home" aria-hidden="true"></span></div></div></div><figcaption class="g-cap">Phone, light: List error panel, load lead plus network reason, with Try again centred 16 below; add form still usable.</figcaption></figure><figure class="frame"><div class="phone"><div class="ph app dark"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="page"><div class="ann-empty"><p class="vh" role="status" aria-live="polite"></p></div><h1 class="heading" tabindex="-1">BMad Todos</h1><form class="add" action="#"><label class="add-label" for="rd-n">New todo</label><div class="add-row"><div class="field"><textarea class="ta" id="rd-n" rows="1" enterkeyhint="done" aria-describedby="rd-nc rd-nh"></textarea><div class="foot"><span class="count" id="rd-nc">0/200</span></div></div><button type="submit" class="b-add">Add</button></div><span class="vh" id="rd-nh">Press Enter to add.</span><p class="vh" role="status" aria-live="polite"></p></form><p class="vh" role="status"></p><div class="lerr"><p>Couldn't load your todos. Check your connection and try again.</p><button type="button" class="b-retry">Try again</button></div></main><span class="home" aria-hidden="true"></span></div></div></div><figcaption class="g-cap">Phone, dark: List error panel in the announcer’s dark failure colours.</figcaption></figure></div></section>
+<section class="g-sec"><h2>Add during first load</h2><p>EXPERIENCE.md State Patterns › Add during Loading: the pending card renders in a Todo list above the skeleton list; skeletons and Loading status stay until the first load settles.</p><div class="g-row"><figure class="frame"><div class="phone"><div class="ph app light"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="page"><div class="ann-empty"><p class="vh" role="status" aria-live="polite"></p></div><h1 class="heading" tabindex="-1">BMad Todos</h1><form class="add" action="#"><label class="add-label" for="al-n">New todo</label><div class="add-row"><div class="field fx"><textarea class="ta" id="al-n" rows="1" enterkeyhint="done" aria-describedby="al-nc al-nh"></textarea><div class="foot"><span class="count" id="al-nc">0/200</span></div></div><button type="submit" class="b-add">Add</button></div><span class="vh" id="al-nh">Press Enter to add.</span><p class="vh" role="status" aria-live="polite"></p></form><p class="vh" role="status">Loading your todos</p><div class="pending-stack"><ul class="list" role="list" aria-label="Todos"><li class="card"><div class="main"><label class="check"><input type="checkbox" aria-labelledby="al-t0"><svg class="ck" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="12"/><path d="M3.5 8.4l3 3 6-6.8" transform="translate(5 5)"/></svg></label><div class="txt"><span id="al-t0">Book dentist for Thursday</span></div></div><div class="acts"><button type="button" class="btn b-edit" aria-label="Edit “Book dentist for Thursday”">Edit</button><button type="button" class="btn b-del" aria-label="Delete “Book dentist for Thursday”">Delete</button></div></li></ul><ul class="skel-list" aria-busy="true" aria-hidden="true"><li class="skel"><i></i><b style="width:62%"></b></li><li class="skel"><i></i><b style="width:44%"></b></li><li class="skel"><i></i><b style="width:54%"></b></li></ul></div></main><span class="home" aria-hidden="true"></span></div></div></div><figcaption class="g-cap">Phone, light: a todo added while loading; the pending card (no saving indicator) sits above the three skeletons; field cleared to 0/200 with focus kept; no Announcer yet (the add is not confirmed).</figcaption></figure><figure class="frame"><div class="phone"><div class="ph app dark"><div class="sbar" aria-hidden="true"><span>9:41</span><span class="bat"></span></div><div class="vp"><main class="page"><div class="ann-empty"><p class="vh" role="status" aria-live="polite"></p></div><h1 class="heading" tabindex="-1">BMad Todos</h1><form class="add" action="#"><label class="add-label" for="ad-n">New todo</label><div class="add-row"><div class="field fx"><textarea class="ta" id="ad-n" rows="1" enterkeyhint="done" aria-describedby="ad-nc ad-nh"></textarea><div class="foot"><span class="count" id="ad-nc">0/200</span></div></div><button type="submit" class="b-add">Add</button></div><span class="vh" id="ad-nh">Press Enter to add.</span><p class="vh" role="status" aria-live="polite"></p></form><p class="vh" role="status">Loading your todos</p><div class="pending-stack"><ul class="list" role="list" aria-label="Todos"><li class="card"><div class="main"><label class="check"><input type="checkbox" aria-labelledby="ad-t0"><svg class="ck" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="12"/><path d="M3.5 8.4l3 3 6-6.8" transform="translate(5 5)"/></svg></label><div class="txt"><span id="ad-t0">Book dentist for Thursday</span></div></div><div class="acts"><button type="button" class="btn b-edit" aria-label="Edit “Book dentist for Thursday”">Edit</button><button type="button" class="btn b-del" aria-label="Delete “Book dentist for Thursday”">Delete</button></div></li></ul><ul class="skel-list" aria-busy="true" aria-hidden="true"><li class="skel"><i></i><b style="width:62%"></b></li><li class="skel"><i></i><b style="width:44%"></b></li><li class="skel"><i></i><b style="width:54%"></b></li></ul></div></main><span class="home" aria-hidden="true"></span></div></div></div><figcaption class="g-cap">Phone, dark: add during first load; same composition.</figcaption></figure></div></section>
+</body>
+</html>
