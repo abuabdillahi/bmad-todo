@@ -1,0 +1,7 @@
+# Ticket store for this project: GitHub Issues (decision 2026-11-24, user).
+# The rest comes from the github starter in .agents/skills/bmad-agent-po/config/github-ticketing.toml.
+
+[tickets]
+store = "github"
+key = ""
+repo = "abuabdillahi/bmad-todo"
