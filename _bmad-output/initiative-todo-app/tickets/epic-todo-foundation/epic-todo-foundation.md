@@ -10,6 +10,7 @@ companions: []
 after: []
 refined: true
 risk: medium
+status: in-progress
 ---
 
 # A todo is saved and comes back, deployed and tested

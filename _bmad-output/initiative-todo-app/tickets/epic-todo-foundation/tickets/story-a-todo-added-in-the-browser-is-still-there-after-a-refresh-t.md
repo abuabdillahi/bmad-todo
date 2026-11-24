@@ -9,7 +9,7 @@ hitl: true
 risk: medium
 tracker_id: "4"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/4"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # A todo added in the browser is still there after a refresh, tested at every layer
