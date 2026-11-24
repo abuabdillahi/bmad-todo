@@ -3,7 +3,7 @@ id:
 type: initiative
 title: "Individuals manage personal todos in a simple, durable full-stack app"
 sources: ["_bmad-output/initiative-todo-app/prd-todo-app.md", "_bmad-output/initiative-todo-app/notes-quality-infra.md"]
-companions: ["_bmad-output/initiative-todo-app/test-strategy.md", "_bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md"]
+companions: ["_bmad-output/initiative-todo-app/test-strategy.md", "_bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md", "_bmad-output/initiative-todo-app/ux-todo-app/DESIGN.md", "_bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md"]
 after: []
 risk: medium
 ---
@@ -70,7 +70,8 @@ An individual can manage their personal tasks without onboarding and trust that 
 ## Boundaries
 
 - Out in v1 (prd ¶6): user accounts and authentication, collaboration or sharing, task prioritization, deadlines or due dates, notifications.
-- Out in v1 (assumed, see Notes): filtering or search, undo, load and stress testing, external penetration testing, and browsers beyond those Playwright runs by default.
+- Out in v1 (decision 2026-11-24): undo of a delete. Delete confirms inline in its card instead (see Notes).
+- Out in v1 (assumed, see Notes): filtering or search, undo of other actions, load and stress testing, external penetration testing, and browsers beyond those Playwright runs by default.
 - Out in v1 (decision 2026-11-23): access control on the public hostname (an accepted risk), backups of the SQLite volume, monitoring and alerting beyond compose logs and the post-deploy health check, rate limiting and abuse protection, and a second API replica or another database. The spine's Deferred section records each, with its revisit condition where it has one (monitoring has none).
 - Touch point: GitHub, which hosts the repository and runs the one CI workflow (spine AD-18). Its secrets and variables are the only source of production configuration (spine AD-19). The deploy needs the deploy user's SSH private key, the host's address, SSH user and host key, the public hostname for the post-deploy health check, and every production runtime secret, such as `TUNNEL_TOKEN`. Names go in the workflow and `.env.example`, never values in the repo; owner: epic-todo-foundation (hitl setup).
 - Touch point: Hetzner host, our existing shared host, which runs the compose project `todo` under the `prod` profile and publishes no host port (spine AD-1, AD-3). Its only manual setup is a one-time bootstrap: a deploy user whose SSH key is in GitHub secrets, and Docker. Each deploy copies `compose.yml` and regenerates the host `.env` (mode 600), which nobody edits by hand, and the host stores no registry credential (spine AD-18, AD-19); owner: epic-todo-foundation (hitl setup).
@@ -84,12 +85,13 @@ An individual can manage their personal tasks without onboarding and trust that 
 - notes — _bmad-output/initiative-todo-app/notes-quality-infra.md, T1–T5 testing, D1–D4 Docker, Q1–Q4 quality
 - test strategy — _bmad-output/initiative-todo-app/test-strategy.md (layers, scenario catalogue U/I/K/E, reports)
 - architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md (AD-1–AD-20, Stack, Structural Seed, Capability → Architecture Map, Deferred); its rationale is in that folder's `.memlog.md`
+- design — _bmad-output/initiative-todo-app/ux-todo-app/DESIGN.md (visual tokens for light and dark modes, components, layout and breakpoints behind R6, R8 and R14)
+- experience — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md (behaviour, states, focus, wording and the accessibility floor behind R3–R9, R13 and R14)
 
 ## Notes
 
 - Assumption: Completion can be undone: a completed todo can be marked active again (prd ¶2 says only completion). The control is a UX choice.
 - Assumption: The list is ordered by creation time, newest first.
-- Assumption: Delete is immediate, with no confirmation dialog and no undo.
 - Assumption: "Instantaneous" (C4) means the UI reflects an action within 100 ms and the API answers within 300 ms at p95 under single-user load.
 - Assumption: WCAG AA means WCAG 2.2 level AA, the current version.
 - Assumption: No minimum coverage percentage gates a build. The deliverable is the report, with each gap closed or accepted (qi Q1).
@@ -122,3 +124,7 @@ An individual can manage their personal tasks without onboarding and trust that 
 - Decision: 2026-11-24, user, with the architect: C10 follows spine AD-20. The browser tests run on `@playwright/test` in CI, and the MCP tools are agent-side only.
 - Decision: 2026-11-24, user, with the architect: `test-strategy.md` follows spine AD-20. Integration runs in-process on a real SQLite file. Line and branch coverage is reported for the unit, component and integration projects, and scenario coverage for the container-run suites.
 - Decision: 2026-11-24, user, with the architect: GitHub secrets and variables are the only source of production secrets. Each deploy rewrites the whole host `.env` and logs the host in to GHCR with the job's own `GITHUB_TOKEN`, so the host keeps no registry credential. The manual bootstrap is only the deploy SSH user, its key and Docker (spine AD-18, AD-19, amended).
+- Decision: 2026-11-24, user: Delete confirms inline in the card ("Delete this todo?" with Delete and Cancel), with no undo. This resolves WCAG 3.3.4 under R14 and replaces the assumption that delete is immediate with no confirmation (EXPERIENCE, Ticket changes for Sofia; spine AD-6 and AD-13 unchanged).
+- Decision: 2026-11-24, user: Light and dark modes are in v1, following the system setting, with no toggle. This is the dated decision C5 requires, and R14's AA contrast holds in both modes (EXPERIENCE, Foundation; DESIGN.md colors).
+- Decision: 2026-11-24, user: Accepted risk under R7. A write that fails with `network`, `unavailable` or a generic error may still have landed. The failure message is true when shown, but the next refetch shows the change with no message, and resubmitting edited text from a restored add field can create a second todo. Unchanged restored text clears when the add lands, which closes the common path. Revisit with a resubmit that reuses the failed id (spine Deferred; EXPERIENCE, Row states, Landed after all).
+- Decision: 2026-11-24, user: The UX spine (DESIGN.md, EXPERIENCE.md, commit 7af90e2) and the amended architecture spine (commit 897a495) are final. DESIGN.md and EXPERIENCE.md are adopted as companions, as the 2026-11-23 `bmad-ux` decision set out, and `test-strategy.md` is updated to match both (U1, U5, I11, K1, K3–K5, E3). No requirement id changes.
