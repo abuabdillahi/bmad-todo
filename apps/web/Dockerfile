@@ -17,6 +17,8 @@ COPY apps/web apps/web
 RUN pnpm --filter @todo/web build
 
 FROM nginx/nginx-unprivileged:1.30-alpine AS runtime
+# Links the GHCR package to the repo, so the workflow's GITHUB_TOKEN can push and pull it.
+LABEL org.opencontainers.image.source=https://github.com/abuabdillahi/bmad-todo
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 EXPOSE 8080

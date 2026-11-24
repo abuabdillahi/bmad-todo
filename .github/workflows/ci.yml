@@ -1,0 +1,234 @@
+# One workflow (AD-18): `test` builds both images at the commit's SHA and runs every
+# test layer against them; `deploy` pushes those same images to GHCR and runs them
+# on the Hetzner host as compose project `todo`, profile `prod` (AD-1, AD-3).
+# Rollback: run this workflow by hand on `main` with an earlier SHA. That deploy
+# reuses the images already in GHCR for it, and its compose.yml, with no test or build.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit on main to deploy (rollback). Its images must already be in GHCR.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  API_IMAGE: ghcr.io/abuabdillahi/bmad-todo-api
+  WEB_IMAGE: ghcr.io/abuabdillahi/bmad-todo-web
+
+jobs:
+  test:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - name: openapi.json is up to date (AD-5)
+        run: pnpm gen:openapi && git diff --exit-code packages/contract/openapi.json
+
+      - name: Playwright browser and its system dependencies
+        run: pnpm --filter @todo/e2e exec playwright install --with-deps chromium
+
+      - name: pnpm test:all against the images built at this SHA
+        run: pnpm test:all
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: warn
+
+      # The deploy job pushes these exact images; nothing after this job builds one (AD-1).
+      - name: Save the tested images
+        if: github.ref == 'refs/heads/main'
+        run: docker save -o "$RUNNER_TEMP/images.tar" "$API_IMAGE:$GITHUB_SHA" "$WEB_IMAGE:$GITHUB_SHA"
+
+      - name: Upload the tested images
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: images-${{ github.sha }}
+          path: ${{ runner.temp }}/images.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    needs: test
+    if: >-
+      !cancelled() && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || needs.test.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve and check out the SHA to deploy
+        id: sha
+        env:
+          REQUESTED: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.sha }}
+        run: |
+          if ! sha=$(git rev-parse --verify --quiet --end-of-options "$REQUESTED^{commit}"); then
+            echo "::error::Not a commit in this repository: $REQUESTED"
+            exit 1
+          fi
+          git checkout --quiet --detach "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying $sha"
+
+      - name: Set up SSH to the host
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
+          PUBLIC_HOSTNAME: ${{ vars.PUBLIC_HOSTNAME }}
+        run: |
+          for name in DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS DEPLOY_HOST DEPLOY_USER TUNNEL_TOKEN PUBLIC_HOSTNAME; do
+            if [ -z "${!name}" ]; then echo "::error::$name is not set"; exit 1; fi
+          done
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # `ssh prod-host` and `scp ... prod-host:` below run as $DEPLOY_USER@$DEPLOY_HOST with
+          # the deploy key and strict host-key checking.
+          cat > ~/.ssh/config <<EOF
+          Host prod-host
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            IdentityFile ~/.ssh/deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            BatchMode yes
+          EOF
+          chmod 600 ~/.ssh/deploy ~/.ssh/known_hosts ~/.ssh/config
+
+      # A newer SHA may already be live (an older run reached this job later): keep it.
+      - name: Skip if a newer SHA is already deployed
+        id: guard
+        if: github.event_name == 'push'
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          # The SHA actually running: the image tag of project todo's running api container.
+          image=$(ssh prod-host "docker ps --filter label=com.docker.compose.project=todo --filter label=com.docker.compose.service=api --format '{{.Image}}'" | head -n 1)
+          deployed=${image##*:}
+          echo "Deployed: ${deployed:-none}"
+          if [[ "$deployed" =~ ^[0-9a-f]{40}$ ]] && [ "$SHA" != "$deployed" ] \
+            && git merge-base --is-ancestor "$SHA" "$deployed" 2>/dev/null; then
+            echo "::notice::Skipped: $SHA is older than the deployed $deployed, which stays live."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the tested images
+        if: github.event_name == 'push' && steps.guard.outputs.skip != 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: images-${{ github.sha }}
+          path: ${{ runner.temp }}/images
+
+      - name: Push the tested images to GHCR
+        if: github.event_name == 'push' && steps.guard.outputs.skip != 'true'
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker load -i "$RUNNER_TEMP/images/images.tar"
+          printf '%s\n' "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io' EXIT
+          docker push "$API_IMAGE:$SHA"
+          docker push "$WEB_IMAGE:$SHA"
+
+      # The host .env is generated whole on every deploy and never edited by hand (AD-19).
+      - name: Copy compose.yml and write the host .env
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
+        run: |
+          ssh prod-host 'mkdir -p ~/todo'
+          scp compose.yml prod-host:todo/compose.yml
+          {
+            printf 'APP_ENV=production\n'
+            printf 'LOG_LEVEL=info\n'
+            printf 'IMAGE_TAG=%s\n' "$SHA"
+            printf 'TUNNEL_TOKEN=%s\n' "$TUNNEL_TOKEN"
+          } | ssh prod-host 'umask 077 && cd ~/todo && rm -f .env.next && cat > .env.next && chmod 600 .env.next && mv -f .env.next .env'
+
+      # The host holds the job's own token only for the pull, then logs out (AD-19).
+      - name: Pull the images on the host
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # stdin carries the user name, then the token, so neither is in argv.
+          printf '%s\n%s\n' "$GITHUB_ACTOR" "$GITHUB_TOKEN" | ssh prod-host 'set -e
+            cd ~/todo
+            trap "docker logout ghcr.io" EXIT
+            read -r user
+            docker login ghcr.io -u "$user" --password-stdin
+            docker compose -p todo --profile prod pull'
+
+      - name: Start production
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          ssh prod-host 'cd ~/todo || exit 1
+            status=0
+            docker compose -p todo --profile prod up -d --wait --no-build --remove-orphans || status=$?
+            docker compose -p todo --profile prod ps
+            docker compose -p todo --profile prod images
+            exit $status'
+
+      - name: Check the public /api/health
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          PUBLIC_HOSTNAME: ${{ vars.PUBLIC_HOSTNAME }}
+        run: |
+          url="https://$PUBLIC_HOSTNAME/api/health"
+          for attempt in $(seq 1 30); do
+            if body=$(curl -fsS --max-time 10 "$url") && [[ "$body" == *'"status":"ok"'* ]]; then
+              echo "$url: $body"
+              exit 0
+            fi
+            echo "Attempt $attempt: not healthy yet"
+            sleep 5
+          done
+          echo "::error::$url did not answer 200 {\"status\":\"ok\"}"
+          exit 1
