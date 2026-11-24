@@ -1,0 +1,32 @@
+.item {
+  display: block;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--todo-card-gap);
+  padding: var(--todo-card-padding-block) var(--todo-card-padding-inline);
+  border: var(--todo-card-border-width) solid var(--todo-card-border-color);
+  border-radius: var(--todo-card-radius);
+  background: var(--todo-card-background);
+  color: var(--todo-card-foreground);
+  box-shadow: var(--todo-card-shadow);
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  padding-top: var(--todo-card-text-nudge);
+  font-size: var(--font-todo-size);
+  font-weight: var(--font-todo-weight);
+  line-height: var(--font-todo-line-height);
+  overflow-wrap: anywhere;
+}
+
+@media (forced-colors: active) {
+  .card {
+    box-shadow: none;
+  }
+}

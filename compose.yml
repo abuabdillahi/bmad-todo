@@ -1,0 +1,52 @@
+# Every service and profile (AD-16). Run each environment under its own project name:
+#   docker compose -p todo-test --profile test up -d --build --wait
+services:
+  api:
+    image: ghcr.io/abuabdillahi/bmad-todo-api:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: [test, prod]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      PORT: "3000"
+      DATABASE_PATH: /data/todos.db
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      start_interval: 1s
+      retries: 3
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/abuabdillahi/bmad-todo-web:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    profiles: [prod]
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      start_interval: 1s
+      retries: 3
+    restart: unless-stopped
+
+  web-test:
+    extends: web
+    # !override: extends would otherwise merge in web's prod profile, and prod publishes no ports (AD-3).
+    profiles: !override [test]
+    ports:
+      - "127.0.0.1:${TEST_WEB_PORT:-8081}:8080"
+
+volumes:
+  data:

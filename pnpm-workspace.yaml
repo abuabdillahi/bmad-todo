@@ -1,0 +1,12 @@
+packages:
+  - packages/*
+  - apps/*
+  - e2e
+
+# pnpm blocks dependency install scripts; only these may build.
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - '@types/react@19.3.1'

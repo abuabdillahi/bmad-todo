@@ -3,14 +3,14 @@ title: 'Tracer: a todo added in the browser survives a refresh, with every test 
 type: feature
 ticket: '1'
 created: '2026-11-24'
-status: ready-for-dev
-baseline_revision: ''
+status: built
+baseline_revision: '041834335a3edbab904a96a8b0c3eb65a3966d5f'
 route: full
 route_source: auto
 risk: medium
-review: ''
-review_source: ''
-lenses_ran: []
+review: quick
+review_source: pinned
+lenses_ran: [quick]
 review_loop_iteration: 0
 context:
   - '{project-root}/_bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md'
@@ -65,17 +65,17 @@ The project is greenfield: no app code exists. Facts that bind the build:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `.gitignore`, `.nvmrc` -- workspace with `packageManager: pnpm@12.23.0`, `allowBuilds`, scripts `test:all`, `typecheck`, `gen:openapi` -- C3 one command
-- [ ] `packages/contract/src/{todo,health,index}.ts` -- TypeBox `Todo`, `CreateTodoBody` (`id` uuid, `description` string 1–200, `additionalProperties:false`), `TodoList`, `Health`; `openapi.json` generated and committed -- AD-5/6/7
-- [ ] `apps/api/src/{config,app,server}.ts`, `src/db/{client,schema,migrate}.ts`, `drizzle/`, `src/todos/{repository,service}.ts`, `src/routes/{todos,health}.ts`, `scripts/gen-openapi.ts` -- env validated at startup, migrations before listen, swagger 3.1.0, routes under `/api`; service sorts newest first -- AD-2/10/12/15/16
-- [ ] `apps/api/Dockerfile` -- multi-stage, non-root, Node-fetch health check -- C6, AD-17/19
-- [ ] `apps/web/src/api/client.ts`, `src/todos/hooks.ts`, `src/components/{App,AddForm,TodoList,TodoCard}.tsx` + `.module.css`, `src/styles/tokens.css`, `index.html` -- `useTodos` (one `['todos']` query), `useAddTodo` (mints UUID, waits for 201, then invalidates); markup, strings and tokens per DESIGN/EXPERIENCE; textarea with Enter submit (not while composing), "n/200" counter, hidden "Press Enter to add" hint -- AD-11, R14
-- [ ] `apps/web/nginx.conf`, `apps/web/Dockerfile` -- SPA, `/healthz`, `/api/*` proxied unchanged via `resolver 127.0.0.11 valid=5s ipv6=off`, CSP and security headers; build → nginx-unprivileged on 8080 -- AD-4/19
-- [ ] `compose.yml`, `.env.example` -- services `api` and `web` (`prod` profile) and `web-test` (`extends: web`, `test` profile, `127.0.0.1:${TEST_WEB_PORT:-8081}`); `data` volume on api only; health checks; `depends_on: service_healthy` -- AD-16/17
-- [ ] `vitest.config.ts` (projects `unit`, `component`, `integration`, `contract`), `apps/web/test/setup.ts` (MSW) -- AD-20
-- [ ] Tests: `apps/api/src/todos/service.test.ts` (U2); `apps/api/test/integration/{todos,health,openapi}.test.ts` (I1, I3, I7 healthy, committed `openapi.json` equals generated); `apps/api/test/contract/todos.contract.test.ts` (I9 success responses, Ajv2020 + ajv-formats against `E2E_BASE_URL`); `apps/web/src/components/AddForm.component.test.tsx` (K1 submit-and-clear, failed add keeps text; K6 names and keyboard) -- C8
-- [ ] `e2e/playwright.config.ts`, `e2e/todos.spec.ts` -- projects `desktop`, `phone`, `desktop-dark`, `reducedMotion:'reduce'`, `workers:1`, list reset per Decisions; E1 create-and-reload plus a new-context check, axe on every state -- E1, E7, E8
-- [ ] `scripts/test-all.mjs`, `scripts/scenario-coverage.mjs` -- compose `-p todo-test --profile test up -d --build --wait`; run unit/component/integration with v8 coverage to `coverage/<project>`, then contract and e2e with JSON reports; write `coverage/scenarios.md` (id → pass/fail); always `down -v`; non-zero on any failure -- R17, R18
+- [x] `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `.gitignore`, `.nvmrc` -- workspace with `packageManager: pnpm@12.23.0`, `allowBuilds`, scripts `test:all`, `typecheck`, `gen:openapi` -- C3 one command
+- [x] `packages/contract/src/{todo,health,index}.ts` -- TypeBox `Todo`, `CreateTodoBody` (`id` uuid, `description` string 1–200, `additionalProperties:false`), `TodoList`, `Health`; `openapi.json` generated and committed -- AD-5/6/7
+- [x] `apps/api/src/{config,app,server}.ts`, `src/db/{client,schema,migrate}.ts`, `drizzle/`, `src/todos/{repository,service}.ts`, `src/routes/{todos,health}.ts`, `scripts/gen-openapi.ts` -- env validated at startup, migrations before listen, swagger 3.1.0, routes under `/api`; service sorts newest first -- AD-2/10/12/15/16
+- [x] `apps/api/Dockerfile` -- multi-stage, non-root, Node-fetch health check -- C6, AD-17/19
+- [x] `apps/web/src/api/client.ts`, `src/todos/hooks.ts`, `src/components/{App,AddForm,TodoList,TodoCard}.tsx` + `.module.css`, `src/styles/tokens.css`, `index.html` -- `useTodos` (one `['todos']` query), `useAddTodo` (mints UUID, waits for 201, then invalidates); markup, strings and tokens per DESIGN/EXPERIENCE; textarea with Enter submit (not while composing), "n/200" counter, hidden "Press Enter to add" hint -- AD-11, R14
+- [x] `apps/web/nginx.conf`, `apps/web/Dockerfile` -- SPA, `/healthz`, `/api/*` proxied unchanged via `resolver 127.0.0.11 valid=5s ipv6=off`, CSP and security headers; build → nginx-unprivileged on 8080 -- AD-4/19
+- [x] `compose.yml`, `.env.example` -- services `api` and `web` (`prod` profile) and `web-test` (`extends: web`, `test` profile, `127.0.0.1:${TEST_WEB_PORT:-8081}`); `data` volume on api only; health checks; `depends_on: service_healthy` -- AD-16/17
+- [x] `vitest.config.ts` (projects `unit`, `component`, `integration`, `contract`), `apps/web/test/setup.ts` (MSW) -- AD-20
+- [x] Tests: `apps/api/src/todos/service.test.ts` (U2); `apps/api/test/integration/{todos,health,openapi}.test.ts` (I1, I3, I7 healthy, committed `openapi.json` equals generated); `apps/api/test/contract/todos.contract.test.ts` (I9 success responses, Ajv2020 + ajv-formats against `E2E_BASE_URL`); `apps/web/src/components/AddForm.component.test.tsx` (K1 submit-and-clear, failed add keeps text; K6 names and keyboard) -- C8
+- [x] `e2e/playwright.config.ts`, `e2e/todos.spec.ts` -- projects `desktop`, `phone`, `desktop-dark`, `reducedMotion:'reduce'`, `workers:1`, list reset per Decisions; E1 create-and-reload plus a new-context check, axe on every state -- E1, E7, E8
+- [x] `scripts/test-all.mjs`, `scripts/scenario-coverage.mjs` -- compose `-p todo-test --profile test up -d --build --wait`; run unit/component/integration with v8 coverage to `coverage/<project>`, then contract and e2e with JSON reports; write `coverage/scenarios.md` (id → pass/fail); always `down -v`; non-zero on any failure -- R17, R18
 
 **Acceptance Criteria:**
 - Given a clean clone with the toolchain, when `pnpm install && pnpm test:all` runs, then every layer passes and `todo-test` is torn down afterwards.
@@ -86,9 +86,26 @@ The project is greenfield: no app code exists. Facts that bind the build:
 
 ## Implementation Notes
 
+- The API runs its TypeScript directly with Node 26 type stripping (`node apps/api/src/server.ts`); there is no emit step. TS configs use `allowImportingTsExtensions`, `noEmit`, `verbatimModuleSyntax` and `erasableSyntaxOnly`.
+- `compose.yml`: `web-test` uses `profiles: !override [test]`. Plain `extends: web` merged in web's `prod` profile, which would have started `web-test` and published a host port in prod (AD-3).
+- `api` takes `APP_ENV` from the environment, defaulting to `production`; `scripts/test-all.mjs` sets `APP_ENV=test`.
+- `better-sqlite3` 13.2.0 ships prebuilds in its tarball, so neither image needs a compiler; `allowBuilds` still lists it.
+- MSW 3 renamed `onUnhandledRequest` to `onUnhandledFrame`.
+- `tokens.css` maps every DESIGN.md frontmatter token 1:1 (generated once from the frontmatter).
+- `pnpm install` added `minimumReleaseAgeExclude: ['@types/react@19.3.1']` to `pnpm-workspace.yaml`, because that release is newer than pnpm's minimum release age.
+- `test:all` runs `playwright install chromium` before e2e, so a clean clone needs no separate browser step. Per-project coverage includes only the sources that layer is meant to exercise.
+- The committed `openapi.json` equality check is titled I9 (C9, AD-5).
+
 ## Plan Change Log
 
 ## Review Triage Log
+
+| # | Lens | Location | Finding | Verdict | Route | Evidence |
+|---|---|---|---|---|---|---|
+| 1 | quick | `apps/web/src/components/AddForm.tsx` | Focus stays on the Add button after a successful add by mouse or keyboard on Add | medium | patch | `submit()` only calls `setValue`; nothing re-focuses `fieldRef`. EXPERIENCE Focus management "Add (valid)" (story 1's row) says focus stays in the cleared field. The touch exception belongs to story 4 (Pointer and touch). |
+| 2 | quick | `apps/web/src/components/AddForm.tsx` | No `beforeinput` `insertLineBreak`/`insertParagraph` submit, so keyboards that keep words composing insert a newline on Enter | maybe-false | defer (medium, unverified) | `handleKeyDown` returns before `preventDefault()` on `isComposing`/229 and there is no `beforeinput` listener. Whether real Android keyboards with `enterkeyhint="done"` send Enter that way can't be shown from here. EXPERIENCE's Text field pattern is story 4's reference. |
+| 3 | quick | `scripts/scenario-coverage.mjs`, `e2e/todos.spec.ts` | E7 and E8 never appear in `coverage/scenarios.md` | low | patch | `SCENARIO_ID` captures one leading id and the only e2e title starts "E1", so the R18 report omits E7/E8, which the story delivers. |
+| 4 | quick | `vitest.config.ts` | The unit project skips `*.test.tsx` | low | patch | Unit include is `*.test.ts` only, and component matches only `*.component.test.tsx`, so a `Foo.test.tsx` (spine Conventions: unit tests are `*.test.ts(x)`) runs in no project and `test:all` still passes. |
 
 ## Design Notes
 

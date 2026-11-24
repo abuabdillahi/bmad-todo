@@ -1,0 +1,24 @@
+{
+  "name": "bmad-todo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.23.0",
+  "engines": {
+    "node": "26.13.1"
+  },
+  "scripts": {
+    "test": "vitest run --project unit --project component --project integration",
+    "test:all": "node scripts/test-all.mjs",
+    "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
+    "gen:openapi": "pnpm --filter @todo/api gen:openapi"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@vitejs/plugin-react": "6.3.0",
+    "@vitest/coverage-v8": "5.1.1",
+    "jsdom": "31.0.1",
+    "typescript": "6.0.3",
+    "vite": "8.3.8",
+    "vitest": "5.1.1"
+  }
+}

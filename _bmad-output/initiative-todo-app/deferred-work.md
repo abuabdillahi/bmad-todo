@@ -1,0 +1,3 @@
+- source_plan: `/Users/idris/me/todo/_bmad-output/initiative-todo-app/tickets/epic-todo-foundation/tickets/story-a-todo-added-in-the-browser-is-still-there-after-a-refresh-t-plan.md`
+  summary: The add field has no `beforeinput` (`insertLineBreak`/`insertParagraph`) submit path, so on keyboards that keep every word composing Enter may insert a newline instead of submitting (EXPERIENCE › Text field; medium, unverified).
+  evidence: `AddForm.tsx` `handleKeyDown` returns before `preventDefault()` when `isComposing` or keyCode 229, and no `beforeinput` listener exists. To settle it, press Enter on a real Android keyboard (e.g. Gboard) mid-word with `enterkeyhint="done"` and see whether a newline lands. Story 4 references the Text field pattern and is the natural home.
