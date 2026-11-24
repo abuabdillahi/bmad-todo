@@ -3,16 +3,16 @@ id:
 type: initiative
 title: "Individuals manage personal todos in a simple, durable full-stack app"
 sources: ["_bmad-output/initiative-todo-app/prd-todo-app.md", "_bmad-output/initiative-todo-app/notes-quality-infra.md"]
-companions: ["_bmad-output/initiative-todo-app/test-strategy.md"]
+companions: ["_bmad-output/initiative-todo-app/test-strategy.md", "_bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md"]
 after: []
-risk: high
+risk: medium
 ---
 
 # Individuals manage personal todos in a simple, durable full-stack app
 
 ## Description
 
-The first version of a full-stack Todo app, built from the PRD in `prd-todo-app.md` and the testing, Docker and QA notes in `notes-quality-infra.md`. One person opens the app, sees their list, and adds, edits, completes and deletes tasks without guidance. The list is still there after a refresh, a new session or a server restart. The scope is deliberately minimal: the core loop done well. It ships in Docker, is tested at every layer from the first story, and meets WCAG 2.2 AA. It closes with documented coverage, performance and security reviews, so a future developer can extend it with confidence. Every push is tested in CI on GitHub, and a passing main branch deploys itself to production, tentatively on Cloudflare.
+The first version of a full-stack Todo app, built from the PRD in `prd-todo-app.md` and the testing, Docker and QA notes in `notes-quality-infra.md`. One person opens the app, sees their list, and adds, edits, completes and deletes tasks without guidance. The list is still there after a refresh, a new session or a server restart. The scope is deliberately minimal: the core loop done well. It ships in Docker, is tested at every layer from the first story, and meets WCAG 2.2 AA. It closes with documented coverage, performance and security reviews, so a future developer can extend it with confidence. Every push is tested in CI on GitHub, and a passing main branch deploys the images it tested to production on our existing Hetzner host, where Cloudflare serves as the public entrance through a Cloudflare Tunnel. The shared technical decisions are in the architecture spine, and downstream tickets cite its AD ids.
 
 ## Outcome
 
@@ -51,12 +51,12 @@ An individual can manage their personal tasks without onboarding and trust that 
 - C4 (prd ¶5): Interactions feel instantaneous under normal conditions. The target is assumed (see Notes): an action shows within 100 ms, and the API answers within 300 ms at p95 with one user.
 - C5 (prd ¶1, ¶6): v1 scope is the core loop plus the quality and delivery work in R14–R22. No feature beyond R1–R22 without a dated decision.
 - C6 (decision 2026-11-23; qi D1): The frontend and the backend each have a Dockerfile with a multi-stage build, a non-root runtime user and a container health check.
-- C7 (qi D2, D4): One docker-compose.yml orchestrates every container (the app, plus a database if the architecture has one). It runs them on their own network, with volumes for persistent data, configuration from environment variables, and dev and test profiles.
+- C7 (qi D2, D4; decision 2026-11-23): One `compose.yml` orchestrates every container on its own network, with a named volume for persistent data, configuration from environment variables, and dev, test and prod profiles, each run under its own project name (spine AD-16).
 - C8 (qi T2, T3): Testing runs throughout. The tracer story sets up the test infrastructure for every layer, before any other feature, and each story ships its own tests. Each API endpoint gets integration and contract tests as it is built.
 - C9 (qi T3): The API contract is written in a machine-readable form, and the running API is validated against it with Postman MCP or an equivalent.
-- C10 (qi T4, T5, Q2, Q3): Tooling: Playwright MCP automates the browser tests. Chrome DevTools MCP is used to debug, inspect and profile. axe-core, run through Playwright, and Lighthouse perform the accessibility audits.
+- C10 (qi T4, T5, Q2, Q3; decision 2026-11-24): Tooling: the browser tests run on Playwright (`@playwright/test`) in CI, and Playwright MCP is the agent-side tool for writing and debugging them. Chrome DevTools MCP is used to debug, inspect and profile. No MCP tool is a CI dependency (spine AD-20). axe-core, run through Playwright, and Lighthouse perform the accessibility audits.
 - C11 (decision 2026-11-23): The code is hosted on GitHub at `git@github.com:abuabdillahi/bmad-todo.git`, and CI and deployment run from it.
-- C12 (decision 2026-11-23): Production runs on Cloudflare, tentatively, unless the architecture finds that this rules out a requirement or constraint.
+- C12 (decision 2026-11-23): Production runs the CI-tested Docker images on our existing Hetzner host under the compose `prod` profile (spine AD-1). Cloudflare is the ingress only, through a Cloudflare Tunnel, and runs no part of the app (spine AD-3).
 
 ## Done when
 
@@ -65,14 +65,17 @@ An individual can manage their personal tasks without onboarding and trust that 
 - One command runs the full automated suite (unit, integration, contract, component and end-to-end) in the test environment, and it passes. The coverage report lists its gaps, each closed or accepted.
 - The automated accessibility audit reports no WCAG 2.2 AA violations, and a manual keyboard and screen-reader pass of every core action finds no failures.
 - The performance and security reviews are documented, every finding is fixed or accepted, and measured interactions meet C4's targets.
-- A push to main runs the suite in CI and, when it passes, deploys to production with no manual step. The deployed app reports healthy. The dev and test profiles start healthy through compose, with logs readable, from the README, which tells a new developer how to run, deploy and extend the app.
+- A push to main runs the suite in CI and, when it passes, deploys the images it tested to the Hetzner host with no manual step, and the app reports healthy at its public hostname through the Cloudflare Tunnel. The dev and test profiles start healthy through compose, with logs readable, from the README, which tells a new developer how to run, deploy and extend the app.
 
 ## Boundaries
 
 - Out in v1 (prd ¶6): user accounts and authentication, collaboration or sharing, task prioritization, deadlines or due dates, notifications.
 - Out in v1 (assumed, see Notes): filtering or search, undo, load and stress testing, external penetration testing, and browsers beyond those Playwright runs by default.
-- Touch point: GitHub, which hosts the repository and runs CI and deployment, needing repository secrets for deployment; owner: epic-todo-foundation.
-- Touch point: Cloudflare, the tentative production host, needing an account and an API token; owner: epic-todo-foundation.
+- Out in v1 (decision 2026-11-23): access control on the public hostname (an accepted risk), backups of the SQLite volume, monitoring and alerting beyond compose logs and the post-deploy health check, rate limiting and abuse protection, and a second API replica or another database. The spine's Deferred section records each, with its revisit condition where it has one (monitoring has none).
+- Touch point: GitHub, which hosts the repository and runs the one CI workflow (spine AD-18). Its secrets and variables are the only source of production configuration (spine AD-19). The deploy needs the deploy user's SSH private key, the host's address, SSH user and host key, the public hostname for the post-deploy health check, and every production runtime secret, such as `TUNNEL_TOKEN`. Names go in the workflow and `.env.example`, never values in the repo; owner: epic-todo-foundation (hitl setup).
+- Touch point: Hetzner host, our existing shared host, which runs the compose project `todo` under the `prod` profile and publishes no host port (spine AD-1, AD-3). Its only manual setup is a one-time bootstrap: a deploy user whose SSH key is in GitHub secrets, and Docker. Each deploy copies `compose.yml` and regenerates the host `.env` (mode 600), which nobody edits by hand, and the host stores no registry credential (spine AD-18, AD-19); owner: epic-todo-foundation (hitl setup).
+- Touch point: GHCR, which holds the `bmad-todo-api` and `bmad-todo-web` images tagged by git SHA. CI pushes them, and the deploy job logs the host in to pull them, both with the job's own short-lived `GITHUB_TOKEN`, so no long-lived registry token exists (spine AD-18); owner: epic-todo-foundation.
+- Touch point: Cloudflare, the ingress only: a Cloudflare Tunnel, the public hostname's DNS record, and the tunnel token the `prod` `cloudflared` service connects with. Cloudflare terminates TLS (spine AD-3); owner: epic-todo-foundation (hitl setup).
 - Tracer path: a user adds a todo in the browser, the API stores it, and it is still in the list after a refresh. All of it runs in compose, with a passing e2e test proving it.
 
 ## References
@@ -80,11 +83,11 @@ An individual can manage their personal tasks without onboarding and trust that 
 - prd — _bmad-output/initiative-todo-app/prd-todo-app.md, ¶1–¶7 (¶2 user actions and todo fields, ¶3 frontend experience, ¶4 API and persistence, ¶5 non-functional, ¶6 exclusions, ¶7 success measures)
 - notes — _bmad-output/initiative-todo-app/notes-quality-infra.md, T1–T5 testing, D1–D4 Docker, Q1–Q4 quality
 - test strategy — _bmad-output/initiative-todo-app/test-strategy.md (layers, scenario catalogue U/I/K/E, reports)
+- architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md (AD-1–AD-20, Stack, Structural Seed, Capability → Architecture Map, Deferred); its rationale is in that folder's `.memlog.md`
 
 ## Notes
 
 - Assumption: Completion can be undone: a completed todo can be marked active again (prd ¶2 says only completion). The control is a UX choice.
-- Assumption: A description is required (non-empty after trimming) and capped at 200 characters to keep it short, on create and on edit.
 - Assumption: The list is ordered by creation time, newest first.
 - Assumption: Delete is immediate, with no confirmation dialog and no undo.
 - Assumption: "Instantaneous" (C4) means the UI reflects an action within 100 ms and the API answers within 300 ms at p95 under single-user load.
@@ -94,9 +97,6 @@ An individual can manage their personal tasks without onboarding and trust that 
 - Assumption: The security review is a code review by the team or an agent, not an external penetration test.
 - Assumption: The accessibility audit runs inside every e2e test, so each story proves its own UI, and a full Lighthouse audit runs at the close of each epic.
 - Assumption: Browser coverage is the set Playwright runs by default. Wider cross-browser testing is out of v1.
-- Open question: The stack beyond Docker (frontend, backend, storage, test frameworks, contract format) is not chosen yet. Waits: `bmad-architecture` and epic 1.
-- Assumption: CI and deployment run on GitHub Actions, the CI built into GitHub.
-- Open question: Does Cloudflare keep C2, C6, C7 and R11 intact? As far as known, Cloudflare runs containers on ephemeral disk. Production may then need a managed Cloudflare store, such as D1 or Durable Objects, with compose and volumes serving dev and test only. Waits: `bmad-architecture`, before epic 1.
 - Decision: 2026-11-23, user: Editing a todo's text is in v1 (R13), replacing the assumption that it was out.
 - Decision: 2026-11-23, user: One shared list per deployment is acceptable for v1.
 - Decision: 2026-11-23, user: Docker packages and runs the app (C6). The rest of the stack is settled with the architect.
@@ -104,9 +104,21 @@ An individual can manage their personal tasks without onboarding and trust that 
 - Decision: 2026-11-23, user: Testing, Docker and QA notes (`notes-quality-infra.md`) are folded in from the top: R14 widened, R15–R20 and C6–C10 added, and the scenarios kept in `test-strategy.md`.
 - Decision: 2026-11-23, user: CI runs the tests on every push, and deployment is automated (R21, R22).
 - Decision: 2026-11-23, user: The remote is GitHub, at `git@github.com:abuabdillahi/bmad-todo.git` (C11).
-- Decision: 2026-11-23, user: Cloudflare is the tentative production host, unless the architecture rules it out (C12).
 - Decision: 2026-11-23, user: The initiative is sliced into two epics, built in order: epic-todo-foundation, then epic-manage-todos. The cut rule is one capability delivered and deployed together. A separate polish epic was declined, because it would rebuild the same UI.
 - Decision: 2026-11-23, user: Quality work (tests, audits, coverage, performance and security reviews) sits inside the epic whose code it proves. A separate QA epic was declined as bolted on (C8).
 - Decision: 2026-11-23, user: Optimistic add is built in epic 1 as the pattern epic 2 reuses, so epic 2 doesn't rework the add path.
 - Decision: 2026-11-23, user: Epic 2 stays one epic for now. A split is decided when it is refined.
 - Decision: 2026-11-23, user: `bmad-architecture` runs next. It is the home of the shared decisions (stack, contract format, data model, storage, test tooling, the Cloudflare fit), and both epics will cite it.
+- Decision: 2026-11-23, user: The architecture spine (`architecture-todo-app.md`) is final and adopted as a companion. Downstream tickets cite its AD ids, and SPEC never edits it.
+- Decision: 2026-11-23, user: Production runs the CI-tested images on our existing Hetzner host under the compose `prod` profile, and Cloudflare is the ingress only, through a Cloudflare Tunnel (C12; spine AD-1, AD-3). This replaces Cloudflare as the tentative host, whose ephemeral container disk would have broken R11, and answers the Cloudflare-fit question.
+- Decision: 2026-11-23, user: The stack is the one in the spine's Stack table, with TypeBox schemas in `packages/contract` as the single source and a generated OpenAPI 3.1 contract committed (spine AD-5). This answers the stack question.
+- Decision: 2026-11-23, user: CI and deployment are one GitHub Actions workflow: a test job, then a deploy job on a green `main` (spine AD-18). This confirms the GitHub Actions assumption.
+- Decision: 2026-11-23, user: Todos live in one SQLite file on the API's named volume, with exactly one API replica (spine AD-2).
+- Decision: 2026-11-23, user: The public hostname is unauthenticated in v1, so anyone with the URL can read and change the shared list. This is an accepted risk, revisited as the spine's Deferred section says.
+- Decision: 2026-11-23, user: Backups, monitoring and alerting, and rate limiting are out of v1 (see Boundaries). The spine's Deferred section records each, with a revisit condition for backups and rate limiting.
+- Decision: 2026-11-23, user: A `bmad-ux` pass (DESIGN.md and EXPERIENCE.md) runs before any epic 1 UI story. It owns the visual design, layout and breakpoints behind R6 and R8, and its files are adopted as companions when they land.
+- Decision: 2026-11-23, po: Risk is lowered from high to medium. The spine settles hosting, storage and the stack. What remains is the first deploy onto a shared host and a fresh toolchain, both carried by epic 1.
+- Decision: 2026-11-24, user, with the architect: A description is required (non-empty after trimming) and capped at 200 Unicode code points after trimming, on create and on edit (spine AD-8). This replaces the 200-character assumption.
+- Decision: 2026-11-24, user, with the architect: C10 follows spine AD-20. The browser tests run on `@playwright/test` in CI, and the MCP tools are agent-side only.
+- Decision: 2026-11-24, user, with the architect: `test-strategy.md` follows spine AD-20. Integration runs in-process on a real SQLite file. Line and branch coverage is reported for the unit, component and integration projects, and scenario coverage for the container-run suites.
+- Decision: 2026-11-24, user, with the architect: GitHub secrets and variables are the only source of production secrets. Each deploy rewrites the whole host `.env` and logs the host in to GHCR with the job's own `GITHUB_TOKEN`, so the host keeps no registry credential. The manual bootstrap is only the deploy SSH user, its key and Docker (spine AD-18, AD-19, amended).

@@ -1,4 +1,5 @@
-# Epics of initiative-todo-app, in build order. Draft, revised 2026-11-23 after notes-quality-infra.md.
+# Epics of initiative-todo-app, in build order. Draft, revised 2026-11-23 after notes-quality-infra.md,
+# and again 2026-11-23 to cite the final architecture spine (architecture-todo-app/architecture-todo-app.md, AD-1–AD-20).
 # Rule: an epic is one capability delivered and deployed together. Quality work (tests, audits, reviews)
 # sits inside the epic whose code it proves, not in an epic of its own (C8).
 # Scenario ids (U, I, K, E) are in ../test-strategy.md.
@@ -7,30 +8,38 @@
 id = 1
 slug = "epic-todo-foundation"
 title = "A todo is saved and comes back, deployed and tested"
-description = "The app runs in Docker: hardened frontend and backend images, one compose file with dev and test profiles, health checks and readable logs. CI on GitHub runs the suite on every push, and a passing main branch deploys itself to production, tentatively on Cloudflare. The tracer story sets up every test layer (unit, integration, contract, component, e2e with axe-core) behind one command, with a coverage report, before any other feature. Opening the app shows the list. A user adds a todo; it shows at once, the API validates it against its contract and stores it, a failed save reverts with a message, and the todo survives a refresh, a new session and a restart. The epic closes with its coverage gaps settled, a Lighthouse audit, a security review and API timings documented, and a README to run, deploy and extend. Its API and contract, data model, optimistic-update pattern, Docker and test setup, CI and automated deploy, and list UI are what epic 2 builds on."
+description = "The app runs in Docker: hardened frontend and backend images, one compose.yml with dev, test and prod profiles, health checks and readable logs (AD-16, AD-17, AD-19). One GitHub Actions workflow runs the suite on every push, and a passing main branch deploys the images it tested to the Hetzner host, reached through a Cloudflare Tunnel (AD-1, AD-3, AD-18). The tracer story sets up every test layer (unit, integration, contract, component, e2e with axe-core) behind one command, with a coverage report, before any other feature (AD-20). Opening the app shows the list. A user adds a todo; it shows at once, the API validates it against its contract and stores it, a failed save reverts with a message, and the todo survives a refresh, a new session and a restart. The epic closes with its coverage gaps settled, a Lighthouse audit, a security review and API timings documented, and a README to run, deploy and extend. Its API and contract, data model, mutation helper and announcer, Docker and test setup, CI and automated deploy, and list UI are what epic 2 builds on."
 covers = ["R1", "R2", "R3", "R7", "R8", "R10", "R11", "R12", "R14", "R15", "R16", "R17", "R18", "R19", "R20", "R21", "R22"]
-# R7: add shows at once and reverts on failure; this builds the optimistic-update pattern epic 2 reuses.
-# R8, R14: the list and add UI meet them as built; axe-core runs in every e2e test from here on; Lighthouse audit at close.
-# R10: create and list. R11: created todos persist.
-# R12: create validation with its message, atomic create writes, the revert message for a failed add.
-# R17: the harness for every layer and the one command, plus U1, U2, U4, I1-I3, I6, I7, K1, E1, and the create/list part of I8, I9, K6, E7, E8.
+# Spine: this epic is the first implementation of AD-1–AD-20.
+# Prerequisite: the bmad-ux pass (DESIGN.md + EXPERIENCE.md) comes before this epic's first UI story, likely the tracer.
+# R2, R10: the contract package and generated openapi.json (AD-5), GET and POST /api/todos (AD-6), the Todo shape with client-minted ids (AD-7).
+# R7: add shows at once and reverts on failure, through AD-13's mutation helper and AD-14's announcer, both reused by epic 2.
+# R8, R14: the list and add UI meet them as built, styled from the bmad-ux DESIGN.md; axe-core runs in every e2e test from here on; Lighthouse audit at close.
+# R11: created todos persist in SQLite on the API's volume (AD-2, AD-15).
+# R12: create validation (AD-8), the Problem schema and all five type URIs (AD-9), atomic create writes (AD-15), the revert message for a failed add.
+# R15, R16: health checks and logs (AD-17), the three compose profiles and env config (AD-16), same-origin /api through nginx and Vite (AD-4).
+# R17: the AD-20 harness for every layer and the one command, built in the tracer story, plus U1, U2, U4, I1-I3, I6, I7, I10, K1, E1, and the create/list part of I8, I9, I11, K6, E7, E8.
+# I10 and I11's create half go to the story that builds create; U5's create-ordering half goes to the optimistic-add story.
 # R18: the coverage report is set up, and epic 1's report lists and settles its gaps.
-# R19: first load and API timings against C4's 300 ms p95.
-# R20: review of the API (injection), container config (non-root user, no secrets in images or compose) and dependencies.
-# R21, R22: the CI workflow and the automated deploy, with the GitHub secrets and Cloudflare account as hitl setup.
-# Constraints: C1, C2, C3, C6, C7, C9, C11, C12 are settled here; C4's API target is checked here; C8 and C10 start here and bind both epics; C5 binds both.
+# R19: first load and API timings against C4's 300 ms p95 (AD-20: at least 100 requests per endpoint).
+# R20: review of the API (injection), container config (non-root user, no secrets in images or compose) and dependencies (AD-19).
+# R21, R22: the one workflow, test then deploy (AD-18), with the GitHub secrets, the host's one-time bootstrap (deploy user, SSH key, Docker) and the Cloudflare Tunnel as hitl setup.
+# Each deploy regenerates the host .env from GitHub secrets and logs the host in to GHCR with the job's GITHUB_TOKEN (AD-18, AD-19).
+# Constraints: C1 (AD-12), C2 (AD-2), C3, C6, C7 (AD-16), C9 (AD-5, AD-20), C11 and C12 (AD-1, AD-3) are settled here; C4's API target is checked here; C8 and C10 start here and bind both epics; C5 binds both.
 
 [[epic]]
 id = 2
 slug = "epic-manage-todos"
 title = "A user manages their whole list, instantly, on any device"
-description = "A user edits, completes, reactivates and deletes todos, and each change persists through API endpoints that have integration and contract tests. Each action shows at once and reverts with a message if saving fails, reusing epic 1's optimistic-update pattern. Completed todos look distinct, and the empty, loading and error states appear when they should. All of it works on phone and desktop, by keyboard and with a screen reader, and Playwright covers create, complete, delete, edit, the empty state and error handling. The epic closes with a clean whole-app Lighthouse audit, a performance profile against C4, the final coverage report and a security review, all documented and deployed through the pipeline. Builds on epic 1's API and contract, data model, optimistic-update pattern, Docker and test setup, CI and automated deploy, and list UI."
+description = "A user edits, completes, reactivates and deletes todos, and each change persists through PATCH and DELETE endpoints that have integration and contract tests (AD-6, AD-15). Each action shows at once and reverts with a message if saving fails, reusing epic 1's mutation helper (AD-13) and announcer (AD-14). Completed todos look distinct, as the bmad-ux design specifies, and the empty, loading and error states appear when they should (AD-11). All of it works on phone and desktop, by keyboard and with a screen reader, and Playwright covers create, complete, delete, edit, the empty state and error handling. The epic closes with a clean whole-app Lighthouse audit, a performance profile against C4, the final coverage report and a security review, all documented and deployed through the pipeline. Builds on epic 1's API and contract, data model, mutation helper and announcer, Docker and test setup, CI and automated deploy, and list UI."
 covers = ["R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R17", "R18", "R19", "R20"]
-# R7: edit, complete and delete. R8, R14: its actions and states meet them as built; the closing audit covers the whole app.
-# R10: update and delete. R11: completion, edits and deletions persist.
-# R12: edit validation, atomic update/delete, client handling of failed saves (server or network errors) and the list error state.
-# R17: U3, I4, I5, K2-K5, E2-E6, and the update/delete part of I8, I9, K6, E7, E8.
+# R6, R8: visual distinction and breakpoints come from the bmad-ux DESIGN.md and EXPERIENCE.md (spine Deferred).
+# R7: edit, complete and delete, each through AD-13's helper; a 404 on DELETE counts as success. R8, R14: its actions and states meet them as built; the closing audit covers the whole app.
+# R10: PATCH and DELETE /api/todos/{id} (AD-6). R11: completion, edits and deletions persist (AD-15).
+# R12: edit validation (AD-8), atomic update/delete (AD-15), client handling of failed saves (server or network errors) through AD-14's announcer, and the list error state (AD-11).
+# R17: U3, I4, I5, K2-K5, E2-E6, and the update/delete part of I8, I9, I11, K6, E7, E8, in the AD-20 harness.
+# I11's update half goes to the update story; U5's edit, complete and delete half goes to the stories that add those actions.
 # R18: the final whole-app report. R19: profiles of each action against C4's 100 ms UI target.
-# R20: review of the UI (XSS in rendered and edited text) and of everything changed since epic 1's review.
+# R20: review of the UI (XSS in rendered and edited text, AD-19) and of everything changed since epic 1's review.
 # Constraints: C4's UI target is checked here; C5, C8 and C10 bind it.
-after = [{ epic = 1, needs = "the deployed create/list API and its contract, the todo data model and storage, the optimistic-update pattern, the compose setup with dev and test profiles, the test harness for every layer, the CI and automated deploy, and the list UI" }]
+after = [{ epic = 1, needs = "the deployed create/list API and its contract with the Problem schema, the todo data model and storage, AD-13's mutation helper and AD-14's announcer, the compose setup with dev, test and prod profiles, the AD-20 test harness for every layer, the CI and automated deploy, and the list UI" }]

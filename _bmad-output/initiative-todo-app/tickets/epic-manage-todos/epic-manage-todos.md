@@ -14,7 +14,7 @@ risk: medium
 
 ## Description
 
-This epic completes the core loop of the Todo App initiative on top of epic 1's foundation. A user edits, completes, reactivates and deletes todos, and each change persists through endpoints with integration and contract tests. Every action shows at once and reverts with a message if saving fails, reusing epic 1's optimistic-update pattern. Completed todos look distinct, and the empty, loading and error states appear when they should. All of it works on phone and desktop and meets WCAG 2.2 AA. The epic closes the app's quality record with the whole-app audits and reviews, and it ships through epic 1's pipeline.
+This epic completes the core loop of the Todo App initiative on top of epic 1's foundation. A user edits, completes, reactivates and deletes todos, and each change persists through the `PATCH` and `DELETE` endpoints, which have integration and contract tests (AD-6, AD-15). Every action shows at once and reverts with a message if saving fails, through AD-13's mutation helper and AD-14's announcer, both built in epic 1. Completed todos look distinct, as the `bmad-ux` design specifies, and the empty, loading and error states appear when they should (AD-11). All of it works on phone and desktop and meets WCAG 2.2 AA. The epic closes the app's quality record with the whole-app audits and reviews, and it ships through epic 1's pipeline.
 
 ## Outcome
 
@@ -30,17 +30,19 @@ A user manages their whole list without guidance on any device, and it never los
 
 ## Boundaries
 
-- Belongs to epic-todo-foundation: the Docker, compose, CI and deploy setup, the test harness, the create and list endpoints, and optimistic add. This epic uses them and changes them only where its own actions need it.
+- Belongs to epic-todo-foundation: the Docker, compose, CI and deploy setup, the test harness, the create and list endpoints, optimistic add, the `Problem` schema and its type URIs, the mutation helper and the announcer. This epic uses them and changes them only where its own actions need it.
 - Owns, in its share of shared ids: update and delete (R10), persistence of completion, edits and deletions (R11), edit validation, atomic update and delete, and client handling of failed saves (R12), and optimistic edit, complete and delete (R7).
+- Reuses, never duplicates: AD-13's mutation helper for every edit, complete and delete, and AD-14's announcer and `messages.ts` for every outcome message. It adds no second optimistic path, toast or alert, and no problem type outside AD-9's closed set.
 - Must not change: create and list behaviour, the API contract for create and list, and the health checks, all as epic 1 delivers them.
 
 ## References
 
 - parent — _bmad-output/initiative-todo-app/initiative-todo-app.md, section Requirements (R4–R14, R17–R20) and Constraints (C1–C12)
 - breakdown — _bmad-output/initiative-todo-app/tickets/tickets.toml, epic 2 (the split of each shared id and scenario)
-- test strategy — _bmad-output/initiative-todo-app/test-strategy.md (U3, I4, I5, K2–K5, E2–E6, and the update/delete part of I8, I9, K6, E7, E8)
+- architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md, AD-6–AD-9, AD-11, AD-13–AD-15, AD-19, AD-20, and Deferred (R6, R8 to `bmad-ux`)
+- test strategy — _bmad-output/initiative-todo-app/test-strategy.md (U3, I4, I5, K2–K5, E2–E6, the update/delete part of I8, I9, I11, K6, E7, E8, and U5's edit, complete and delete half)
 
 ## Notes
 
-- Waits on epic-todo-foundation because: it needs the deployed create and list API and its contract, the data model and storage, the optimistic-update pattern, the compose profiles, the test harness, CI and automated deploy, and the list UI.
+- Waits on epic-todo-foundation because: it needs the deployed create and list API and its contract, the data model and storage, AD-13's mutation helper and AD-14's announcer, the compose profiles, the test harness, CI and automated deploy, and the list UI.
 - Open question: This epic may run to about 13 stories, past the usual 8–12. Whether to split it is decided when it is refined.
