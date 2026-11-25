@@ -2,6 +2,7 @@ import { focusManager } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { CreateTodoBody, Todo } from '@todo/contract';
+import { dropOnto } from '../../test/drop.ts';
 import { server } from '../../test/msw.ts';
 import { renderApp } from '../../test/render.tsx';
 import { useTodosStore } from '../todos/hooks.ts';
@@ -372,15 +373,14 @@ describe('AddForm validation', () => {
     expect(received).toEqual([]);
   });
 
-  it('K1 a dropped line break is cancelled and the text goes in cleaned at the drop caret, with the caret after it', async () => {
+  it('K1 a dropped line break is cancelled and the text goes in cleaned at the drop point, with the caret after it', async () => {
     const received = acceptCreates();
     const { field } = renderAddForm();
     const textarea = field as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: 'Buy  milk' } });
-    textarea.setSelectionRange(4, 4);
-    const event = new InputEvent('beforeinput', { inputType: 'insertFromDrop', data: 'One\nTwo', bubbles: true, cancelable: true });
-    fireEvent(textarea, event);
+    textarea.setSelectionRange(0, 0);
+    const event = dropOnto(textarea, { data: 'One\nTwo', pointsAt: 4 });
 
     expect(event.defaultPrevented).toBe(true);
     expect(textarea.value).toBe('Buy One Two milk');
@@ -391,17 +391,48 @@ describe('AddForm validation', () => {
     expect(received).toEqual([]);
   });
 
-  it('K1 a clean drop, or a drop with no text, is left to the browser', () => {
+  it('K1 a dropped line break is left to the engine when the field is unfocused or its selection is not at the drop point, or the drop point is unknown, and is cleaned on input', () => {
+    acceptCreates();
+    const { field } = renderAddForm();
+    const textarea = field as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'Buy  milk' } });
+
+    // An engine that moves the selection only after beforeinput: the old caret is not the drop point.
+    textarea.setSelectionRange(0, 0);
+    const stale = dropOnto(textarea, { data: 'One\nTwo', pointsAt: 4, movesCaret: false });
+    // The drop point can't be read from the engine.
+    const unknown = dropOnto(textarea, { data: 'One\nTwo', pointsAt: null });
+    // An engine that focuses the field only after beforeinput: the old caret matches the
+    // drop point by chance, but insertText would write into whatever has focus.
+    textarea.setSelectionRange(4, 4);
+    textarea.blur();
+    const unfocused = dropOnto(textarea, { data: 'One\nTwo', pointsAt: 4, movesCaret: false });
+    // No drop event reached the field before the beforeinput.
+    textarea.focus();
+    textarea.setSelectionRange(4, 4);
+    const undropped = new InputEvent('beforeinput', { inputType: 'insertFromDrop', data: 'One\nTwo', bubbles: true, cancelable: true });
+    fireEvent(textarea, undropped);
+
+    expect(stale.defaultPrevented).toBe(false);
+    expect(unknown.defaultPrevented).toBe(false);
+    expect(unfocused.defaultPrevented).toBe(false);
+    expect(undropped.defaultPrevented).toBe(false);
+    expect(textarea.value).toBe('Buy  milk');
+
+    // The engine's own insert then arrives on input, and is cleaned there as before.
+    fireEvent.change(textarea, { target: { value: 'Buy One\nTwo milk', selectionStart: 11, selectionEnd: 11 } });
+    expect(textarea.value).toBe('Buy One Two milk');
+    expect(textarea.selectionStart).toBe(11);
+  });
+
+  it('K1 a clean drop, or a drop with no text, is left to the engine', () => {
     acceptCreates();
     const { field } = renderAddForm();
     const textarea = field as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: 'Buy milk' } });
-    textarea.setSelectionRange(4, 4);
-    const clean = new InputEvent('beforeinput', { inputType: 'insertFromDrop', data: 'oat', bubbles: true, cancelable: true });
-    fireEvent(textarea, clean);
-    const empty = new InputEvent('beforeinput', { inputType: 'insertFromDrop', data: null, bubbles: true, cancelable: true });
-    fireEvent(textarea, empty);
+    const clean = dropOnto(textarea, { data: 'oat', pointsAt: 4 });
+    const empty = dropOnto(textarea, { data: null, pointsAt: 4 });
 
     expect(clean.defaultPrevented).toBe(false);
     expect(empty.defaultPrevented).toBe(false);

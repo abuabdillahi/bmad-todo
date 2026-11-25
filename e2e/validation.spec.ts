@@ -99,7 +99,9 @@ test.describe('add form validation', () => {
     test.skip(browserName !== 'chromium', 'CDP drag input is Chromium only');
     const field = await focusAddField(page);
     await page.keyboard.type('Buy ');
-    // Focus leaves the field: the drop itself focuses it.
+    // The caret goes to the start, away from the drop point, and focus leaves the field:
+    // the drop itself focuses the field and moves the caret to where it lands.
+    await page.keyboard.press('Home');
     await page.keyboard.press('Tab');
     await expect(field).not.toBeFocused();
 

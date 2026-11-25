@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { CreateTodoBody, Todo, UpdateTodoBody } from '@todo/contract';
+import { dropOnto } from '../../test/drop.ts';
 import { server } from '../../test/msw.ts';
 import { renderApp } from '../../test/render.tsx';
 import { todosQueryKey } from '../todos/query.ts';
@@ -515,16 +516,15 @@ describe('EditForm', () => {
     expect(screen.queryByRole('textbox', { name: 'Edit description' })).toBeNull();
   });
 
-  it('K3 a dropped line break in the edit field is cancelled and the text goes in cleaned at the drop caret; nothing is saved', async () => {
+  it('K3 a dropped line break in the edit field is cancelled and the text goes in cleaned at the drop point; nothing is saved', async () => {
     const state = serve([milk]);
     state.release.open();
     const { user } = await renderLoaded(['Buy milk']);
 
     await user.click(editButton('Buy milk'));
     fireEvent.change(editField(), { target: { value: 'Buy  milk' } });
-    editField().setSelectionRange(4, 4);
-    const event = new InputEvent('beforeinput', { inputType: 'insertFromDrop', data: 'One\nTwo', bubbles: true, cancelable: true });
-    fireEvent(editField(), event);
+    editField().setSelectionRange(0, 0);
+    const event = dropOnto(editField(), { data: 'One\nTwo', pointsAt: 4 });
 
     expect(event.defaultPrevented).toBe(true);
     expect(editField().value).toBe('Buy One Two milk');
