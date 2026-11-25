@@ -29,3 +29,8 @@ Verify: On the test profile: with no todos, 'No todos yet.' shows and adding one
 - architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-11 (list state from the store, selector, query policy, Try again), AD-13 (settle-time refetch is Try again's fetch while a save is pending), AD-14 (the one Loading status and its recovery line)
 - ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: Information Architecture (List area exceptions), Component Patterns (Empty panel, Skeleton card, Loading status, Recovery line, List error panel, Try again button), State Patterns (List states, all rows), Motion (skeleton breathing), Interaction Primitives (Focus management and Hand-off order for the list states), Voice and Tone (List error panel text, loading lines); DESIGN.md Components (Empty panel, Skeleton card, List error panel)
 - epic — _bmad-output/initiative-todo-app/tickets/epic-todo-foundation/epic-todo-foundation.md: Notes, Decision 2026-11-24 (AD-11 split: this epic renders the states and the Loading status from epic 1's selector)
+
+## Notes
+
+- From 2.3's review (PR #54), deferred to this story: when a toggle's `404` (deleted elsewhere) leaves the list empty while focus was in the row, `TodoCard.tsx` `toggle()` sends focus to the list's `<ul tabindex="-1">`, not EXPERIENCE's Empty panel (Focus management: an empty list sends focus to the Empty panel). This story retargets it to the Empty panel.
+- From 2.3's review (PR #54), rejected there but in this story's area: a card toggled while its create is still pending, whose create then fails, disappears and leaves keyboard focus on the page body. Check it against EXPERIENCE's focus rules when the list's focus handling is built.

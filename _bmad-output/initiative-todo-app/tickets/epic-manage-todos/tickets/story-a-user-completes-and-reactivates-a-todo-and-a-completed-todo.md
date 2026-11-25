@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "44"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/44"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # A user completes and reactivates a todo, and a completed todo looks done
