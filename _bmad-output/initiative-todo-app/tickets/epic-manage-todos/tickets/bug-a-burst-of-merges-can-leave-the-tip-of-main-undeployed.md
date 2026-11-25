@@ -11,7 +11,7 @@ risk: high
 severity: P3
 tracker_id: "26"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/26"
-tracker_status: backlog
+tracker_status: in-progress
 parent: epic-manage-todos
 ---
 

@@ -11,7 +11,7 @@ risk: low
 severity: P3
 tracker_id: "28"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/28"
-tracker_status: backlog
+tracker_status: done
 ---
 
 # nginx's own 4xx errors under /api are HTML, not problem responses
@@ -39,3 +39,4 @@ AD-4 scopes nginx's problem body to upstream failures (502, 503, 504) only; ngin
 ## Notes
 
 - Decision: 2026-11-25, user: This rejected-but-real finding moves to the backlog at epic-todo-foundation's closure (retrospective A6). Security report S3 accepted it; this ticket is where fixing it would be planned.
+- Decision: 2026-11-25, fixed in story 2.8 (#49, PR #63): nginx answers its own 400 and 413 under `/api/` with AD-9's validation problem; AD-4 and AD-6 amended to match on the user's decision.

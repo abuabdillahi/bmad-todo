@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "50"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/50"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # The whole app's coverage, performance and accessibility reports are written, with every finding settled

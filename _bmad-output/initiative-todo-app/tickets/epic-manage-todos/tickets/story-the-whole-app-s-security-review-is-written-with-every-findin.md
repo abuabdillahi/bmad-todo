@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "49"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/49"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # The whole app's security review is written, with every finding settled
@@ -34,3 +34,5 @@ Verify: docs/quality/ holds a dated security report naming epic-manage-todos, co
 
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): #26, #27 and #28 stay in the backlog until this story, which decides each. The user's standing rule for this run: no change to the workflow's deploy steps, secrets, the host or the Cloudflare tunnel without asking them first. #26 and #27 live in the deploy job, so a fix for either is proposed to the user, not built here; each gets a dated line in its ticket and in the report.
 - From 2.2's review (PR #53), for this review to settle: an id with malformed percent-encoding gets a `400` that `DELETE`/`PATCH` do not document (GET /api/todos already behaves the same), and a `DELETE` sent with `Content-Type: application/json` and an empty body gets an undocumented Fastify `400`.
+- Decision: 2026-11-25, po (hands-off run on the user's instruction): S10 counts as settled by the user's decision that moves it to named entries 17 (#64) and 18 (#65), the same way a deferred finding moved to a named new story settles it.
+- Result: 2026-11-25, po, after PR #63 deployed (main run 45713067680), the report's two edge checks against production: plain HTTP answers 301 to HTTPS (S2 holds); an oversized POST /api/todos passes Cloudflare and gets nginx's validation problem (400, application/problem+json), so #28's fix works at the edge; a malformed percent-encoded id (DELETE /api/todos/%zz) is refused by Cloudflare's edge itself with its own HTML 400 before nginx, the accepted S9 gap (the client never sends one; AD-9 classifies it as generic).
