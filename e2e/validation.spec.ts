@@ -89,6 +89,7 @@ test.describe('add form validation', () => {
     const shown = `${description} second line `;
     await expect(field).toHaveValue(shown);
     await expect(page.getByText(`${[...shown.trim()].length}/200`)).toBeVisible();
+    await expectNoAxeViolations(page, 'two-line paste joined');
 
     await page.keyboard.press('Enter');
     await expect(todoItem(page, description)).toHaveCount(1);
@@ -110,6 +111,7 @@ test.describe('add form validation', () => {
 
     await expect(field).toHaveValue('Buy oat   milk');
     expect(await field.evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.selectionEnd])).toEqual([9, 9]);
+    await expectNoAxeViolations(page, 'mid-text paste');
 
     await page.keyboard.press('ControlOrMeta+Z');
     await expect(field).toHaveValue('Buy  milk');
@@ -150,6 +152,7 @@ test.describe('add form validation', () => {
     expect(await lineBreaks()).toEqual(['insertLineBreak true', 'insertLineBreak true']);
     expect(creates).toHaveLength(1);
     expect(JSON.parse(creates[0]!).description).toBe(description);
+    await expectNoAxeViolations(page, 'keyCode 229 Enter added');
   });
 
   test('E6 K1 Enter with keyCode 229 during an open composition adds the composed word and the field stays empty', async ({ page, browserName }, testInfo) => {
@@ -173,6 +176,7 @@ test.describe('add form validation', () => {
     await expect(field).toHaveValue('');
     expect(creates).toHaveLength(1);
     expect(JSON.parse(creates[0]!).description).toBe(`${description} milk`);
+    await expectNoAxeViolations(page, 'composed word added');
     // The composed word never comes back once the add has resolved and a key follows.
     await page.keyboard.type('a');
     await expect(field).toHaveValue('a');

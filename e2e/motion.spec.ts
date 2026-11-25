@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { expectNoAxeViolations } from './axe.ts';
 
 /**
- * The one motion-on spec (AD-20): no axe here, because scans would land
- * mid-transition. An added card plays its enter motion and ends fully visible.
+ * The one motion-on spec (AD-20). An added card plays its enter motion and ends
+ * fully visible. The axe scan waits until no animation is running anywhere on
+ * the page, so it never lands mid-transition.
  */
 test.use({ reducedMotion: 'no-preference' });
 
@@ -38,4 +40,8 @@ test('E1 an added card runs its enter animation and ends fully visible', async (
     .toBe(0);
   expect(await item.evaluate((li) => getComputedStyle(li.firstElementChild!.firstElementChild!).opacity)).toBe('1');
   await expect(page.getByRole('status').filter({ hasText: 'Added' })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running').length))
+    .toBe(0);
+  await expectNoAxeViolations(page, 'added with motion');
 });

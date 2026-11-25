@@ -67,7 +67,7 @@ docker compose -p todo-test --profile test down -v
 |---|---|---|
 | `pnpm test` | Unit, component and integration suites (Vitest), in-process | Node only |
 | `pnpm typecheck` | TypeScript across the workspace | Node only |
-| `pnpm test:all` | Every layer: starts `todo-test` on a fresh volume, runs unit, component and integration with coverage, then contract, e2e (Playwright, installs Chromium on first run), the profile checks (restart, logs, headers) and the API-down contract, and always tears `todo-test` down | Docker, port 8081 free |
+| `pnpm test:all` | Every layer: starts `todo-test` on a fresh volume, runs unit, component and integration with coverage, then contract, e2e (Playwright, installs Chromium on first run), the axe coverage check, the profile checks (restart, logs, headers) and the API-down contract, and always tears `todo-test` down | Docker, port 8081 free |
 
 `pnpm test:all` exits 0 only if every step passed, and prints a summary. It resets a `todo-test` you already have running.
 
@@ -77,6 +77,8 @@ Coverage is written to `coverage/` (git-ignored, emptied at the start of each `p
 - `coverage/scenarios.md`: every test by scenario id (U/I/K/E from the test strategy) across all suites.
 
 Test titles start with their scenario ids, and new tests should do the same. To run one Vitest project: `pnpm exec vitest run --project component`. To run e2e by hand against a running `todo-test`: `pnpm --filter @todo/e2e exec playwright test`.
+
+Every e2e test must call `expectNoAxeViolations(page, '<state>')` from `e2e/axe.ts` at least once, at each key state it reaches. Give each state a label no other test uses. The `axe coverage` step (`scripts/axe-coverage.mjs`) reads the e2e report after the e2e step, and fails `pnpm test:all` if a passed test ran no scan in any project. To check a report by hand: `node scripts/axe-coverage.mjs [coverage/e2e-report.json]`.
 
 ### Measurements (at each epic's close)
 
@@ -155,7 +157,7 @@ To add an endpoint, contract first:
 3. Regenerate and commit the contract: `pnpm gen:openapi`. CI fails if `packages/contract/openapi.json` is stale.
 4. To change the schema, edit `apps/api/src/db/schema.ts`, then run `pnpm --filter @todo/api db:generate` and commit the new file in `apps/api/drizzle/`. The API applies migrations at startup. Migrations only add things (new columns are nullable or defaulted), and a merged migration is never edited (AD-15).
 5. Add the client function in `apps/web/src/api/client.ts`, a mutation spec through the helper, and its messages in `messages.ts`.
-6. Write tests with their scenario ids: unit beside the code (`*.test.ts`), component tests (`*.component.test.tsx`, with MSW as the only HTTP stub), integration in `apps/api/test/integration/`, contract in `apps/api/test/contract/`, e2e in `e2e/` (with an axe scan in each state). Then run `pnpm test:all`.
+6. Write tests with their scenario ids: unit beside the code (`*.test.ts`), component tests (`*.component.test.tsx`, with MSW as the only HTTP stub), integration in `apps/api/test/integration/`, contract in `apps/api/test/contract/`, e2e in `e2e/` (with an axe scan at each key state, which `pnpm test:all` enforces). Then run `pnpm test:all`.
 
 There are no test-only routes or flags in app code. E2e injects failures with Playwright's `page.route` (AD-20).
 
