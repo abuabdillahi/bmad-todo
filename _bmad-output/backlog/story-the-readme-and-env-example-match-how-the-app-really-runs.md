@@ -10,7 +10,7 @@ hitl: false
 risk: low
 tracker_id: "25"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/25"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # The README and .env.example match how the app really runs
