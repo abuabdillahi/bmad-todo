@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { Problem } from '@todo/contract';
+import { Problem, Todo, UpdateTodoBody } from '@todo/contract';
 import { openApiPath, renderOpenApi } from '../../scripts/gen-openapi.ts';
 
 describe('packages/contract/openapi.json', () => {
@@ -12,8 +12,9 @@ describe('packages/contract/openapi.json', () => {
     const document = JSON.parse(await renderOpenApi());
 
     expect(document.openapi).toBe('3.1.0');
-    expect(Object.keys(document.paths).sort()).toEqual(['/api/health', '/api/todos']);
+    expect(Object.keys(document.paths).sort()).toEqual(['/api/health', '/api/todos', '/api/todos/{id}']);
     expect(Object.keys(document.paths['/api/todos']).sort()).toEqual(['get', 'post']);
+    expect(Object.keys(document.paths['/api/todos/{id}']).sort()).toEqual(['delete', 'patch']);
   });
 
   it('I9 documents a 503 application/problem+json Problem on every operation (AD-6)', async () => {
@@ -47,5 +48,30 @@ describe('packages/contract/openapi.json', () => {
     for (const status of ['200', '201']) {
       expect(Object.keys(responses[status].content), status).toEqual(['application/json']);
     }
+  });
+
+  it('I9 documents every error of PATCH /api/todos/{id} as a problem and its answer as a Todo', async () => {
+    const document = JSON.parse(await renderOpenApi());
+    const operation = document.paths['/api/todos/{id}'].patch;
+    const responses = operation.responses;
+
+    expect(Object.keys(responses).sort()).toEqual(['200', '400', '404', '500', '503']);
+    for (const status of ['400', '404', '500', '503']) {
+      expect(Object.keys(responses[status].content), status).toEqual(['application/problem+json']);
+    }
+    expect(Object.keys(responses['200'].content)).toEqual(['application/json']);
+    expect(responses['200'].content['application/json'].schema).toEqual(Todo);
+    expect(operation.requestBody.content['application/json'].schema).toEqual(UpdateTodoBody);
+  });
+
+  it('I9 documents every error of DELETE /api/todos/{id} as a problem and its answer as 204 with no content', async () => {
+    const document = JSON.parse(await renderOpenApi());
+    const responses = document.paths['/api/todos/{id}'].delete.responses;
+
+    expect(Object.keys(responses).sort()).toEqual(['204', '404', '500', '503']);
+    for (const status of ['404', '500', '503']) {
+      expect(Object.keys(responses[status].content), status).toEqual(['application/problem+json']);
+    }
+    expect(responses['204'].content).toBeUndefined();
   });
 });

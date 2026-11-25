@@ -10,6 +10,12 @@ export interface NewTodo {
   description: string;
 }
 
+/** The fields an update sets; a field left out keeps its stored value. */
+export interface TodoChanges {
+  description?: string;
+  completed?: boolean;
+}
+
 export interface TodoRepository {
   /** Throws `UnavailableError` on a storage failure. */
   list(): Todo[];
@@ -17,6 +23,16 @@ export interface TodoRepository {
   findById(id: string): Todo | undefined;
   /** Throws `UnavailableError` on a storage failure. */
   create(todo: NewTodo): Todo;
+  /**
+   * Sets the given fields in one statement (AD-15). The updated todo, or
+   * `undefined` when no todo has this id. Throws `UnavailableError` on a storage failure.
+   */
+  update(id: string, changes: TodoChanges): Todo | undefined;
+  /**
+   * Deletes the todo in one statement (AD-15). `false` when no todo has this id.
+   * Throws `UnavailableError` on a storage failure.
+   */
+  remove(id: string): boolean;
   /** Throws when storage can't be reached. */
   ping(): void;
 }
@@ -66,6 +82,19 @@ export function createTodoRepository(db: Db, now: () => number = Date.now): Todo
         db.insert(todos).values({ id, description, completed: false, createdAt }).returning().get(),
       );
       return toTodo(row);
+    },
+
+    update(id, { description, completed }) {
+      const set: Partial<Pick<TodoRow, 'description' | 'completed'>> = {};
+      if (description !== undefined) set.description = description;
+      if (completed !== undefined) set.completed = completed;
+      const row = fromStorage(db, () => db.update(todos).set(set).where(eq(todos.id, id)).returning().get());
+      return row === undefined ? undefined : toTodo(row);
+    },
+
+    remove(id) {
+      const { changes } = fromStorage(db, () => db.delete(todos).where(eq(todos.id, id)).run());
+      return changes > 0;
     },
 
     ping() {

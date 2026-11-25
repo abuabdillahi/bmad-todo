@@ -39,19 +39,25 @@ beforeAll(async () => {
   throw new Error(`/api/health did not answer 503 within ${WAIT_MS / 1000} s (last: ${last})`);
 }, WAIT_MS + 5_000);
 
-const routes: { method: Method; path: string; body?: unknown }[] = [
-  { method: 'get', path: '/api/todos' },
-  { method: 'post', path: '/api/todos', body: { id: randomUUID(), description: 'I9 api down' } },
-  { method: 'get', path: '/api/health' },
+const todoId = randomUUID();
+
+/** Each route: the URL called, and the path template openapi.json documents it under. */
+const routes: { method: Method; url: string; path: string; body?: unknown }[] = [
+  { method: 'get', url: '/api/todos', path: '/api/todos' },
+  { method: 'post', url: '/api/todos', path: '/api/todos', body: { id: todoId, description: 'I9 api down' } },
+  { method: 'patch', url: `/api/todos/${todoId}`, path: '/api/todos/{id}', body: { completed: true } },
+  { method: 'delete', url: `/api/todos/${todoId}`, path: '/api/todos/{id}' },
+  { method: 'get', url: '/api/health', path: '/api/health' },
 ];
 
 describe('contract: /api through web-test with the api container stopped', () => {
   it.each(routes)('I9 $method $path answers the unavailable problem from nginx, as the contract says', async ({
     method,
+    url,
     path,
     body,
   }) => {
-    const response = await call(method, path, body);
+    const response = await call(method, url, body);
     const text = await response.text();
 
     expect(response.status).toBe(503);
@@ -60,8 +66,12 @@ describe('contract: /api through web-test with the api container stopped', () =>
     expectDocumented(path, method, 503, response.headers.get('content-type'), JSON.parse(text));
   });
 
-  it("I8 GET /api/todos's unavailable problem from nginx carries the AD-19 security headers", async () => {
-    const response = await call('get', '/api/todos');
+  it.each(routes)("I12 $method $path's unavailable problem from nginx carries the AD-19 security headers", async ({
+    method,
+    url,
+    body,
+  }) => {
+    const response = await call(method, url, body);
     const text = await response.text();
 
     expect(response.status).toBe(503);

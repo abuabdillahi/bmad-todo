@@ -9,7 +9,7 @@ import { openApiPath } from '../scripts/gen-openapi.ts';
  * ajv-formats (I9, AD-20). Shared by the contract and integration suites.
  */
 
-export type Method = 'get' | 'post';
+export type Method = 'get' | 'post' | 'patch' | 'delete';
 export type MediaType = 'application/json' | 'application/problem+json';
 
 export const PROBLEM_MEDIA_TYPE: MediaType = 'application/problem+json';
@@ -78,4 +78,24 @@ export function expectDocumented(
   const mediaType: MediaType = contentType?.startsWith(PROBLEM_MEDIA_TYPE) ? PROBLEM_MEDIA_TYPE : 'application/json';
   expect(contentType ?? '').toMatch(new RegExp(`^${mediaType.replace('+', '\\+')}`));
   expectValid(contractValidator(path, method, status, mediaType), body);
+}
+
+/**
+ * Asserts a response without content is documented: its status exists in
+ * openapi.json with no `content`, and the response has no media type and an
+ * empty body (a 204, AD-6).
+ */
+export function expectDocumentedNoContent(
+  path: string,
+  method: Method,
+  status: number,
+  contentType: string | null | undefined,
+  body: string,
+): void {
+  const label = `${method.toUpperCase()} ${path} ${status}`;
+  const response = document.paths?.[path]?.[method]?.responses?.[String(status)];
+  expect(response, label).toBeDefined();
+  expect(response?.content, label).toBeUndefined();
+  expect(contentType ?? null, label).toBeNull();
+  expect(body, label).toBe('');
 }
