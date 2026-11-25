@@ -10,7 +10,7 @@ hitl: false
 risk: high
 tracker_id: "42"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/42"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # A resubmitted failed add stores one todo, and a stalled save gives up in time
@@ -84,5 +84,6 @@ Verify: On the test profile, pause the api container for 12 s while adding a tod
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): The shape of the user's 2026-11-25 first story is settled: (a) the failed add's id is reused only when its restored text is resubmitted unchanged, since a changed text under the same id would answer `409`; (b) nginx's `proxy_read_timeout` for `/api` is 10 s, so a stalled API becomes AD-4's existing `503` unavailable problem, and the API client aborts a write with no response after 15 s, a backstop for when nginx itself does not answer, classified `network`; (c) `MutationSpec.position` is removed, not made to work, because no planned action places a todo anywhere but the top and a revert already restores a todo's place.
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): Retrospective A7's shared e2e helpers go into this story, the first in the epic that adds e2e tests, not a story of their own.
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): The architecture spine's Deferred line on a failed write that may have landed names this story's id reuse as its revisit condition. The spine is not edited in this run (the user limited architecture changes to the AD-20 and AD-9 notes); the plan records the as-built behaviour, and the line is left for the architect.
+- Decision: 2026-11-25, po (hands-off run on the user's instruction): AC2's "changes the text in any way" is read as the submitted text differing from the restored text: text edited and returned to exactly the restored value counts as unchanged and reuses the id. This is safe under AD-6, since the API replays only when the description matches, and it is what PR #52 built and K1 pins (deferred item from the 2.1 plan's review).
 - Check beyond the criteria (risk high): a reviewer runs the Verify by hand on the test profile, pausing the api container with `docker compose -p todo-test pause api`, so the request lands after nginx has given up, the real "landed after all" path.
 - Where the findings pointed: `apps/web/src/todos/mutations.ts` (addTodo mints an id per call; `position`), `apps/web/src/api/client.ts` (`createTodo` sends no signal), `apps/web/nginx.conf` (`proxy_connect_timeout 1s` only).
