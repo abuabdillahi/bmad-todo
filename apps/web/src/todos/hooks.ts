@@ -78,6 +78,15 @@ export function useEditDescription(): (todo: Pick<Todo, 'id' | 'description'>, d
 }
 
 /**
+ * Deletes a todo through the optimistic-mutation helper (AD-13): the todo
+ * leaves the cache at once, and the promise resolves with the outcome. It
+ * never rejects.
+ */
+export function useDeleteTodo(): (todo: Pick<Todo, 'id' | 'description'>) => Promise<MutationOutcome> {
+  return useTodosContext().mutations.deleteTodo;
+}
+
+/**
  * The list area's one announcement (AD-14): “{t}” was deleted elsewhere, kind
  * `failure`, when a refetch removes the row in edit mode. Skipped while that
  * exact failure message is already showing (a `not-found` the helper announced).

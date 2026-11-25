@@ -620,7 +620,7 @@ describe('EditForm', () => {
     expect(listAnnounce).not.toHaveBeenCalled();
   });
 
-  it('K6 Edit is named with the full text, and Tab runs check, Edit, next check; in edit mode check, field, Save, Cancel', async () => {
+  it('K6 Edit is named with the full text, and Tab runs check, Edit, Delete, next check; in edit mode check, field, Save, Cancel', async () => {
     const long = { ...milk, description: 'Call the plumber about the leaking kitchen tap before Friday' };
     serve([long, rent]).release.open();
     const { user, addButton } = await renderLoaded([long.description, 'Pay rent']);
@@ -634,6 +634,8 @@ describe('EditForm', () => {
     expect(document.activeElement).toBe(check(long.description));
     await user.tab();
     expect(document.activeElement).toBe(edit);
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: `Delete “${long.description}”` }));
     await user.tab();
     expect(document.activeElement).toBe(check('Pay rent'));
 

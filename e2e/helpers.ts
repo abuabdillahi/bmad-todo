@@ -97,6 +97,20 @@ export function editButton(page: Page, description: string): Locator {
   return todoList(page).getByRole('button', { name: `Edit “${description}”`, exact: true });
 }
 
+/**
+ * A todo's Delete button, named `Delete “{full text}”`, never cut. The Delete
+ * confirm's Confirm delete button has the same name, but it replaces the row's
+ * Delete, so the two never show at once; scope by `deleteConfirm` for it.
+ */
+export function deleteButton(page: Page, description: string): Locator {
+  return todoList(page).getByRole('button', { name: `Delete “${description}”`, exact: true });
+}
+
+/** A todo's open Delete confirm: the group named by its prompt and the todo text. */
+export function deleteConfirm(page: Page, description: string): Locator {
+  return todoList(page).getByRole('group', { name: `Delete this todo? ${description}`, exact: true });
+}
+
 /** The open Edit form's Text field (edit), named by its hidden label. */
 export function editField(page: Page): Locator {
   return todoList(page).getByRole('textbox', { name: 'Edit description', exact: true });
@@ -136,6 +150,9 @@ export const MESSAGES = {
   editFailed: (description: string, reason: string): string =>
     `Couldn't save your edit, so “${quoteText(description)}” is back as it was. ${reason}`,
   deletedElsewhere: (description: string): string => `“${quoteText(description)}” was deleted elsewhere.`,
+  deleted: (description: string): string => `Deleted “${quoteText(description)}”.`,
+  deleteFailed: (description: string, reason: string): string =>
+    `Couldn't delete “${quoteText(description)}”, so it's back in the list. ${reason}`,
   /** The Inline error for an empty submit. */
   empty: 'Enter a description.',
   /** The over-limit words the Field status speaks once the limit is crossed. */
