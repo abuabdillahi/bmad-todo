@@ -193,6 +193,51 @@ references = [
 ]
 
 [[entry]]
+id = 15
+type = "bug"
+title = "A burst of merges can leave the tip of main undeployed"
+description = "Every green push to main ends with production on the newest green commit, even when deploys race or a push run never happens."
+covers = []
+after = [8]
+hitl = false
+risk = "high"
+refine = true
+
+[[entry]]
+id = 16
+type = "bug"
+title = "A manual deploy run from a branch other than main silently does nothing"
+description = "A manual deploy run started from a branch other than main fails with a message instead of skipping every job."
+covers = []
+after = [15]
+hitl = false
+risk = "medium"
+refine = true
+
+[[entry]]
+id = 17
+type = "story"
+title = "The deploy job reads its secrets from a production environment limited to main"
+description = "From the 2.8 security review (S10): the deploy job runs in a GitHub environment named production, so once the user moves the five deploy secrets into it, limited to main, a workflow change on another branch cannot read them. Deploys keep working before and after the move."
+verify = "On main, the deploy run shows the production environment and passes its public health check; README's setup section names the environment and the five secrets it holds."
+covers = ["R20"]
+after = [16]
+hitl = false
+risk = "medium"
+refine = true
+
+[[entry]]
+id = 18
+type = "story"
+title = "The user moves the deploy secrets into the production environment"
+description = "The person with admin rights sets the production environment's deployment branches to main only, adds DEPLOY_SSH_KEY, DEPLOY_HOST, DEPLOY_USER, DEPLOY_KNOWN_HOSTS and TUNNEL_TOKEN to it, deletes the repository secrets of those names, and re-runs the last main deploy to prove it still deploys."
+verify = "The production environment lists the five secrets and only main may deploy to it; the repository secrets are gone; a main deploy run after the move passes its public health check."
+covers = ["R20"]
+after = [17]
+hitl = true
+risk = "medium"
+
+[[entry]]
 id = 9
 type = "story"
 title = "The whole app's coverage, performance and accessibility reports are written, with every finding settled"
