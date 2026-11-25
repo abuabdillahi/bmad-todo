@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { LightMyRequestResponse } from 'fastify';
 import { todos } from '../../src/db/schema.ts';
-import { expectDocumented, expectDocumentedNoContent } from '../openapi-schema.ts';
+import { expectDocumented, expectDocumentedNoContent, VALIDATION_BODY } from '../openapi-schema.ts';
 import { startHarness, type Harness } from './harness.ts';
 import { expectNothingLeaked, expectValidationProblem } from './todo-checks.ts';
 
@@ -263,6 +263,76 @@ describe('PATCH and DELETE of an id with no stored todo', () => {
 
     expectNotFound(response, 'delete');
     expectNothingLeaked(response, 'Buy milk');
+    expect(storedRows()).toEqual([row]);
+  });
+});
+
+describe('PATCH and DELETE of a malformed request to one todo', () => {
+  const MALFORMED = '/api/todos/%E0%A4%A';
+
+  it('I9 answers a DELETE of a malformed percent-encoded id with a documented validation problem, deletes nothing, and echoes no id', async () => {
+    const row = seed();
+
+    const response = await harness.app.inject({ method: 'DELETE', url: MALFORMED });
+
+    expectValidationProblem(response, TODO_PATH, 'delete');
+    // Byte for byte the literal nginx answers for its own 400 and 413 under /api/ (#28).
+    expect(response.body).toBe(VALIDATION_BODY);
+    expect(response.body).not.toContain('%E0');
+    expectNothingLeaked(response, 'Buy milk');
+    expect(storedRows()).toEqual([row]);
+  });
+
+  it('I9 answers a PATCH of a malformed percent-encoded id with a documented validation problem, changes nothing, and echoes no id', async () => {
+    const row = seed();
+
+    const response = await harness.app.inject({
+      method: 'PATCH',
+      url: MALFORMED,
+      payload: { description: 'Secret plan', completed: true },
+    });
+
+    expectValidationProblem(response, TODO_PATH, 'patch');
+    // Byte for byte the literal nginx answers for its own 400 and 413 under /api/ (#28).
+    expect(response.body).toBe(VALIDATION_BODY);
+    expect(response.body).not.toContain('%E0');
+    expectNothingLeaked(response, 'Secret plan', 'Buy milk');
+    expect(storedRows()).toEqual([row]);
+  });
+
+  it('I9 answers a DELETE with a JSON content type and an empty body with a documented validation problem, and deletes nothing', async () => {
+    const row = seed();
+
+    const response = await harness.app.inject({
+      method: 'DELETE',
+      url: todoUrl(row.id),
+      headers: { 'content-type': 'application/json' },
+      payload: '',
+    });
+
+    expectValidationProblem(response, TODO_PATH, 'delete');
+    // Byte for byte the literal nginx answers for its own 400 and 413 under /api/ (#28).
+    expect(response.body).toBe(VALIDATION_BODY);
+    expect(response.body).not.toContain(row.id);
+    expect(storedRows()).toEqual([row]);
+  });
+
+  it("I9 answers a PATCH and a DELETE of an id over Fastify's 100-character param limit with a documented validation problem, and changes nothing", async () => {
+    const row = seed();
+    const id = 'x'.repeat(101);
+
+    const patched = await patch(id, { completed: true });
+    expectValidationProblem(patched, TODO_PATH, 'patch');
+    // Byte for byte the literal nginx answers for its own 400 and 413 under /api/ (#28).
+    expect(patched.body).toBe(VALIDATION_BODY);
+    expect(patched.body).not.toContain(id);
+
+    const deleted = await remove(id);
+    expectValidationProblem(deleted, TODO_PATH, 'delete');
+    // Byte for byte the literal nginx answers for its own 400 and 413 under /api/ (#28).
+    expect(deleted.body).toBe(VALIDATION_BODY);
+    expect(deleted.body).not.toContain(id);
+
     expect(storedRows()).toEqual([row]);
   });
 });

@@ -87,4 +87,15 @@ describe('profile: web-test security headers', () => {
     expect(missing.status).toBe(404);
     expectSecurityHeaders(missing);
   });
+
+  it("I12 a malformed percent-encoding outside /api is still nginx's own 400 page, with the AD-19 security headers", async () => {
+    const response = await call('GET', '/%zz');
+    const body = await response.text();
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('content-type')).toMatch(/^text\/html/);
+    expect(body).toContain('400 Bad Request');
+    expect(body).not.toContain('/problems/');
+    expectSecurityHeaders(response);
+  });
 });

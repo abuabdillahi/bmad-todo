@@ -68,8 +68,8 @@ describe('packages/contract/openapi.json', () => {
     const document = JSON.parse(await renderOpenApi());
     const responses = document.paths['/api/todos/{id}'].delete.responses;
 
-    expect(Object.keys(responses).sort()).toEqual(['204', '404', '500', '503']);
-    for (const status of ['404', '500', '503']) {
+    expect(Object.keys(responses).sort()).toEqual(['204', '400', '404', '500', '503']);
+    for (const status of ['400', '404', '500', '503']) {
       expect(Object.keys(responses[status].content), status).toEqual(['application/problem+json']);
     }
     expect(responses['204'].content).toBeUndefined();
