@@ -1,0 +1,197 @@
+# Stories of epic-manage-todos (epic 2), in build order. Sliced 2026-11-25 in the hands-off run on the user's instruction
+# (epic Notes hold the split, order and tracer decisions).
+# covers = this epic's Requirements ids (numbered as their parent ids, R4 = parent R4, and so on).
+# Scenario ids (../../../test-strategy.md) and the parts of shared ones, AD ids, and UX sections are in `references`,
+# so a pulled story carries them. Every story ships its own tests in the AD-20 harness (C8).
+# Moved in from the backlog by `tickets.py move` (ids 10-13): #33, #30, #29 and #31; their tables are placed in build order by hand.
+
+[[entry]]
+id = 1
+type = "story"
+title = "A resubmitted failed add stores one todo, and a stalled save gives up in time"
+description = "Makes AD-13's mutation helper safe before edit, complete and delete build on it (epic-todo-foundation retrospective A3): resubmitting a failed add's unchanged restored text sends the failed add's id again, so AD-6's replay stops a duplicate; nginx answers a stalled API with the unavailable problem after 10 s, and the API client gives up on any write after 15 s with no response; MutationSpec.position is removed; and the e2e specs move onto one set of shared helpers (retrospective A7), which every later e2e story uses."
+verify = "On the test profile, pause the api container for 12 s while adding a todo: within about 10 s the card goes and the banner says the add failed because the service is unavailable; unpause, press Add with the restored text unchanged, refresh: exactly one todo with that text is listed."
+covers = ["R7", "R12", "R17"]
+after = ["1.6", "1.7"]
+hitl = false
+risk = "high"
+refine = true
+references = [
+  "retrospective — _bmad-output/initiative-todo-app/tickets/epic-todo-foundation/epic-todo-foundation-retrospective.md: findings R1, R2 and R9 (action A3), the duplication map and P2 (action A7)",
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: U4 and U5 (a follow-up behind a resubmitted create), K1 (a resubmitted restored add), E6 add part (a stalled API and a lost response revert with a message), E8 for those states",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-4 (nginx answers upstream failures, 504 included, with the unavailable problem), AD-6 (POST 200 replay, 409), AD-7 (client-minted id), AD-9 (network, cancellation), AD-13 (the helper), AD-20 (e2e: page.route only); Deferred (a write that fails may have been applied; revisit with a resubmit that reuses the failed id)",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: State Patterns (Add form states: Add failed, Add landed after all; Row states: Landed after all, Add succeeded on 201 or 200 replay)",
+]
+
+[[entry]]
+id = 2
+type = "story"
+title = "The API updates and deletes a todo, atomically, with integration and contract tests"
+description = "Adds PATCH /api/todos/{id} (description, completed, or both) and DELETE /api/todos/{id} to the contract, openapi.json and the API, with AD-8's strict validation on update, 404 for an unknown id, AD-15's one-statement writes and a storage failure answered as unavailable, as list and create do; delivers I12 and I13 for both routes and re-tags the existing header and log tests that borrow I8, I2, I10 and I7 to I12 and I13. The web stories 3, 4 and 5 call these routes."
+verify = "pnpm test:all passes and lists passing tests for I4, I5, I12 and I13 and for the update and delete parts of I8, I9 and I11. With the test profile up, PATCH http://127.0.0.1:8081/api/todos/<id> with {\"completed\":true} answers 200 with the todo completed, DELETE answers 204 and then 404, and a PATCH with {} answers a validation problem."
+covers = ["R10", "R11", "R12", "R17", "R20"]
+after = ["1.3", "1.7"]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: I4, I5 whole; I8 for update; I9 for every PATCH and DELETE response (200, 204, 400, 404, 503); I11 update half (unknown field, null, wrong type, empty body, control characters); I12 for the new routes and nginx's 503 on them; I13 for update and delete, refused and failed ones included; the re-tag of the existing tests that borrow I8 (security headers) and I2, I10, I7 (no todo text in logs)",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-5 (schemas in packages/contract, openapi.json regenerated and committed), AD-6 (PATCH and DELETE rows; 503 documented on every route), AD-8 (server side, on edit), AD-9 (problem types; storage failure is unavailable on the todo routes), AD-10 (service owns existence), AD-12, AD-15 (one statement or one transaction, the persisted row returned), AD-19, AD-20 (contract and contract-unavailable suites, with headers)",
+]
+
+[[entry]]
+id = 10
+type = "bug"
+title = "A shortened todo in an announcement can split a character"
+description = "Moved from the backlog (#33) to land before story 3, the first story that adds complete, edit or delete messages: the announcer's quote of a todo, cut at 40 characters with an ellipsis, ends on a whole user-perceived character, never inside an emoji sequence or a letter with combining marks."
+verify = "Make an add fail for a todo of 39 plain letters followed by a family emoji and more text: the banner quotes it ending on a whole character before the ellipsis."
+covers = ["R7", "R14"]
+after = []
+hitl = false
+risk = "low"
+refine = true
+
+[[entry]]
+id = 3
+type = "story"
+title = "A user completes and reactivates a todo, and a completed todo looks done"
+description = "Tracer bullet: the card's completion check and Done chip, styled done in light and dark, toggle completed at once through AD-13's helper and story 2's PATCH, persist after a refresh, and revert with a message and the revert flag when saving fails; a 404 on a toggle says the todo was deleted elsewhere. It speaks messages.ts's complete, reopen and deleted-elsewhere messages, quoted by story 10's fixed quote, and adds AD-20's per-test list reset through the public API's DELETE in every e2e spec (retrospective F3), using story 1's shared e2e helpers."
+verify = "On production, tick a todo: at once it shows done (the Done chip, receded text) in light and dark, it is still done after a refresh, and unticking makes it active again. On the test profile with the api stopped, ticking reverts with the banner saying the change failed, and the list stays usable."
+covers = ["R4", "R6", "R7", "R8", "R11", "R12", "R14", "R17"]
+after = [1, 2, 10]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: U3 whole; K2 whole; E2 whole; U5 complete part; E6 complete and reopen part (failing and unreachable revert with a message, list usable); K6 for the completion check; E7 for E2; E8 for E2 and that E6 part (keyboard, axe-core in light and dark)",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-6 (PATCH { completed }), AD-11 (no re-sort; a row a refetch removes unmounts at once), AD-13 (the helper, revert records, revertedAt), AD-14 (deleted elsewhere from the list area), AD-20 (each e2e test empties the list through the public API in beforeEach)",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: Component Patterns (Todo card, Completion check, Done chip), State Patterns (Row states: Active / Done, Saving, Reverted, Not found), Motion (revert flag), Interaction Primitives (Focus management: Completion check, Not found), Voice and Tone (complete and reopen leads, deleted elsewhere); DESIGN.md Components (Todo card states, Completion check, Done chip, revert flag) in light and dark",
+]
+
+[[entry]]
+id = 4
+type = "story"
+title = "A user edits a todo's text in place, under the same rules as the add field"
+description = "The card's Edit button swaps in the Edit form: a text field with the add field's cleaning, counter, inline error and Field status, shared with the add form rather than copied; Save or Enter commits through AD-13's helper and story 2's PATCH, Cancel or Escape discards, unchanged text sends nothing, and a failed save reverts with a message and keeps its draft for the next Edit. A todo deleted elsewhere while its row is in edit mode is announced. Stories 11 and 12 then fix the shared text field, and story 5 adds the rule that an edit and a confirm are never open together."
+verify = "On the test profile: Edit a todo, change its text, press Enter: the new text shows at once and after a refresh. Edit again and press Escape: nothing changes. Save an empty field: 'Enter a description.' shows and nothing is sent. With the api stopped, Save reverts the text with a banner message, and the next Edit opens with the failed draft. The add form behaves exactly as before."
+covers = ["R7", "R8", "R11", "R12", "R13", "R14", "R17"]
+after = [3]
+hitl = false
+risk = "high"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: K3 whole; E4 whole; U5 edit part; E6 edit part; K6 for Edit, Save and Cancel; E7 for E4; E8 for E4 and that E6 part (keyboard, axe-core in light and dark); K1 and E1 rerun unchanged for the add form",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-6 (PATCH { description }), AD-8 (client side on edit; inline, one Field status per text field; a server 400 after an optimistic edit is a mutation failure), AD-11, AD-13 (per-call promise keeps a failed edit's draft), AD-14 (deleted elsewhere from the list area)",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: Component Patterns (Edit form, Text field, Character counter, Inline error, Field status, Card buttons: Edit, Save, Cancel; Completion check in edit mode), State Patterns (Row states: Edit, Edit invalid, Edit over-limit, Edit failed, Edit open todo vanishes on refetch, Edit open todo text changes on refetch), Interaction Primitives (Keyboard map, Focus management: Edit, Save, Cancel), Voice and Tone (edit lead); DESIGN.md Components (Edit form)",
+]
+
+[[entry]]
+id = 11
+type = "bug"
+title = "Shift+Enter over an IME submits the add form"
+description = "Moved from the backlog (#30) to follow story 4, which shares the add field's text-field rules with the edit field: Shift+Enter over an IME or a composing Android keyboard inserts nothing and submits nothing, in the add field and the edit field alike."
+verify = "With a composing keyboard (trusted keys in Chromium, as story 1.8's test does), Shift+Enter in the add field and in the edit field neither submits nor inserts a line break; Enter still submits."
+covers = ["R13", "R14"]
+after = [4]
+hitl = false
+risk = "low"
+refine = true
+
+[[entry]]
+id = 12
+type = "bug"
+title = "Dropping multi-line text into the add field loses Chrome's undo step"
+description = "Moved from the backlog (#29) to follow story 4 and story 11, which change the same shared text field: a multi-line drop into the add or edit field is joined into one line and one undo restores the field, as a paste already does."
+verify = "In Chrome, drop two lines of text into the add field and into the edit field: each shows one line, and one Ctrl+Z (Cmd+Z) restores the field as it was before the drop."
+covers = ["R13", "R14"]
+after = [4, 11]
+hitl = false
+risk = "low"
+refine = true
+
+[[entry]]
+id = 13
+type = "spike"
+title = "Does the add field behave as specified with a real Android keyboard?"
+description = "Moved from the backlog (#31) as this epic's one open hitl item: the user, on a real Android phone against production, checks the add field's and the edit field's Enter handling and clearing during composition, after story 4 and story 11 ship. No story waits on it; any failing case becomes a new bug."
+verify = "The ticket's Notes record, per keyboard and case, what happened on the phone against production, with a bug ticket named for each failing case."
+covers = ["R13", "R14"]
+after = [4, 11]
+hitl = true
+risk = "medium"
+refine = true
+
+[[entry]]
+id = 5
+type = "story"
+title = "A user deletes a todo after confirming in its card, with no undo"
+description = "The card's Delete button opens the inline Delete confirm ('Delete this todo?', Delete, Cancel), which sends nothing until confirmed; Cancel or Escape closes it; Confirm delete removes the row at once through AD-13's helper and story 2's DELETE, announces 'Deleted' on a 204 or 404, and a failed delete restores the row, flagged, with a message. Only one card is in edit mode or confirm at a time."
+verify = "On the test profile: Delete on a todo shows 'Delete this todo?' and sends nothing; Cancel and Escape each close it and the todo stays; Delete in the confirm removes it at once, 'Deleted' shows, and it stays gone after a refresh. With the api stopped, the confirmed delete comes back flagged with a banner message."
+covers = ["R5", "R7", "R8", "R11", "R12", "R14", "R17"]
+after = [4]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: K4 whole; E3 whole; U5 delete part (a delete queued behind a pending create; a 404 is success); E6 delete part; K6 for Delete, Confirm delete and Cancel; E7 for E3; E8 for E3 and that E6 part (keyboard, axe-core in light and dark)",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-6 (DELETE, 204, 404), AD-11 (the leaving row stays inert and aria-hidden for its exit motion only; a failed delete remounts the row fresh), AD-13 (404 on DELETE is success; Deleted on server confirmation), AD-14",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: Component Patterns (Delete confirm, Card buttons: Delete, Confirm delete, Cancel; Todo card: one card in edit mode or confirm at a time), State Patterns (Row states: Delete confirm, Leaving, Delete succeeded, Reverted after a failed delete, Confirm open todo vanishes on refetch, Failed add removes a card in use), Motion (Delete), Interaction Primitives (Focus management: Delete, Cancel, Confirm delete), Voice and Tone (delete lead, Deleted status); DESIGN.md Components (Delete confirm)",
+  "initiative — _bmad-output/initiative-todo-app/initiative-todo-app.md: Notes, Decision 2026-11-24 (delete confirms inline in the card, no undo)",
+]
+
+[[entry]]
+id = 6
+type = "story"
+title = "The list shows its empty, loading and error states, and recovers from a failed load"
+description = "Renders AD-11's list states from epic 1's selector: the Empty panel, three skeleton cards with the Loading status and its recovery line, and the List error panel with its reason and Try again, with the focus moves and the hand-off order EXPERIENCE gives, so a first load that is slow, fails or recovers is shown and spoken; an early card keeps focus and an open Edit form or Delete confirm across the first successful load."
+verify = "On the test profile: with no todos, 'No todos yet.' shows and adding one replaces it. Block /api/todos and reload: the error panel shows with its reason and Try again; unblock and press Try again: skeletons, then the list, and 'Your todos are loaded.' is spoken. All of it works by keyboard."
+covers = ["R8", "R9", "R12", "R14", "R17"]
+after = [5]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: K5 whole; E5 whole; E6 list error-state part (a failed first load shows the error panel, the list stays usable, Try again recovers); K6 for Try again; E8 for E5 and that E6 part (keyboard, axe-core in light and dark)",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-11 (list state from the store, selector, query policy, Try again), AD-13 (settle-time refetch is Try again's fetch while a save is pending), AD-14 (the one Loading status and its recovery line)",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: Information Architecture (List area exceptions), Component Patterns (Empty panel, Skeleton card, Loading status, Recovery line, List error panel, Try again button), State Patterns (List states, all rows), Motion (skeleton breathing), Interaction Primitives (Focus management and Hand-off order for the list states), Voice and Tone (List error panel text, loading lines); DESIGN.md Components (Empty panel, Skeleton card, List error panel)",
+  "epic — _bmad-output/initiative-todo-app/tickets/epic-todo-foundation/epic-todo-foundation.md: Notes, Decision 2026-11-24 (AD-11 split: this epic renders the states and the Loading status from epic 1's selector)",
+]
+
+[[entry]]
+id = 7
+type = "story"
+title = "Refactor sweep"
+description = "Cleanup only, its scope set at its start from the plans and review findings this epic deferred; scope pushed out of another story becomes a new story. It does not wait on the hitl spike 13."
+verify = "pnpm test:all passes after the cleanup, and the story lists each deferred finding as fixed or moved to a named new story."
+covers = []
+after = [1, 2, 3, 4, 5, 6, 10, 11, 12]
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 8
+type = "story"
+title = "The whole app's security review is written, with every finding settled"
+description = "Reviews the UI for XSS in rendered and edited text, the update and delete routes for injection, and everything changed since epic 1's review (nginx config, dependencies), writes the security report under docs/quality/, fixes or accepts each finding, and decides each of backlog #26, #27 and #28: fixed here when the fix is small and touches no deploy step, secret, host or tunnel, else kept in the backlog or accepted with a dated reason."
+verify = "docs/quality/ holds a dated security report naming epic-manage-todos, covering XSS in rendered and edited text, with each finding fixed or accepted with a reason and a line for each of #26, #27 and #28 saying what was decided; pnpm test:all passes."
+covers = ["R20"]
+after = [7]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: Reports (Security); I8, I12, I13",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-4, AD-8, AD-19; Consistency Conventions (Reports naming)",
+  "report — docs/quality/2026-11-25-epic-todo-foundation-security.md (epic 1's findings S1-S5, S3 being #28)",
+  "backlog — _bmad-output/backlog/bug-a-burst-of-merges-can-leave-the-tip-of-main-undeployed.md (#26), bug-a-manual-deploy-run-from-a-branch-other-than-main-silently-d.md (#27), bug-nginx-s-own-4xx-errors-under-api-are-html-not-problem-respon.md (#28)",
+]
+
+[[entry]]
+id = 9
+type = "story"
+title = "The whole app's coverage, performance and accessibility reports are written, with every finding settled"
+description = "Writes the final whole-app coverage report, a performance profile of each action (add, edit, complete, reactivate, delete) against C4's 100 ms UI target with API p95 for every endpoint, and the accessibility report: the whole-app Lighthouse audit, the axe results, and an agent's keyboard pass and accessibility-tree pass of every core action, with the person's screen-reader check noted as the epic's Notes say; fixes or accepts each finding and updates the README for the new actions and routes."
+verify = "docs/quality/ holds dated coverage, performance and accessibility reports naming epic-manage-todos, each finding fixed or accepted with a reason; every action shows within 100 ms and every endpoint's p95 is under 300 ms from at least 100 requests; Lighthouse reports no accessibility failures; pnpm test:all passes."
+covers = ["R8", "R14", "R18", "R19"]
+after = [8]
+hitl = false
+risk = "medium"
+references = [
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: Reports (Coverage, Performance, Accessibility)",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-20 (at each epic's close: Lighthouse and the C4 profile against todo-test, at least 100 requests per endpoint); Consistency Conventions (Reports naming); Structural Seed (README contents)",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: Key Flows (Flow 2: every core action by keyboard and screen reader), Accessibility Floor",
+]

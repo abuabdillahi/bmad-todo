@@ -13,7 +13,7 @@ Companion to `initiative-todo-app.md`. It spells out R14 and R17–R20 and const
 | End-to-end | User journeys through browser, API and storage | The full stack in the test profile | Playwright (`@playwright/test`), `workers: 1`, failures injected with `page.route` only (AD-20) | The story that delivers the journey |
 | Accessibility | WCAG 2.2 AA on every page state | Inside each e2e test (axe-core), rerun in the dark colour scheme (AD-20), plus a full Lighthouse audit at each epic's close | `@axe-core/playwright` with the `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` and `wcag22aa` tags, and Lighthouse against the test profile (AD-20, C10) | Every UI story; epic close |
 
-Epic 1's tracer story sets up every layer, the coverage report and the test profile, before any other feature (C8). Per-endpoint scenarios (I8, I9, I11) and per-journey scenarios (K6, E6, E7, E8) are delivered by whichever story builds that endpoint or journey. The whole suite runs with one command, `pnpm test:all` (R17).
+Epic 1's tracer story sets up every layer, the coverage report and the test profile, before any other feature (C8). Per-endpoint scenarios (I8, I9, I11, I12, I13) and per-journey scenarios (K6, E6, E7, E8) are delivered by whichever story builds that endpoint or journey. The whole suite runs with one command, `pnpm test:all` (R17).
 
 ## Scenario catalogue
 
@@ -40,6 +40,8 @@ Ids are permanent. A story's `covers` and criteria cite them.
 - I9 (C9): Every endpoint's requests and responses, errors included, validate against the contract.
 - I10 (R12; AD-6): Repeating a create with the same id and the same trimmed description returns 200 with the stored todo and stores no duplicate. The same id with a different description returns a 409 conflict problem, and the stored todo is unchanged.
 - I11 (R12; AD-8): A create or update carrying an unknown field, a null, or a wrongly typed value (e.g. `completed: "true"`), or an update with an empty body, is refused with a validation problem and changes nothing. This proves Fastify's Ajv defaults are overridden. A create or update whose trimmed description still contains a control character or U+2028 or U+2029 is refused with a validation problem whose `errors` names `description`, is never normalised, and changes nothing (spine AD-8; architecture memlog, flag 2).
+- I12 (R20; AD-19): Every response that `web-test` serves carries the strict Content-Security-Policy and the standard security headers, in every nginx location: the page, a content-hashed asset, a missing asset (a 404, never `index.html`), every `/api` answer, and nginx's own `503` unavailable problem when the API is down (AD-4).
+- I13 (R15, R20; AD-17, AD-19): No log line holds a todo's description, at `info` level or below, on any route: not for a successful request, and not for one refused or failed (validation, conflict, not found, or a storage failure). The API's log lines are JSON with a request id.
 
 ### Component
 
