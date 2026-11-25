@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "46"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/46"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # A user deletes a todo after confirming in its card, with no undo

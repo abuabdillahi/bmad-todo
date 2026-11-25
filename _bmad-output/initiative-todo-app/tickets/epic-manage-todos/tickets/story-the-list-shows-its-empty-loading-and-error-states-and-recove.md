@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "47"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/47"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # The list shows its empty, loading and error states, and recovers from a failed load
