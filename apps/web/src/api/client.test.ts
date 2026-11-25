@@ -1,4 +1,4 @@
-import { createTodo, isCancellation, listTodos, RequestFailure, WRITE_TIMEOUT_MS, type FailureKind } from './client.ts';
+import { createTodo, isCancellation, listTodos, RequestFailure, updateTodo, WRITE_TIMEOUT_MS, type FailureKind } from './client.ts';
 
 /** AD-9 classification, with `fetch` stubbed. */
 const fetchMock = vi.fn<typeof fetch>();
@@ -216,5 +216,32 @@ describe('API client write timeout', () => {
     const error = await pending;
     expect(error).not.toBeInstanceOf(RequestFailure);
     expect(isCancellation(error, controller.signal)).toBe(true);
+  });
+});
+
+describe('API client update', () => {
+  const todo = {
+    id: 'a0000000-0000-4000-8000-000000000001',
+    description: 'Buy milk',
+    completed: true,
+    createdAt: '2026-11-25T10:00:00.000Z',
+  };
+
+  it('U3 updateTodo sends PATCH to the encoded path with the JSON body and returns the todo', async () => {
+    fetchMock.mockResolvedValue(answer(200, JSON.stringify(todo), 'application/json; charset=utf-8'));
+
+    await expect(updateTodo('a/b c?', { completed: true })).resolves.toEqual(todo);
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/api/todos/a%2Fb%20c%3F');
+    expect(init!.method).toBe('PATCH');
+    expect(init!.headers).toMatchObject({ 'Content-Type': 'application/json', Accept: 'application/json' });
+    expect(JSON.parse(String(init!.body))).toEqual({ completed: true });
+  });
+
+  it('U3 updateTodo rejects a 404 problem as not-found', async () => {
+    fetchMock.mockResolvedValue(answer(404, problem('/problems/not-found', 404), 'application/problem+json; charset=utf-8'));
+
+    expect((await failureOf(updateTodo(todo.id, { completed: false }))).kind).toBe('not-found');
   });
 });

@@ -1,12 +1,14 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { announcement, focusAddField, MESSAGES, todoItem, UNAVAILABLE_BODY, uniqueDescription } from './helpers.ts';
+import { announcement, focusAddField, MESSAGES, resetList, todoItem, UNAVAILABLE_BODY, uniqueDescription } from './helpers.ts';
 
 /**
  * A failed add (E6, E8, story 6), by keyboard: the card shows at once and
  * goes, the Announcer says why, the text is back in the field, and earlier
  * todos stay. Each test adds unique todos and asserts only on its own.
  */
+
+test.beforeEach(({ request }) => resetList(request));
 
 /** Opens the app, adds a todo by keyboard and waits for the server's confirmation. */
 async function openWithTodo(page: Page, description: string) {

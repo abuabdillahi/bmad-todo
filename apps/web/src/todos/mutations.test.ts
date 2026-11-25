@@ -421,3 +421,170 @@ describe('mutation helper: per-todo order (U5)', () => {
     await expect(completed).resolves.toEqual({ status: 'ok' });
   });
 });
+
+describe('mutation helper: complete and reopen (U3, U4, U5)', () => {
+  const done: Todo = { ...first, completed: true };
+  const UNAVAILABLE = "The server isn't available right now. Try again in a moment.";
+  const NETWORK = 'Check your connection and try again.';
+
+  /** Answers each PATCH once the test settles it, recording its path and body. */
+  function heldPatches() {
+    const calls: { path: string; body: unknown; settle: (answer: () => Response | Promise<Response>) => void }[] = [];
+    fetchMock.mockImplementation(
+      (url, init) =>
+        new Promise<Response>((resolve, reject) => {
+          calls.push({
+            path: String(url),
+            body: JSON.parse(String(init!.body)),
+            settle: (answer) => void Promise.resolve().then(answer).then(resolve, reject),
+          });
+        }),
+    );
+    return calls;
+  }
+
+  it.each([
+    ['complete', first, true],
+    ['reopen', done, false],
+  ])('U3 %s applies at once, sends {completed} by PATCH and announces nothing', async (_name, todo, completed) => {
+    const { helper, store, announce, invalidate, list } = setup([todo, second]);
+    const calls = heldPatches();
+
+    const pending = helper.setCompleted(todo, completed);
+    await flush();
+
+    expect(list()).toEqual([{ ...todo, completed }, second]);
+    expect(store.getSnapshot().pendingCount).toBe(1);
+    expect(calls.map(({ path, body }) => ({ path, body }))).toEqual([{ path: `/api/todos/${todo.id}`, body: { completed } }]);
+    expect(fetchMock.mock.calls[0]![1]!.method).toBe('PATCH');
+
+    calls[0]!.settle(() => Response.json({ ...todo, completed }));
+    await expect(pending).resolves.toEqual({ status: 'ok' });
+    expect(list()).toEqual([{ ...todo, completed }, second]);
+    expect(announce).not.toHaveBeenCalled();
+    expect(store.getSnapshot().revertedAt.size).toBe(0);
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: todosQueryKey });
+  });
+
+  it.each([
+    ['complete', first, true, 'a 503 problem', () => problem('/problems/unavailable', 503), `Couldn't mark “Already here” done, so it's still open. ${UNAVAILABLE}`],
+    ['complete', first, true, 'no response', () => Promise.reject(new TypeError('Failed to fetch')), `Couldn't mark “Already here” done, so it's still open. ${NETWORK}`],
+    ['reopen', done, false, 'a 503 problem', () => problem('/problems/unavailable', 503), `Couldn't reopen “Already here”, so it's still done. ${UNAVAILABLE}`],
+    ['reopen', done, false, 'an HTML 500', () => new Response('<html>boom</html>', { status: 500, headers: { 'Content-Type': 'text/html' } }), "Couldn't reopen “Already here”, so it's still done. Something went wrong on our side. Try again."],
+  ])('U4 a %s failing with %s reverts only that todo, records the revert and announces the lead plus reason', async (_name, todo, completed, _answerName, answer, message) => {
+    const { helper, store, announce, invalidate, list, queryClient } = setup([todo, second]);
+    const calls = heldPatches();
+
+    const pending = helper.setCompleted(todo, completed);
+    await flush();
+    // Another todo changes meanwhile; the revert keeps that change.
+    queryClient.setQueryData<Todo[]>(todosQueryKey, (todos) => todos!.map((t) => (t.id === second.id ? { ...t, description: 'Changed' } : t)));
+    calls[0]!.settle(answer);
+    const outcome = await pending;
+
+    expect(outcome).toMatchObject({ status: 'failed' });
+    expect(list()).toEqual([todo, { ...second, description: 'Changed' }]);
+    expect([...store.getSnapshot().revertedAt]).toEqual([[todo.id, 1234]]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', message);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: todosQueryKey });
+  });
+
+  it.each([
+    ['complete', first, true],
+    ['reopen', done, false],
+  ])('U4 a %s answered 404 reverts and announces deletedElsewhere, with no lead or reason', async (_name, todo, completed) => {
+    const { helper, store, announce, list } = setup([todo, second]);
+    const calls = heldPatches();
+
+    const pending = helper.setCompleted(todo, completed);
+    await flush();
+    calls[0]!.settle(() => problem('/problems/not-found', 404));
+
+    await expect(pending).resolves.toMatchObject({ status: 'failed', failure: { kind: 'not-found' } });
+    expect(list()).toEqual([todo, second]);
+    expect(store.getSnapshot().revertedAt.get(todo.id)).toBe(1234);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', '“Already here” was deleted elsewhere.');
+  });
+
+  it('U4 two quick toggles are sent in order, and a failed first one re-applies the second on the restored value', async () => {
+    const { helper, store, list } = setup([first]);
+    const calls = heldPatches();
+
+    const completed = helper.setCompleted(first, true);
+    const reopened = helper.setCompleted(first, false);
+    await flush();
+    expect(list()).toEqual([first]);
+    expect(calls.map(({ body }) => body)).toEqual([{ completed: true }]);
+
+    calls[0]!.settle(() => problem('/problems/unavailable', 503));
+    await expect(completed).resolves.toMatchObject({ status: 'failed' });
+    expect(list()).toEqual([first]);
+    await flush();
+    expect(calls.map(({ body }) => body)).toEqual([{ completed: true }, { completed: false }]);
+
+    calls[1]!.settle(() => Response.json(first));
+    await expect(reopened).resolves.toEqual({ status: 'ok' });
+    expect(list()).toEqual([first]);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+  });
+
+  /** Holds each request by method, so a create and a toggle on its todo settle independently. */
+  function heldByMethod() {
+    type Settle = (answer: (body: Record<string, unknown>) => Response) => void;
+    const held: { POST: Settle[]; PATCH: Settle[] } = { POST: [], PATCH: [] };
+    fetchMock.mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((resolve) => {
+          const body = JSON.parse(String(init!.body)) as Record<string, unknown>;
+          held[init!.method as keyof typeof held].push((answer) => resolve(answer(body)));
+        }),
+    );
+    return held;
+  }
+
+  it('U5 a toggle on a todo whose create is pending shows at once and is sent only after the create settles', async () => {
+    const { helper, announce, list } = setup([second]);
+    const held = heldByMethod();
+
+    const added = helper.addTodo('Buy milk');
+    await flush();
+    const id = list()![0]!.id;
+    const completed = helper.setCompleted({ id, description: 'Buy milk' }, true);
+    await flush();
+
+    expect(list()![0]).toMatchObject({ id, completed: true });
+    expect(held.POST).toHaveLength(1);
+    expect(held.PATCH).toHaveLength(0);
+
+    held.POST[0]!((body) => Response.json({ ...body, completed: false, createdAt: '2026-11-25T10:00:00.000Z' }, { status: 201 }));
+    await expect(added).resolves.toMatchObject({ status: 'ok' });
+    await flush();
+    expect(held.PATCH).toHaveLength(1);
+    expect(fetchMock.mock.calls[1]![0]).toBe(`/api/todos/${id}`);
+
+    held.PATCH[0]!(() => Response.json({ id, description: 'Buy milk', completed: true, createdAt: '2026-11-25T10:00:00.000Z' }));
+    await expect(completed).resolves.toEqual({ status: 'ok' });
+    expect(announce).toHaveBeenCalledExactlyOnceWith('status', 'Added “Buy milk”.');
+  });
+
+  it('U5 a toggle behind a create that fails is dropped: not sent, announced or reverted', async () => {
+    const { helper, store, announce, list } = setup([second]);
+    const held = heldByMethod();
+
+    const added = helper.addTodo('Buy milk');
+    await flush();
+    const id = list()![0]!.id;
+    const completed = helper.setCompleted({ id, description: 'Buy milk' }, true);
+    await flush();
+
+    held.POST[0]!(() => problem('/problems/unavailable', 503));
+    await expect(added).resolves.toMatchObject({ status: 'failed' });
+    await expect(completed).resolves.toEqual({ status: 'dropped' });
+
+    expect(held.PATCH).toHaveLength(0);
+    expect(list()).toEqual([second]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't add “Buy milk”. ${UNAVAILABLE}`);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+  });
+});

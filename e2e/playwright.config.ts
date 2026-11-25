@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * E2e against the test profile, through web-test's origin (AD-20). One worker:
- * the suites share one list. Every project emulates reduced motion, so no axe
+ * each test empties the whole list in its beforeEach (`resetList`), so tests
+ * must never run in parallel. Every project emulates reduced motion, so no axe
  * scan lands mid-transition; motion.spec.ts turns motion back on and scans only
  * once no animation is running. `desktop-dark` reruns every spec in the dark
  * colour scheme.

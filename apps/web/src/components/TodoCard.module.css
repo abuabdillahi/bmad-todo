@@ -70,8 +70,16 @@
   }
 }
 
+/*
+ * Todo card (DESIGN.md Components › Todo card). The shadow and the done card's
+ * dashed outline each sit on their own layer, so each fades by opacity: a
+ * border can't animate from solid to dashed, and box-shadow is not animated
+ * (EXPERIENCE Motion). `isolation` keeps the shadow layer above the page's
+ * background.
+ */
 .card {
   position: relative;
+  isolation: isolate;
   display: flex;
   align-items: flex-start;
   gap: var(--todo-card-gap);
@@ -80,10 +88,44 @@
   border-radius: var(--todo-card-radius);
   background: var(--todo-card-background);
   color: var(--todo-card-foreground);
+}
+
+.card::before,
+.card::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--todo-card-border-width));
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.card::before {
+  z-index: -1;
   box-shadow: var(--todo-card-shadow);
 }
 
-.text {
+.card::after {
+  border: var(--todo-card-border-width) var(--todo-card-done-border-style) var(--todo-card-done-border-color);
+  opacity: 0;
+}
+
+/* Done: no fill, no shadow, the dashed outline, receded text (R6). */
+.done {
+  background: var(--todo-card-done-background);
+  border-color: transparent;
+  color: var(--todo-card-done-foreground);
+}
+
+.done::before {
+  /* The done card's shadow (`--todo-card-done-shadow: none`), reached by fading the shadow layer: box-shadow is not animated. */
+  opacity: 0;
+}
+
+.done::after {
+  opacity: 1;
+}
+
+.content {
   flex: 1;
   min-width: 0;
   padding-top: var(--todo-card-text-nudge);
@@ -93,8 +135,202 @@
   overflow-wrap: anywhere;
 }
 
-@media (forced-colors: active) {
+/* Done chip: decorative, after the text and on its baseline. */
+.chip {
+  display: inline-block;
+  margin-left: var(--done-chip-margin-left);
+  padding: 0 var(--done-chip-padding-inline);
+  border-radius: var(--done-chip-radius);
+  background: var(--done-chip-background);
+  color: var(--done-chip-foreground);
+  font-size: var(--font-chip-size);
+  font-weight: var(--font-chip-weight);
+  line-height: var(--font-chip-line-height);
+  vertical-align: var(--done-chip-raise);
+  overflow-wrap: normal;
+}
+
+/*
+ * Completion check: the native checkbox covers the 44×44 hit area and is the
+ * focus and touch target; the SVG circle and tick beneath it are decorative,
+ * and carry the focus ring.
+ */
+.check {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--completion-check-hit-area);
+  height: var(--completion-check-hit-area);
+  margin: var(--completion-check-margin);
+}
+
+.check input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  opacity: 0;
+  appearance: none;
+  cursor: pointer;
+}
+
+.circle {
+  display: block;
+  width: var(--completion-check-size);
+  height: var(--completion-check-size);
+  border-radius: var(--completion-check-radius);
+  overflow: visible;
+}
+
+.circle circle {
+  fill: var(--completion-check-background);
+  stroke: var(--completion-check-border-color);
+  stroke-width: var(--completion-check-border-width);
+}
+
+.circle path {
+  fill: none;
+  stroke: var(--completion-check-done-glyph);
+  stroke-width: var(--completion-check-done-glyph-stroke);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: var(--completion-check-done-glyph-dash);
+  stroke-dashoffset: var(--completion-check-done-glyph-dash);
+}
+
+@media (hover: hover) {
+  .check input:hover + .circle circle {
+    stroke: var(--completion-check-border-color-hover);
+  }
+}
+
+.check input:active + .circle circle {
+  fill: var(--completion-check-background-pressed);
+}
+
+.check input:checked + .circle circle {
+  fill: var(--completion-check-done-background);
+  stroke: var(--completion-check-done-border-color);
+}
+
+.check input:checked + .circle path {
+  stroke-dashoffset: 0;
+}
+
+@media (hover: hover) {
+  .check input:checked:hover + .circle circle {
+    stroke: var(--completion-check-done-border-color-hover);
+  }
+}
+
+.check input:checked:active + .circle circle {
+  stroke: var(--completion-check-done-border-color-hover);
+}
+
+.check input:focus-visible {
+  outline: none;
+}
+
+.check input:focus-visible + .circle {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Revert flag: an outline clear of the card's edge, following its radius. */
+.flagged {
+  outline: var(--revert-flag-width) solid var(--revert-flag-color);
+  outline-offset: var(--revert-flag-offset);
+}
+
+/* Complete, reopen and revert (EXPERIENCE Motion). Reduced motion: every change is instant, the flag static. */
+@media (prefers-reduced-motion: no-preference) {
   .card {
-    box-shadow: none;
+    transition:
+      background-color var(--motion-duration-base) var(--motion-ease-out),
+      border-color var(--motion-duration-base) var(--motion-ease-out),
+      color var(--motion-duration-base) var(--motion-ease-out);
+  }
+
+  .card::before,
+  .card::after {
+    transition: opacity var(--motion-duration-base) var(--motion-ease-out);
+  }
+
+  .circle circle {
+    transition:
+      fill var(--motion-duration-base) var(--motion-ease-out),
+      stroke var(--motion-duration-base) var(--motion-ease-out);
+  }
+
+  .circle path {
+    transition: stroke-dashoffset var(--motion-duration-base) var(--motion-ease-out);
+  }
+
+  /* Fades in on complete; removed at once on reopen. */
+  .chip {
+    transition: opacity var(--motion-duration-base) var(--motion-ease-out);
+  }
+
+  @starting-style {
+    .chip {
+      opacity: 0;
+    }
+  }
+
+  .flagged {
+    animation: todo-card-revert-flag var(--motion-duration-revert) var(--motion-ease-in-out);
+  }
+
+  /* A card that entered keeps its enter animation listed; the flag runs beside it, never replacing it. */
+  .enter .flagged {
+    animation:
+      todo-card-in var(--motion-duration-base) var(--motion-ease-out),
+      todo-card-revert-flag var(--motion-duration-revert) var(--motion-ease-in-out);
+  }
+}
+
+/* Two pulses over the flag's duration, ending clear, so the flag's removal shows nothing. */
+@keyframes todo-card-revert-flag {
+  0%,
+  50%,
+  100% {
+    outline-color: transparent;
+  }
+
+  25%,
+  75% {
+    outline-color: var(--revert-flag-color);
+  }
+}
+
+/* Forced colours (DESIGN.md Colors): no shadow, a real dashed border, CanvasText for the check and the flag. */
+@media (forced-colors: active) {
+  .card::before,
+  .card::after {
+    display: none;
+  }
+
+  .done {
+    border-style: var(--todo-card-done-border-style);
+    border-color: CanvasText;
+  }
+
+  .circle path {
+    stroke: CanvasText;
+  }
+
+  /* Every check state: each selector as specific as its state rule above, and later, so it wins. */
+  .check input:not(:checked) + .circle circle,
+  .check input:checked + .circle circle,
+  .check input:checked:hover + .circle circle,
+  .check input:checked:active + .circle circle {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .flagged {
+    outline-color: CanvasText;
+    animation: none;
   }
 }
