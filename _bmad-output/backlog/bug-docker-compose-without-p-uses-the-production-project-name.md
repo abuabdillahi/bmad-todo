@@ -11,7 +11,7 @@ risk: low
 severity: P3
 tracker_id: "34"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/34"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # docker compose without -p uses the production project name
