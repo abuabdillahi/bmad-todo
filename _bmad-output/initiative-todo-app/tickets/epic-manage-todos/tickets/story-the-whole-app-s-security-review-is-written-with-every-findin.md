@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "49"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/49"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # The whole app's security review is written, with every finding settled
