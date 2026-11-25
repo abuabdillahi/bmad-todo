@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fastifySwagger from '@fastify/swagger';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Config } from './config.ts';
@@ -17,6 +18,9 @@ export interface BuildAppOptions {
 export async function buildApp({ config, db }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: config.logLevel },
+    // A UUID per request, unique across restarts (AD-17). Fastify 5 leaves
+    // requestIdHeader off, so a client cannot choose its own id.
+    genReqId: () => randomUUID(),
     // Strict validation (AD-8): Fastify's defaults coerce types and strip unknown fields.
     ajv: { customOptions: { coerceTypes: false, removeAdditional: false } },
     // Errors raised before routing (e.g. a malformed URL) are problems too (AD-9).
