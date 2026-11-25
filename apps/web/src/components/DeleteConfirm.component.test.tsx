@@ -1,17 +1,22 @@
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
-import type { CreateTodoBody, Todo, UpdateTodoBody } from '@todo/contract';
-import { server } from '../../test/msw.ts';
-import { renderApp } from '../../test/render.tsx';
-import { todosQueryKey } from '../todos/query.ts';
-import { useTodosContext, type TodosContextValue } from '../todos/TodosProvider.tsx';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { HttpResponse } from 'msw';
+import type { Todo } from '@todo/contract';
+import {
+  card,
+  check,
+  GENERIC,
+  holdLeaveTimers,
+  liveElement,
+  NETWORK,
+  problem,
+  renderLoaded,
+  row,
+  serve,
+  UNAVAILABLE,
+} from '../../test/todos.tsx';
 import { LEAVE_MS } from './TodoList.tsx';
 import buttons from './CardButton.module.css';
 import styles from './TodoCard.module.css';
-
-const UNAVAILABLE = "The server isn't available right now. Try again in a moment.";
-const NETWORK = 'Check your connection and try again.';
-const GENERIC = 'Something went wrong on our side. Try again.';
 
 const milk: Todo = {
   id: 'a0000000-0000-4000-8000-000000000001',
@@ -31,92 +36,6 @@ const bills: Todo = {
   completed: false,
   createdAt: '2026-11-22T10:00:00.000Z',
 };
-
-/** A gate a handler waits on until the test opens it. */
-function gate() {
-  let open: () => void = () => {};
-  const opened = new Promise<void>((resolve) => (open = resolve));
-  return { opened, open: () => open() };
-}
-
-const problem = (type: string, status: number) =>
-  HttpResponse.json({ type, title: 'x', status, detail: 'x' }, { status, headers: { 'Content-Type': 'application/problem+json' } });
-
-/**
- * A server holding `initial`: GET lists what it holds; each PATCH waits for
- * `release`, then applies the body (404 for an id it doesn't hold); each DELETE
- * is recorded, waits for `deleted`, then answers with `failDelete` if set, else
- * removes the todo with a 204 (404 for an id it doesn't hold); each POST waits
- * for `created`, then answers with `failCreate` if set, else stores the todo.
- */
-function serve(initial: Todo[]) {
-  const state = {
-    todos: initial.map((todo) => ({ ...todo })),
-    lists: 0,
-    patches: [] as { id: string; body: UpdateTodoBody }[],
-    deletes: [] as { id: string; body: string; contentType: string | null }[],
-    release: gate(),
-    deleted: gate(),
-    failDelete: undefined as undefined | (() => Response | Promise<Response>),
-    created: gate(),
-    failCreate: undefined as undefined | (() => Response),
-  };
-  server.use(
-    http.get('*/api/todos', () => {
-      state.lists += 1;
-      return HttpResponse.json(state.todos);
-    }),
-    http.patch('*/api/todos/:id', async ({ params, request }) => {
-      const id = String(params.id);
-      const body = (await request.json()) as UpdateTodoBody;
-      state.patches.push({ id, body });
-      await state.release.opened;
-      const at = state.todos.findIndex((todo) => todo.id === id);
-      if (at === -1) return problem('/problems/not-found', 404);
-      state.todos[at] = { ...state.todos[at]!, ...body };
-      return HttpResponse.json(state.todos[at]);
-    }),
-    http.delete('*/api/todos/:id', async ({ params, request }) => {
-      const id = String(params.id);
-      state.deletes.push({ id, body: await request.text(), contentType: request.headers.get('Content-Type') });
-      await state.deleted.opened;
-      if (state.failDelete) return state.failDelete();
-      const at = state.todos.findIndex((todo) => todo.id === id);
-      if (at === -1) return problem('/problems/not-found', 404);
-      state.todos.splice(at, 1);
-      return new HttpResponse(null, { status: 204 });
-    }),
-    http.post('*/api/todos', async ({ request }) => {
-      const body = (await request.json()) as CreateTodoBody;
-      await state.created.opened;
-      if (state.failCreate) return state.failCreate();
-      const todo: Todo = { ...body, completed: false, createdAt: new Date().toISOString() };
-      state.todos.unshift(todo);
-      return HttpResponse.json(todo, { status: 201 });
-    }),
-  );
-  return state;
-}
-
-/** The Announcer's live element: the status outside every form. */
-function liveElement(): HTMLElement {
-  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null && !el.hasAttribute('data-loading-status'));
-  expect(statuses).toHaveLength(1);
-  return statuses[0]!;
-}
-
-function check(name: string): HTMLInputElement {
-  return screen.getByRole('checkbox', { name }) as HTMLInputElement;
-}
-
-function row(name: string): HTMLElement {
-  return check(name).closest('li')!;
-}
-
-/** The card element inside a row: `li` › body › card. */
-function card(name: string): HTMLElement {
-  return row(name).firstElementChild!.firstElementChild as HTMLElement;
-}
 
 function editButton(name: string): HTMLButtonElement {
   return within(row(name)).getByRole('button', { name: `Edit “${name}”` }) as HTMLButtonElement;
@@ -142,46 +61,6 @@ function cancelButton(name: string): HTMLButtonElement {
 
 function leavingRows(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('li[data-leaving]')];
-}
-
-/**
- * Holds every leave timer (a `LEAVE_MS` setTimeout) until `run()`, so a Leaving
- * row stays rendered for as long as a test needs; other timers run as usual.
- */
-function holdLeaveTimers() {
-  const real = globalThis.setTimeout;
-  const held: (() => void)[] = [];
-  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: () => void, ms?: number, ...args: unknown[]) => {
-    if (ms === LEAVE_MS) {
-      held.push(callback);
-      return real(() => {}, 0);
-    }
-    return real(callback, ms, ...args);
-  }) as typeof setTimeout);
-  return {
-    held,
-    run: () => act(() => held.splice(0).forEach((callback) => callback())),
-  };
-}
-
-async function renderLoaded(names: string[]) {
-  let context: TodosContextValue | undefined;
-  function Probe() {
-    context = useTodosContext();
-    return null;
-  }
-  const app = renderApp({ children: <Probe /> });
-  await waitFor(() => expect(within(app.list).queryAllByRole('checkbox')).toHaveLength(names.length));
-  await waitFor(() => expect(app.queryClient.getQueryState(todosQueryKey)?.fetchStatus).toBe('idle'));
-  // Calls the list area makes; the helper holds its own reference, so its announcements are not counted.
-  const listAnnounce = vi.spyOn(context!.announcer, 'announce');
-  // A refetch, then the macrotask on which TanStack notifies its observers.
-  const refetch = () =>
-    act(async () => {
-      await app.queryClient.refetchQueries({ queryKey: todosQueryKey });
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  return { ...app, context: context!, listAnnounce, refetch };
 }
 
 /** Waits for a confirmed delete's answer, so no request of this test reaches the next test's handlers. */

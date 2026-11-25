@@ -887,3 +887,51 @@ describe('mutation helper: delete (U4, U5)', () => {
     expect(store.getSnapshot().pendingCount).toBe(0);
   });
 });
+
+describe('mutation helper: not-found record (U5)', () => {
+  const third: Todo = {
+    id: 'a0000000-0000-4000-8000-000000000003',
+    description: 'Gone already',
+    completed: false,
+    createdAt: '2026-11-21T10:00:00.000Z',
+  };
+  const DELETED = '“Already here” was deleted elsewhere.';
+
+  /** Answers the next request with `answer`. */
+  function answerNext(answer: () => Response | Promise<Response>) {
+    fetchMock.mockImplementationOnce(async () => answer());
+  }
+
+  it('U5 a follow-up answered 404 records its id and the text it announced; other failures and successes record nothing', async () => {
+    const { helper, announce } = setup([first, second, third]);
+    expect(helper.lastNotFound()).toBeNull();
+
+    // A success, a failure that isn't not-found, a delete answered 404 (success) and an add answered 404 (a create).
+    answerNext(() => Response.json({ ...first, completed: true }));
+    await expect(helper.setCompleted(first, true)).resolves.toEqual({ status: 'ok' });
+    answerNext(() => problem('/problems/unavailable', 503));
+    await expect(helper.editDescription(first, 'Edited')).resolves.toMatchObject({ status: 'failed' });
+    answerNext(() => problem('/problems/not-found', 404));
+    await expect(helper.deleteTodo(third)).resolves.toEqual({ status: 'ok' });
+    answerNext(() => problem('/problems/not-found', 404));
+    await expect(helper.addTodo('New one')).resolves.toMatchObject({ status: 'failed', failure: { kind: 'not-found' } });
+    expect(helper.lastNotFound()).toBeNull();
+
+    answerNext(() => problem('/problems/not-found', 404));
+    await expect(helper.editDescription(first, 'Edited')).resolves.toMatchObject({ status: 'failed', failure: { kind: 'not-found' } });
+    expect(helper.lastNotFound()).toEqual({ id: first.id, text: DELETED });
+    expect(announce).toHaveBeenLastCalledWith('failure', DELETED);
+
+    // Later calls that aren't a follow-up's 404 leave the record as it was.
+    answerNext(() => problem('/problems/unavailable', 503));
+    await expect(helper.setCompleted(second, true)).resolves.toMatchObject({ status: 'failed' });
+    answerNext(() => Response.json({ ...second, completed: true }));
+    await expect(helper.setCompleted(second, true)).resolves.toEqual({ status: 'ok' });
+    expect(helper.lastNotFound()).toEqual({ id: first.id, text: DELETED });
+
+    // The next follow-up's 404 replaces it.
+    answerNext(() => problem('/problems/not-found', 404));
+    await expect(helper.setCompleted(second, false)).resolves.toMatchObject({ status: 'failed', failure: { kind: 'not-found' } });
+    expect(helper.lastNotFound()).toEqual({ id: second.id, text: '“Also here” was deleted elsewhere.' });
+  });
+});

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { announcement, MESSAGES, resetList, todoItem, UNAVAILABLE_BODY, uniqueDescription } from './helpers.ts';
+import { announcement, MESSAGES, regainFocus, resetList, todoItem, UNAVAILABLE_BODY, uniqueDescription } from './helpers.ts';
 
 /**
  * A failed background refresh (E6, E8, story 5): the list stays, the Announcer
@@ -30,11 +30,6 @@ async function addTodo(page: Page, description: string) {
   await expect(announcement(page, MESSAGES.addOutcome)).toHaveText(MESSAGES.added(description));
   await refetched;
   return field;
-}
-
-/** The tab regaining focus: TanStack Query refetches on `visibilitychange` while the page is visible. */
-async function regainFocus(page: Page) {
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange', { bubbles: true })));
 }
 
 test.describe('refresh failure', () => {

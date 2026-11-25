@@ -1,14 +1,9 @@
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
-import type { CreateTodoBody, Todo, UpdateTodoBody } from '@todo/contract';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import type { Todo } from '@todo/contract';
 import { dropOnto } from '../../test/drop.ts';
-import { server } from '../../test/msw.ts';
 import { renderApp } from '../../test/render.tsx';
-import { todosQueryKey } from '../todos/query.ts';
-import { useTodosContext, type TodosContextValue } from '../todos/TodosProvider.tsx';
+import { card, check, liveElement, problem, renderLoaded, serve, UNAVAILABLE } from '../../test/todos.tsx';
 import styles from './TodoCard.module.css';
-
-const UNAVAILABLE = "The server isn't available right now. Try again in a moment.";
 
 const milk: Todo = {
   id: 'a0000000-0000-4000-8000-000000000001',
@@ -22,71 +17,6 @@ const rent: Todo = {
   completed: true,
   createdAt: '2026-11-23T10:00:00.000Z',
 };
-
-/** A gate a handler waits on until the test opens it. */
-function gate() {
-  let open: () => void = () => {};
-  const opened = new Promise<void>((resolve) => (open = resolve));
-  return { opened, open: () => open() };
-}
-
-const problem = (type: string, status: number) =>
-  HttpResponse.json({ type, title: 'x', status, detail: 'x' }, { status, headers: { 'Content-Type': 'application/problem+json' } });
-
-/**
- * A server holding `initial`: GET lists what it holds; each PATCH waits for
- * `release`, then answers with `fail` if set, else applies the body (404 for an
- * id it doesn't hold); each POST waits for `created`, then answers with
- * `failCreate` if set, else stores the todo.
- */
-function serve(initial: Todo[]) {
-  const state = {
-    todos: initial.map((todo) => ({ ...todo })),
-    lists: 0,
-    patches: [] as { id: string; body: UpdateTodoBody }[],
-    release: gate(),
-    fail: undefined as undefined | (() => Response),
-    created: gate(),
-    failCreate: undefined as undefined | (() => Response),
-  };
-  server.use(
-    http.get('*/api/todos', () => {
-      state.lists += 1;
-      return HttpResponse.json(state.todos);
-    }),
-    http.patch('*/api/todos/:id', async ({ params, request }) => {
-      const id = String(params.id);
-      const body = (await request.json()) as UpdateTodoBody;
-      state.patches.push({ id, body });
-      await state.release.opened;
-      if (state.fail) return state.fail();
-      const at = state.todos.findIndex((todo) => todo.id === id);
-      if (at === -1) return problem('/problems/not-found', 404);
-      state.todos[at] = { ...state.todos[at]!, ...body };
-      return HttpResponse.json(state.todos[at]);
-    }),
-    http.post('*/api/todos', async ({ request }) => {
-      const body = (await request.json()) as CreateTodoBody;
-      await state.created.opened;
-      if (state.failCreate) return state.failCreate();
-      const todo: Todo = { ...body, completed: false, createdAt: new Date().toISOString() };
-      state.todos.unshift(todo);
-      return HttpResponse.json(todo, { status: 201 });
-    }),
-  );
-  return state;
-}
-
-/** The Announcer's live element: the status outside every form. */
-function liveElement(): HTMLElement {
-  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null && !el.hasAttribute('data-loading-status'));
-  expect(statuses).toHaveLength(1);
-  return statuses[0]!;
-}
-
-function check(name: string): HTMLInputElement {
-  return screen.getByRole('checkbox', { name }) as HTMLInputElement;
-}
 
 function editButton(description: string): HTMLButtonElement {
   return screen.getByRole('button', { name: `Edit “${description}”` }) as HTMLButtonElement;
@@ -103,11 +33,6 @@ function editForm(): HTMLFormElement {
 /** The edit form's hidden Field status. */
 function editStatus(): HTMLElement {
   return within(editForm()).getByRole('status');
-}
-
-/** The card element inside a row: `li` › body › card. */
-function card(name: string): HTMLElement {
-  return check(name).closest('li')!.firstElementChild!.firstElementChild as HTMLElement;
 }
 
 /** A row's todo text: the span its Completion check's `aria-labelledby` names. */
@@ -132,26 +57,6 @@ function describedByText(field: HTMLElement): string {
  * error's words in the Field status one frame later.
  */
 const NOT_STATUS = { ignore: '[role="status"], script, style' };
-
-async function renderLoaded(names: string[]) {
-  let context: TodosContextValue | undefined;
-  function Probe() {
-    context = useTodosContext();
-    return null;
-  }
-  const app = renderApp({ children: <Probe /> });
-  await waitFor(() => expect(within(app.list).queryAllByRole('checkbox')).toHaveLength(names.length));
-  await waitFor(() => expect(app.queryClient.getQueryState(todosQueryKey)?.fetchStatus).toBe('idle'));
-  // Calls the list area makes; the helper holds its own reference, so its announcements are not counted.
-  const listAnnounce = vi.spyOn(context!.announcer, 'announce');
-  // A refetch, then the macrotask on which TanStack notifies its observers.
-  const refetch = () =>
-    act(async () => {
-      await app.queryClient.refetchQueries({ queryKey: todosQueryKey });
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  return { ...app, context: context!, listAnnounce, refetch };
-}
 
 describe('EditForm', () => {
   it('K3 Edit swaps the row to the form at once: the saved text all selected, focus in it, the check still there and toggling', async () => {
@@ -599,6 +504,27 @@ describe('EditForm', () => {
     expect(screen.queryByRole('textbox', { name: 'Edit description' })).toBeNull();
     expect(document.activeElement).toBe(check('Pay rent'));
     expect(listAnnounce).not.toHaveBeenCalled();
+  });
+
+  it('K3 a toggle answered 404 on one todo still lets the list announce another todo with the same text that a refetch removes in edit mode', async () => {
+    const twin: Todo = { ...milk, id: 'a0000000-0000-4000-8000-000000000004' };
+    const state = serve([milk, twin, rent]);
+    const { user, listAnnounce } = await renderLoaded(['Buy milk', 'Buy milk', 'Pay rent']);
+    const rowOf = (id: string) => document.querySelector<HTMLElement>(`li[data-todo-id="${id}"]`);
+    state.todos = state.todos.filter((todo) => todo.id === rent.id);
+    const lists = state.lists;
+
+    await user.click(within(rowOf(twin.id)!).getByRole('button', { name: 'Edit “Buy milk”' }));
+    await user.click(within(rowOf(milk.id)!).getByRole('checkbox'));
+    state.release.open();
+
+    await waitFor(() => expect(state.lists).toBe(lists + 1));
+    await waitFor(() => expect(rowOf(twin.id)).toBeNull());
+    expect(rowOf(milk.id)).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Edit description' })).toBeNull();
+    expect(document.activeElement).toBe(check('Pay rent'));
+    expect(listAnnounce).toHaveBeenCalledExactlyOnceWith('failure', '“Buy milk” was deleted elsewhere.');
+    await waitFor(() => expect(liveElement().textContent).toBe('“Buy milk” was deleted elsewhere.'));
   });
 
   it('K3 text changed elsewhere while editing: the draft is kept, and Save overwrites', async () => {

@@ -8,9 +8,13 @@ import {
   editButton,
   editField,
   focusAddField,
+  isPatch,
   MESSAGES,
+  patchAndRefetch,
   pressComposingEnter,
+  regainFocus,
   resetList,
+  TODO_PATH,
   todoItem,
   todoList,
   UNAVAILABLE_BODY,
@@ -28,10 +32,6 @@ import {
 
 test.beforeEach(({ request }) => resetList(request));
 
-/** A PATCH to one todo. */
-const isPatch = (route: Route) => route.request().method() === 'PATCH';
-const TODO_PATH = '**/api/todos/*';
-
 /** Records the body of every PATCH the page sends. */
 function recordPatches(page: Page): unknown[] {
   const bodies: unknown[] = [];
@@ -39,17 +39,6 @@ function recordPatches(page: Page): unknown[] {
     if (request.method() === 'PATCH') bodies.push(request.postDataJSON());
   });
   return bodies;
-}
-
-/** Waits for the next answered PATCH, then for the settle-time refetch that follows it. */
-function patchAndRefetch(page: Page) {
-  return page
-    .waitForResponse((response) => response.request().method() === 'PATCH')
-    .then((patch) =>
-      page
-        .waitForResponse((response) => response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/todos')
-        .then(() => patch),
-    );
 }
 
 /** Opens the app and Tabs from the add field to the only todo's Edit button: field, Add, check, Edit. */
@@ -79,11 +68,6 @@ function lineCount(field: Locator): Promise<number> {
     const content = el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
     return Math.round(content / parseFloat(style.lineHeight));
   });
-}
-
-/** A focus refetch: TanStack refetches the list when the tab becomes visible again. */
-async function regainFocus(page: Page) {
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange', { bubbles: true })));
 }
 
 test('E4 E7 E8 an edit by keyboard shows the new text before the save answers, persists after a reload, and Escape changes nothing', async ({

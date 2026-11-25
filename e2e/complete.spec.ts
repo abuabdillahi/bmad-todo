@@ -5,8 +5,11 @@ import {
   completionCheck,
   createTodo,
   focusAddField,
+  isPatch,
   MESSAGES,
+  patchAndRefetch,
   resetList,
+  TODO_PATH,
   todoItem,
   UNAVAILABLE_BODY,
   uniqueDescription,
@@ -19,10 +22,6 @@ import {
  */
 
 test.beforeEach(({ request }) => resetList(request));
-
-/** A PATCH to one todo. */
-const isPatch = (route: Route) => route.request().method() === 'PATCH';
-const TODO_PATH = '**/api/todos/*';
 
 /** The computed colour of the text that names `check`. */
 function textColour(check: Locator): Promise<string> {
@@ -39,17 +38,6 @@ function cardLayers(check: Locator): Promise<{ shadow: string; dashed: string }>
 
 function doneChip(page: Page, description: string): Locator {
   return todoItem(page, description).getByText('Done', { exact: true });
-}
-
-/** Waits for the next answered PATCH, then for the settle-time refetch that follows it. */
-function patchAndRefetch(page: Page) {
-  return page
-    .waitForResponse((response) => response.request().method() === 'PATCH')
-    .then((patch) =>
-      page
-        .waitForResponse((response) => response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/todos')
-        .then(() => patch),
-    );
 }
 
 /** Opens the app and Tabs from the add field to the todo's check, its only todo: field, Add, check. */

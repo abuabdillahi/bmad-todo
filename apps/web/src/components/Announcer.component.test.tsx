@@ -1,17 +1,14 @@
 import { focusManager } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { HttpResponse } from 'msw';
 import type { Todo } from '@todo/contract';
-import { server } from '../../test/msw.ts';
 import { renderApp } from '../../test/render.tsx';
+import { GENERIC, liveElement, NETWORK, regainFocus, serveLists, settled, UNAVAILABLE, type Answer } from '../../test/todos.tsx';
 import { useAnnouncer, useTodosStore } from '../todos/hooks.ts';
 import { todosQueryKey } from '../todos/query.ts';
 import type { TodosSnapshot } from '../todos/store.ts';
 
 const REFRESH = "Couldn't refresh the list. You're seeing what was last loaded.";
-const UNAVAILABLE = "The server isn't available right now. Try again in a moment.";
-const NETWORK = 'Check your connection and try again.';
-const GENERIC = 'Something went wrong on our side. Try again.';
 
 const todo: Todo = {
   id: 'a0000000-0000-4000-8000-000000000001',
@@ -38,41 +35,7 @@ function todoText(item: HTMLElement): string {
   return document.getElementById(check.getAttribute('aria-labelledby')!)?.textContent ?? '';
 }
 
-type Answer = () => Response | Promise<Response>;
-
-/** GET /api/todos answers from a queue; the last answer repeats. Counts the requests. */
-function serveLists(...answers: Answer[]) {
-  const calls = { count: 0 };
-  server.use(
-    http.get('*/api/todos', () => {
-      const answer = answers[Math.min(calls.count, answers.length - 1)]!;
-      calls.count += 1;
-      return answer();
-    }),
-  );
-  return calls;
-}
-
 const listed: Answer = () => HttpResponse.json([todo]);
-
-/** The Announcer's live element: the status outside the add form. */
-function liveElement(): HTMLElement {
-  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null && !el.hasAttribute('data-loading-status'));
-  expect(statuses).toHaveLength(1);
-  return statuses[0]!;
-}
-
-async function settled(queryClient: ReturnType<typeof renderApp>['queryClient']) {
-  await waitFor(() => expect(queryClient.getQueryState(todosQueryKey)?.fetchStatus).toBe('idle'));
-}
-
-/** A focus refetch, the way TanStack sees the tab regain focus. */
-async function regainFocus() {
-  await act(async () => {
-    focusManager.setFocused(false);
-    focusManager.setFocused(true);
-  });
-}
 
 async function renderLoaded(...later: Answer[]) {
   const calls = serveLists(listed, ...later);

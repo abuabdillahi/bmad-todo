@@ -4,14 +4,22 @@ import { http, HttpResponse } from 'msw';
 import type { CreateTodoBody, Todo, UpdateTodoBody } from '@todo/contract';
 import { server } from '../../test/msw.ts';
 import { renderApp } from '../../test/render.tsx';
-import { todosQueryKey } from '../todos/query.ts';
+import {
+  check,
+  gate,
+  GENERIC,
+  holdLeaveTimers,
+  liveElement,
+  NETWORK,
+  regainFocus,
+  serveLists,
+  settled,
+  UNAVAILABLE,
+  type Answer,
+} from '../../test/todos.tsx';
 import { LINE_CLEAR_MS } from './loading-status.ts';
-import { LEAVE_MS } from './TodoList.tsx';
 
 const LEAD = "Couldn't load your todos.";
-const UNAVAILABLE = "The server isn't available right now. Try again in a moment.";
-const NETWORK = 'Check your connection and try again.';
-const GENERIC = 'Something went wrong on our side. Try again.';
 const LOADING = 'Loading your todos';
 const LOADED = 'Your todos are loaded.';
 const EMPTY = 'No todos yet.';
@@ -29,15 +37,6 @@ const rent: Todo = {
   createdAt: '2026-11-23T10:00:00.000Z',
 };
 
-/** A gate a handler waits on until the test opens it. */
-function gate() {
-  let open: () => void = () => {};
-  const opened = new Promise<void>((resolve) => (open = resolve));
-  return { opened, open: () => open() };
-}
-
-type Answer = () => Response | Promise<Response>;
-
 const problem = (type: string, status: number) => () =>
   HttpResponse.json({ type, title: 'x', status, detail: 'x' }, { status, headers: { 'Content-Type': 'application/problem+json' } });
 const unavailable = problem('/problems/unavailable', 503);
@@ -50,19 +49,6 @@ const after = (held: { opened: Promise<void> }, answer: Answer): Answer => async
   return answer();
 };
 const never: Answer = () => new Promise<Response>(() => {});
-
-/** GET /api/todos answers from a queue; the last answer repeats. Counts the requests. */
-function serveLists(...answers: Answer[]) {
-  const calls = { count: 0 };
-  server.use(
-    http.get('*/api/todos', () => {
-      const answer = answers[Math.min(calls.count, answers.length - 1)]!;
-      calls.count += 1;
-      return answer();
-    }),
-  );
-  return calls;
-}
 
 /** The todos the server holds: creates go on top, and `listStored` lists them. */
 const stored: { todos: Todo[] } = { todos: [] };
@@ -135,23 +121,12 @@ function watchHandOff(button: HTMLElement) {
   return blurs;
 }
 
-/** The Announcer's live element: the status outside the add form and the list area. */
-function liveElement(): HTMLElement {
-  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null && !el.hasAttribute('data-loading-status'));
-  expect(statuses).toHaveLength(1);
-  return statuses[0]!;
-}
-
 const skeletonList = () => document.querySelector<HTMLElement>('ul[aria-busy="true"]');
 const todoList = () => screen.queryByRole('list', { name: 'Todos' });
 const emptyPanel = () => screen.queryByText(EMPTY, { ignore: '[role="status"]' });
 const tryAgain = () => screen.queryByRole('button', { name: 'Try again' });
 /** The List error panel's line, beside Try again. */
 const panelLine = () => tryAgain()?.parentElement?.querySelector('p')?.textContent ?? null;
-
-function check(name: string): HTMLInputElement {
-  return screen.getByRole('checkbox', { name }) as HTMLInputElement;
-}
 
 /** The rows' todo texts, in order (Leaving copies included). */
 function items(): string[] {
@@ -163,41 +138,12 @@ function items(): string[] {
     .map((box) => document.getElementById(box!.getAttribute('aria-labelledby')!)?.textContent ?? '');
 }
 
-async function settled(queryClient: ReturnType<typeof renderApp>['queryClient']) {
-  await waitFor(() => expect(queryClient.getQueryState(todosQueryKey)?.fetchStatus).toBe('idle'));
-}
-
-/** A focus refetch, the way TanStack sees the tab regain focus. */
-async function regainFocus() {
-  await act(async () => {
-    focusManager.setFocused(false);
-    focusManager.setFocused(true);
-  });
-}
-
 /** A reconnect refetch, the way TanStack sees the network come back. */
 async function reconnect() {
   await act(async () => {
     onlineManager.setOnline(false);
     onlineManager.setOnline(true);
   });
-}
-
-/**
- * Holds every leave timer (a `LEAVE_MS` setTimeout) until `run()`, so a Leaving
- * copy stays rendered while the test acts.
- */
-function holdLeaveTimers() {
-  const real = globalThis.setTimeout;
-  const held: (() => void)[] = [];
-  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: () => void, ms?: number, ...args: unknown[]) => {
-    if (ms === LEAVE_MS) {
-      held.push(callback);
-      return real(() => {}, 0);
-    }
-    return real(callback, ms, ...args);
-  }) as typeof setTimeout);
-  return { run: () => act(() => held.splice(0).forEach((callback) => callback())) };
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
