@@ -59,11 +59,17 @@ const coverageSources = {
   integration: ['apps/api/src/**', 'packages/contract/src/**'],
 };
 
+/** Vitest's JSON report for a project, which scenario-coverage.mjs reads by scenario id. */
+function jsonReport(project) {
+  return ['--reporter=default', '--reporter=json', `--outputFile.json=coverage/${project}-report.json`];
+}
+
 function coverage(project) {
   return [
     'exec', 'vitest', 'run', '--project', project,
     '--coverage.enabled', `--coverage.reportsDirectory=coverage/${project}`,
     ...coverageSources[project].map((glob) => `--coverage.include=${glob}`),
+    ...jsonReport(project),
   ];
 }
 
@@ -82,15 +88,22 @@ try {
   await step('integration', 'pnpm', coverage('integration'));
 
   if (up) {
-    await step('contract', 'pnpm', [
-      'exec', 'vitest', 'run', '--project', 'contract',
-      '--reporter=default', '--reporter=json', '--outputFile.json=coverage/contract-report.json',
-    ]);
+    await step('contract', 'pnpm', ['exec', 'vitest', 'run', '--project', 'contract', ...jsonReport('contract')]);
     await step('playwright browsers', 'pnpm', ['--filter', '@todo/e2e', 'exec', 'playwright', 'install', 'chromium']);
     await step('e2e', 'pnpm', ['--filter', '@todo/e2e', 'exec', 'playwright', 'test']);
+    // Last, because it takes the API away: with api stopped and web-test still
+    // up, nginx must answer /api/* with the unavailable problem (AD-4).
+    if (await step('stop api', 'docker', [...compose, 'stop', 'api'])) {
+      await step('contract-unavailable', 'pnpm', [
+        'exec', 'vitest', 'run', '--project', 'contract-unavailable', ...jsonReport('contract-unavailable'),
+      ]);
+    } else {
+      skip('contract-unavailable', 'api did not stop');
+    }
   } else {
     skip('contract', 'todo-test did not start');
     skip('e2e', 'todo-test did not start');
+    skip('contract-unavailable', 'todo-test did not start');
   }
 
   await step('scenario coverage', 'node', ['scripts/scenario-coverage.mjs']);

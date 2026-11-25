@@ -322,6 +322,10 @@ importers:
       typebox:
         specifier: 1.4.7
         version: 1.4.7
+    devDependencies:
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
 
 packages:
 
