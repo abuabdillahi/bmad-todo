@@ -3,6 +3,8 @@
 # on the Hetzner host as compose project `todo`, profile `prod` (AD-1, AD-3).
 # Rollback: run this workflow by hand on `main` with an earlier SHA. That deploy
 # reuses the images already in GHCR for it, and its compose.yml, with no test or build.
+# Run by hand from any other branch or a tag, `dispatch-off-main` fails the run with
+# an error saying so, and nothing deploys.
 # Catch-up (R22): every 30 minutes, `catch-up` reads the SHA production runs and
 # scripts/deploy-catch-up.mjs decides whether main's tip, left undeployed by a deploy
 # the deploy-prod group cancelled or a push with no run, needs deploying (`[skip ci]`
@@ -31,6 +33,24 @@ env:
   WEB_IMAGE: ghcr.io/abuabdillahi/bmad-todo-web
 
 jobs:
+  # A run by hand is a rollback, which deploys only from main (`deploy`'s if:). Started
+  # from another branch or a tag, every other job skips and the run would look finished,
+  # so this job fails it with the reason. It needs and reads nothing, and no job needs it.
+  dispatch-off-main:
+    if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Refuse a rollback started off main
+        run: |
+          reason="Rollback runs only from main, and this run was started from $GITHUB_REF_NAME, so nothing was deployed. Run the workflow again and choose main under \"Use workflow from\"."
+          # Workflow-command data: % is escaped (a ref name has no CR, LF or ':'); the summary is plain.
+          data=${reason//'%'/'%25'}
+          echo "::error title=Rollback not run::$data"
+          printf '### Rollback not run\n\n%s\n' "$reason" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
   # Scheduled runs only: whether main's tip (github.sha) needs deploying. Not in
   # deploy-prod, since a pending job there would replace a pending deploy.
   catch-up:
