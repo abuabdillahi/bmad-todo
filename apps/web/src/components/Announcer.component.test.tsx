@@ -57,7 +57,7 @@ const listed: Answer = () => HttpResponse.json([todo]);
 
 /** The Announcer's live element: the status outside the add form. */
 function liveElement(): HTMLElement {
-  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null);
+  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null && !el.hasAttribute('data-loading-status'));
   expect(statuses).toHaveLength(1);
   return statuses[0]!;
 }
@@ -181,8 +181,9 @@ describe('Announcer: refresh failures', () => {
       return null;
     }
     const calls = serveLists(listed, unavailableProblem);
-    const { list, queryClient } = renderApp({ children: <Caller /> });
-    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
+    const app = renderApp({ children: <Caller /> });
+    const { queryClient } = app;
+    await waitFor(() => expect(within(app.list).getAllByRole('listitem')).toHaveLength(1));
     await settled(queryClient);
 
     act(() => announce('failure', 'Couldn’t add a thing.'));
@@ -206,8 +207,9 @@ describe('Announcer: refresh failures', () => {
       return null;
     }
     const calls = serveLists(listed, unavailableProblem, listed);
-    const { list, queryClient } = renderApp({ children: <Probe /> });
-    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
+    const app = renderApp({ children: <Probe /> });
+    const { queryClient } = app;
+    await waitFor(() => expect(within(app.list).getAllByRole('listitem')).toHaveLength(1));
     await settled(queryClient);
 
     await regainFocus();

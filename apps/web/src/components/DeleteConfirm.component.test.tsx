@@ -100,7 +100,7 @@ function serve(initial: Todo[]) {
 
 /** The Announcer's live element: the status outside every form. */
 function liveElement(): HTMLElement {
-  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null);
+  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null && !el.hasAttribute('data-loading-status'));
   expect(statuses).toHaveLength(1);
   return statuses[0]!;
 }

@@ -85,8 +85,8 @@ function failureMessage(action: FailureAction, failure: FailureInfo, text = ''):
 /**
  * Every runtime string the app speaks or shows (AD-14, EXPERIENCE.md Voice and
  * Tone): the failure leads per action, the reasons per `FailureKind`, the
- * overrides, the status messages, the List error panel line and the inline
- * field strings.
+ * overrides, the status messages, the List error panel line and Try again, the
+ * Loading status lines, the Empty panel and the inline field strings.
  */
 export const messages = {
   /** Field strings, never sent to the Announcer (EXPERIENCE Voice and Tone › Inline, AD-8). */
@@ -109,5 +109,13 @@ export const messages = {
   deleted: (t: string): string => `Deleted ${quote(t)}.`,
   /** The List error panel line (and the Loading status on entering Error). */
   loadError: (kind: FailureKind): string => failureMessage('load', { kind }),
+  /** The Loading status, once the first load has run about 500 ms (AD-14). */
+  loading: 'Loading your todos',
+  /** The Loading status's recovery line (EXPERIENCE Component Patterns › Loading status › Recovery line). */
+  loaded: 'Your todos are loaded.',
+  /** The Empty panel. */
+  emptyList: 'No todos yet.',
+  /** The List error panel's button. */
+  tryAgain: 'Try again',
   dismiss: 'Dismiss',
 } as const;

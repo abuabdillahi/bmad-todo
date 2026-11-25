@@ -123,4 +123,11 @@ describe('messages', () => {
     );
     expect(messages.dismiss).toBe('Dismiss');
   });
+
+  it('K5 holds the loading lines, the Empty panel text and Try again verbatim', () => {
+    expect(messages.loading).toBe('Loading your todos');
+    expect(messages.loaded).toBe('Your todos are loaded.');
+    expect(messages.emptyList).toBe('No todos yet.');
+    expect(messages.tryAgain).toBe('Try again');
+  });
 });

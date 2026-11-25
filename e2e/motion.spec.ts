@@ -22,10 +22,11 @@ test('E1 an added card runs its enter animation and ends fully visible', async (
   // Records the animations on the card as it mounts, before they can finish. The
   // observer is installed (awaited) before Enter, so the mount can't slip past it.
   await page.evaluate((text) => {
-    const list = document.querySelector('ul[aria-label="Todos"]')!;
+    // The Todo list mounts with its first row, so observe the page's main region.
+    const main = document.querySelector('main')!;
     const observer = new MutationObserver(() => {
       // The row whose todo text (the span its check's aria-labelledby names) is exactly `text`.
-      const item = [...list.querySelectorAll('li')].find((li) => {
+      const item = [...main.querySelectorAll('li[data-todo-id]')].find((li) => {
         const labelId = li.querySelector('input[type="checkbox"]')?.getAttribute('aria-labelledby');
         return labelId != null && document.getElementById(labelId)?.textContent === text;
       });
@@ -33,7 +34,7 @@ test('E1 an added card runs its enter animation and ends fully visible', async (
       observer.disconnect();
       (window as unknown as { mountedAnimations?: number }).mountedAnimations = item.getAnimations({ subtree: true }).length;
     });
-    observer.observe(list, { childList: true, subtree: true });
+    observer.observe(main, { childList: true, subtree: true });
   }, description);
   await page.keyboard.press('Enter');
 

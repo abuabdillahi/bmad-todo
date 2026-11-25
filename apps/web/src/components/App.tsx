@@ -7,16 +7,17 @@ import { TodoList } from './TodoList.tsx';
 export function App() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const addFieldRef = useRef<HTMLTextAreaElement>(null);
+  const focusTargets = { heading: headingRef, addField: addFieldRef };
 
   return (
     <div className={styles.app}>
       <main className={styles.page}>
-        <Announcer focusTargets={{ heading: headingRef, addField: addFieldRef }} />
+        <Announcer focusTargets={focusTargets} />
         <h1 ref={headingRef} className={styles.heading} tabIndex={-1}>
           BMad Todos
         </h1>
         <AddForm fieldRef={addFieldRef} />
-        <TodoList />
+        <TodoList focusTargets={focusTargets} />
       </main>
     </div>
   );

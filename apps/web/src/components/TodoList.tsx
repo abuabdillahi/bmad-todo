@@ -1,7 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent } from 'react';
+import { flushSync } from 'react-dom';
 import type { Todo } from '@todo/contract';
-import { useAnnounceDeletedElsewhere, useDeleteTodo, useListState, useReportRenderedIds, useTodosStore } from '../todos/hooks.ts';
+import {
+  useAnnounceDeletedElsewhere,
+  useDeleteTodo,
+  useListState,
+  useReportRenderedIds,
+  useRetryFetch,
+  useTodosStore,
+} from '../todos/hooks.ts';
+import { messages } from '../todos/messages.ts';
+import type { AnnouncerFocusTargets } from './Announcer.tsx';
 import { isLive, mergeRows, withoutLeft, type LeavingEntry } from './leaving-rows.ts';
+import { createLoadingStatus } from './loading-status.ts';
 import { TodoCard, type CardConfirm, type CardEditing } from './TodoCard.tsx';
 import styles from './TodoList.module.css';
 
@@ -23,22 +34,48 @@ function rowIdOf(node: EventTarget | null): string | null {
 }
 
 /**
- * The list area: the one observer of `['todos']` (AD-11). It reports the ids
- * it renders to the add form (Add landed after all), owns the one open row (in
+ * What holds focus in the list area, tracked because once it is detached
+ * `document.activeElement` is already `<body>`: a row, the Todo list itself,
+ * the Empty panel, or the List error panel (its Try again).
+ */
+type Focused = { readonly kind: 'row'; readonly id: string } | { readonly kind: 'list' | 'empty' | 'panel' } | null;
+
+function sameFocused(a: Focused, b: Focused): boolean {
+  if (a === null || b === null) return a === b;
+  return a.kind === b.kind && (a.kind !== 'row' || a.id === (b as { id: string }).id);
+}
+
+/** Three skeleton cards while loading (DESIGN Components › Skeleton card). */
+const SKELETONS = [0, 1, 2] as const;
+
+/**
+ * The list area: the one observer of `['todos']` (AD-11). It renders the list
+ * states from the one selector (AD-11, EXPERIENCE State Patterns › List
+ * states): the Todo list whenever it has rows (before the first load too, so
+ * an early card keeps its element), the skeleton list while loading, the List
+ * error panel with Try again on error, and the Empty panel once loaded with no
+ * row left. It owns the one Loading status (AD-14). It reports the ids it
+ * renders to the add form (Add landed after all), owns the one open row (in
  * edit mode or the Delete confirm) and the per-todo failed drafts (EXPERIENCE
  * Component Patterns › Edit form, Todo card), keeps each user-deleted row as an
  * inert Leaving copy for its leave motion (AD-11), announces a row in edit mode
- * that a refetch removed (AD-14), and moves focus off a focused row that
- * something other than a handler removed (EXPERIENCE Focus management). Epic 2
- * renders the loading, error and empty states from `state`.
+ * that a refetch removed (AD-14), and moves focus off a focused row, list,
+ * Empty panel or List error panel that something other than a handler removed
+ * (EXPERIENCE Focus management).
  */
-export function TodoList() {
+export function TodoList({ focusTargets }: { focusTargets: AnnouncerFocusTargets }) {
   const { state, todos } = useListState();
-  const { revertedAt } = useTodosStore();
+  const { revertedAt, lastFetchFailure } = useTodosStore();
   const announceDeletedElsewhere = useAnnounceDeletedElsewhere();
   const deleteTodo = useDeleteTodo();
+  const retry = useRetryFetch();
   const loaded = state === 'populated' || state === 'empty';
+  const errorLine = state === 'error' ? messages.loadError(lastFetchFailure ?? 'generic') : '';
   const listRef = useRef<HTMLUListElement>(null);
+  const emptyRef = useRef<HTMLParagraphElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const areaRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
 
   // A card plays the enter motion only if it mounts while the list is not
   // loaded (only optimistic adds are there then) or once the list was already
@@ -134,50 +171,98 @@ export function TodoList() {
     };
   }, []);
 
-  // The row holding focus, tracked because once a row is detached `document.activeElement` is already `<body>`.
-  const focusedId = useRef<string | null>(null);
+  // What holds focus in the list area (EXPERIENCE Hand-off order).
+  const focused = useRef<Focused>(null);
 
-  function handleFocus(event: FocusEvent<HTMLUListElement>) {
-    focusedId.current = rowIdOf(event.target);
+  function focusedOf(node: EventTarget | null): Focused {
+    const id = rowIdOf(node);
+    if (id !== null) return { kind: 'row', id };
+    if (node === listRef.current) return { kind: 'list' };
+    if (node === emptyRef.current) return { kind: 'empty' };
+    if (node instanceof Node && panelRef.current?.contains(node)) return { kind: 'panel' };
+    return null;
   }
 
-  function handleBlur(event: FocusEvent<HTMLUListElement>) {
+  function trackFocus(event: FocusEvent<HTMLDivElement>) {
+    focused.current = focusedOf(event.target);
+  }
+
+  function trackBlur(event: FocusEvent<HTMLDivElement>) {
     if (event.relatedTarget !== null) {
-      // Focus moved to another element: inside the list, handleFocus records it next.
-      if (!listRef.current?.contains(event.relatedTarget as Node)) focusedId.current = null;
+      // Focus moved to another element: inside the area, trackFocus records it next.
+      if (!areaRef.current?.contains(event.relatedTarget as Node)) focused.current = null;
       return;
     }
     // No next element: the window lost focus (the element stays active), focus went
     // to nothing (the element stays connected), or the element was removed (keep it).
     const left = event.target;
+    const was = focusedOf(left);
     queueMicrotask(() => {
-      if (left.isConnected && document.activeElement !== left && focusedId.current === rowIdOf(left)) focusedId.current = null;
+      if (left.isConnected && document.activeElement !== left && sameFocused(focused.current, was)) focused.current = null;
     });
   }
 
-  // Focus off a removed row (EXPERIENCE Focus management): when the tracked row is gone
-  // and focus fell to <body>, it goes to the check of the row now at its place, else the
-  // one before, else the list. This runs before the announce below.
+  // Set by the focus move below when it lands on the Todo list or the Empty panel,
+  // and read by the Loading status in the same commit (Recovery line).
+  const movedToList = useRef(false);
+
+  /** Moves focus to `target`, noting a move to the Todo list or the Empty panel. */
+  function moveFocusTo(target: HTMLElement) {
+    movedToList.current = target === listRef.current || target === emptyRef.current;
+    if (target === focusTargets.heading.current) target.focus({ preventScroll: true });
+    else target.focus();
+  }
+
+  /**
+   * An emptied list's target: the Empty panel, because no activation decides
+   * between field and heading; the Todo list while only Leaving rows remain;
+   * before the first load (no Empty panel yet) the Page heading, which has the
+   * Empty panel's properties: not actionable, and no phone keyboard.
+   */
+  function fallbackTarget(): HTMLElement | null {
+    return emptyRef.current ?? listRef.current ?? focusTargets.heading.current;
+  }
+
+  // Focus off a removed element (EXPERIENCE Focus management): when the tracked
+  // element is gone and focus fell to <body>, a row's goes to the check of the row
+  // now at its place, else the one before, else the emptied list's target; the
+  // Todo list's to that target; the Empty panel's (replaced by rows) to the Todo
+  // list; the List error panel's (replaced by a refetch) to the Todo list, else the
+  // Empty panel. Runs every commit, before the announce and the Loading status below.
   const previousIds = useRef<string[]>([]);
   useLayoutEffect(() => {
+    movedToList.current = false;
     // Focus targets skip Leaving rows.
     const ids = todos.map((todo) => todo.id).filter((id) => !leavingIds.has(id));
     const before = previousIds.current;
     previousIds.current = ids;
-    const tracked = focusedId.current;
-    if (tracked === null || ids.includes(tracked)) return;
-    focusedId.current = null;
+    const tracked = focused.current;
+    if (tracked === null) return;
+    const gone =
+      tracked.kind === 'row'
+        ? !ids.includes(tracked.id)
+        : (tracked.kind === 'list' ? listRef : tracked.kind === 'empty' ? emptyRef : panelRef).current === null;
+    if (!gone) return;
+    focused.current = null;
     const active = document.activeElement;
     if (active !== null && active !== document.body) return;
-    const list = listRef.current;
-    if (!list) return;
-    // Its place among the rows that survived: those before it in the previous commit.
-    const kept = new Set(ids);
-    const at = before.slice(0, Math.max(0, before.indexOf(tracked))).filter((id) => kept.has(id)).length;
-    const targetId = ids.length === 0 ? undefined : ids[Math.min(at, ids.length - 1)];
-    const row = [...list.children].find((item) => item.getAttribute('data-todo-id') === targetId && !item.hasAttribute('data-leaving'));
-    (row?.querySelector<HTMLInputElement>('input[type="checkbox"]') ?? list).focus();
-  }, [todos]);
+    let target: HTMLElement | null;
+    if (tracked.kind === 'row') {
+      // Its place among the rows that survived: those before it in the previous commit.
+      const kept = new Set(ids);
+      const at = before.slice(0, Math.max(0, before.indexOf(tracked.id))).filter((id) => kept.has(id)).length;
+      const targetId = ids.length === 0 ? undefined : ids[Math.min(at, ids.length - 1)];
+      const row = [...(listRef.current?.children ?? [])].find(
+        (item) => item.getAttribute('data-todo-id') === targetId && !item.hasAttribute('data-leaving'),
+      );
+      target = row?.querySelector<HTMLInputElement>('input[type="checkbox"]') ?? fallbackTarget();
+    } else if (tracked.kind === 'list') {
+      target = fallbackTarget();
+    } else {
+      target = listRef.current ?? fallbackTarget();
+    }
+    if (target) moveFocusTo(target);
+  });
 
   // A row in edit mode that a refetch removed (EXPERIENCE State Patterns): the form
   // closes with its draft, and the loss is announced, unless a helper revert removed
@@ -211,23 +296,80 @@ export function TodoList() {
     setOpen((current) => (current?.id === confirmingId && current.mode === 'confirm' ? null : current));
   }, [todos, confirmingId]);
 
+  // The one Loading status (AD-14): its line is picked in the same commit as, and
+  // after, any focus move above, so the recovery line knows whether focus went to the list.
+  const [status] = useState(() =>
+    createLoadingStatus({
+      write: (text) => {
+        if (statusRef.current) statusRef.current.textContent = text;
+      },
+      read: () => statusRef.current?.textContent ?? '',
+    }),
+  );
+  useLayoutEffect(() => {
+    status.update(state, errorLine, movedToList.current);
+    movedToList.current = false;
+  });
+  useLayoutEffect(() => () => status.reset(), [status]);
+
+  // Try again (EXPERIENCE Hand-off order): focus moves to the add field first, or to the
+  // heading after a touch so the phone keyboard stays closed; then the panel goes.
+  const lastPointerType = useRef<string | null>(null);
+
+  function handleTryAgainPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    lastPointerType.current = event.pointerType;
+  }
+
+  function handleTryAgain(event: MouseEvent<HTMLButtonElement>) {
+    const touch = (lastPointerType.current === 'touch' || lastPointerType.current === 'pen') && event.detail !== 0;
+    lastPointerType.current = null;
+    if (touch) focusTargets.heading.current?.focus({ preventScroll: true });
+    else focusTargets.addField.current?.focus();
+    flushSync(retry);
+  }
+
   return (
-    <ul
-      ref={listRef}
-      role="list"
-      aria-label="Todos"
-      tabIndex={-1}
-      className={styles.list}
-      onFocus={handleFocus}
-      onBlur={handleBlur}
-    >
-      {rows.map((row, index) =>
-        row.leaving ? (
-          <TodoCard key={row.key} todo={row.todo} leaving />
-        ) : (
-          <TodoCard key={row.key} todo={row.todo} enter={enter} edit={editingFor(row.todo.id)} confirm={confirmFor(row.todo, index)} />
-        ),
+    <div ref={areaRef} className={styles.area} onFocus={trackFocus} onBlur={trackBlur}>
+      <p ref={statusRef} role="status" aria-live="polite" className="visually-hidden" data-loading-status="" />
+      {rows.length > 0 && (
+        <ul ref={listRef} role="list" aria-label="Todos" tabIndex={-1} className={styles.list}>
+          {rows.map((row, index) =>
+            row.leaving ? (
+              <TodoCard key={row.key} todo={row.todo} leaving />
+            ) : (
+              <TodoCard key={row.key} todo={row.todo} enter={enter} edit={editingFor(row.todo.id)} confirm={confirmFor(row.todo, index)} />
+            ),
+          )}
+        </ul>
       )}
-    </ul>
+      {state === 'loading' && (
+        <ul aria-busy="true" className={styles.skeletons}>
+          {SKELETONS.map((n) => (
+            <li key={n} aria-hidden="true" className={styles.skeleton}>
+              <span className={styles.skeletonCircle} />
+              <span className={styles.skeletonBar} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {state === 'error' && (
+        <div ref={panelRef} className={styles.errorPanel}>
+          <p className={styles.errorLine}>{errorLine}</p>
+          <button
+            type="button"
+            className={styles.tryAgain}
+            onPointerDown={handleTryAgainPointerDown}
+            onClick={handleTryAgain}
+          >
+            {messages.tryAgain}
+          </button>
+        </div>
+      )}
+      {state === 'empty' && rows.length === 0 && (
+        <p ref={emptyRef} tabIndex={-1} className={styles.empty}>
+          {messages.emptyList}
+        </p>
+      )}
+    </div>
   );
 }

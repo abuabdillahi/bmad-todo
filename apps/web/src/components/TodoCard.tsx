@@ -146,6 +146,8 @@ export function TodoCard({ todo, enter = false, edit = NOT_EDITING, confirm = NO
   /**
    * Deleted elsewhere: the row goes on the settle-time refetch, so focus inside it
    * moves now, to the next row's check, else the previous row's, else the list.
+   * The list is only the interim target: when the refetch empties it, the list
+   * area moves focus on to the Empty panel as the `<ul>` goes.
    */
   function moveFocusOffRow() {
     const item = itemRef.current;

@@ -73,7 +73,7 @@ function serve(initial: Todo[]) {
 
 /** The Announcer's live element: the status outside the add form. */
 function liveElement(): HTMLElement {
-  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null);
+  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null && !el.hasAttribute('data-loading-status'));
   expect(statuses).toHaveLength(1);
   return statuses[0]!;
 }
@@ -211,7 +211,7 @@ describe('TodoCard', () => {
   it.each([
     ['the next row\'s check', 'Buy milk', [milk, rent], () => check('Pay rent')],
     ['the previous row\'s check', 'Pay rent', [milk, rent], () => check('Buy milk')],
-    ['the list when it is the only row', 'Buy milk', [milk], () => screen.getByRole('list', { name: 'Todos' })],
+    ['the Empty panel when it is the only row', 'Buy milk', [milk], () => screen.getByText('No todos yet.')],
     ['the next row\'s check, not the previous one\'s, from a middle row', 'Pay rent', [milk, rent, bills], () => check('Pay bills')],
   ])('K6 a 404 announces deleted elsewhere, moves focus to %s, and the row goes on the refetch', async (_name, name, todos, target) => {
     const state = serve(todos);
@@ -246,12 +246,12 @@ describe('TodoCard', () => {
       context = useTodosContext();
       return null;
     }
-    const { list } = renderApp({ children: <Probe /> });
+    const app = renderApp({ children: <Probe /> });
     const remaining = 300;
     context!.store.recordRevert(milk.id, Date.now() - (REVERT_FLAG_MS - remaining));
 
     listed.open();
-    await waitFor(() => expect(within(list).queryAllByRole('checkbox')).toHaveLength(1));
+    await waitFor(() => expect(within(app.list).queryAllByRole('checkbox')).toHaveLength(1));
     const mountedAt = Date.now();
     expect(card('Buy milk').classList.contains(styles.flagged!)).toBe(true);
 
@@ -284,8 +284,8 @@ describe('TodoCard', () => {
       context = useTodosContext();
       return null;
     }
-    const { list } = renderApp({ children: <Probe /> });
-    await waitFor(() => expect(within(list).queryAllByRole('checkbox')).toHaveLength(1));
+    const app = renderApp({ children: <Probe /> });
+    await waitFor(() => expect(within(app.list).queryAllByRole('checkbox')).toHaveLength(1));
 
     const first = Date.now();
     act(() => context!.store.recordRevert(milk.id, first));
