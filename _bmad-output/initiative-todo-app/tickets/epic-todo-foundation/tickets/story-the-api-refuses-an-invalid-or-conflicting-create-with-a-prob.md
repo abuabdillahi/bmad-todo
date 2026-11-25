@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "6"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/6"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # The API refuses an invalid or conflicting create with a problem response
