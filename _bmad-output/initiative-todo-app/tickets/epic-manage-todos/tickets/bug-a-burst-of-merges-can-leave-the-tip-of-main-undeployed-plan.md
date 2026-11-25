@@ -3,19 +3,29 @@ title: 'A burst of merges can leave the tip of main undeployed'
 type: bugfix
 ticket: '15'
 created: '2026-11-25'
-status: draft
-baseline_revision: ''
+status: built
+baseline_revision: '562a8c5548d4bec7d0032202c5725581313009c6'
 route: full
 route_source: auto
 risk: high
-review: ''
-review_source: ''
-lenses_ran: []
+review: thorough
+review_source: auto
+lenses_ran: [blind-hunter, edge-case-hunter, verification-gap, intent-alignment]
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      The deploy-prod group's cancellation annotation text that row 10 matches has never been seen on this repo.
+    evidence: |-
+      No run of ci.yml on abuabdillahi/bmad-todo has been cancelled yet (gh api, 2026-11-25), so the regex
+      `higher priority waiting request for '(deploy|***)-prod'` rests on GitHub's documented wording only.
+      If the wording differs, a group cancel is read as deliberate: no deploy (safe), and the bug stays unfixed.
+      Settled by the first real group cancel after merge: row 11's notice now quotes the annotation it found.
+    location: >-
+      scripts/deploy-catch-up.mjs (GROUP_CANCELLATION)
+    severity: medium (unverified)
 ---
 
 <intent-contract>
@@ -56,34 +66,45 @@ Tip T = scheduled run's `github.sha`; D = SHA production runs. "Tip runs" = othe
 
 ## Code Map
 
-- `.github/workflows/ci.yml` -- the one workflow (AD-18). `test` job `if: github.event_name == 'push'`; `deploy` job `needs: test`, `if: !cancelled() && ref main && (dispatch || needs.test.result == 'success')`, `concurrency: deploy-prod`, steps "Set up SSH to the host" (secrets → `~/.ssh/config` host `prod-host`), "Skip if a newer SHA is already deployed" (`id: guard`, `docker ps --filter label=com.docker.compose.project=todo --filter label=com.docker.compose.service=api --format '{{.Image}}'`, `deployed=${image##*:}`), "Download the tested images" and "Push the tested images to GHCR" gated on `github.event_name == 'push'`, "Start production". `test` saves/uploads images only on `refs/heads/main` (true for schedule). Do not change any other step's commands.
-- `vitest.config.ts` -- `unit` project include; add `scripts/**/*.test.ts`.
-- `scripts/` -- plain Node ESM `.mjs` tools (`scenario-coverage.mjs` style: header comment, node builtins only). Tests use Vitest globals (`describe`, `it`, `expect`); a title without a leading scenario id lists as `(no id)` in `coverage/scenarios.md`, which is fine.
-- `README.md` -- `## Deploy` and `## Roll back` only.
-- `.nvmrc` -- Node 26.13.1, for `actions/setup-node` in `catch-up`.
+- `/Users/idris/me/todo-wt/patches/bug-26-first-attempt.patch` -- the first attempt (applies to this baseline with `git apply`): `scripts/deploy-catch-up.mjs`, its unit test, `scripts/ci-workflow-steps.test.ts`, the `ci.yml`, README and `vitest.config.ts` changes. Start from it and change what this plan's Design Notes change; keep what they do not (KEEP list in the Plan Change Log).
+- `.github/workflows/ci.yml` -- the one workflow (AD-18). Baseline: `test` `if: github.event_name == 'push'`; `deploy` `needs: test`, `if: !cancelled() && ref main && (dispatch || needs.test.result == 'success')`, `concurrency: deploy-prod`; steps "Set up SSH to the host", "Skip if a newer SHA is already deployed" (`id: guard`, `docker ps --filter label=com.docker.compose.project=todo --filter label=com.docker.compose.service=api --format '{{.Image}}'`, `deployed=${image##*:}`), "Download the tested images" and "Push the tested images to GHCR" gated on push, "Start production". Change no other step's commands.
+- GitHub data, checked 2026-11-25 on this repo: the jobs API names jobs by id (`test`, `deploy`); a job's `id` is its check-run id (`/check-runs/{id}/annotations`); step names containing a secret's value are masked (`Resolve and check out the SHA to ***`), so the only deploy step the script may match is `Start production`, and annotation text may show `***` where a secret's value appears. `head_sha` filters need the full 40-hex SHA. No run on this repo has been cancelled yet, so the group's cancellation annotation could not be read from real data.
+- `vitest.config.ts` -- `unit` include gains `scripts/**/*.test.ts`.
+- `README.md` -- `## Deploy` and `## Roll back` only (story 2.9 edits README in parallel).
 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `scripts/deploy-catch-up.mjs` -- new. Export pure `summariseRun(run, jobs)` (outcome: `in-progress` | `red` | `deployed` | `deploy-failed` | `cancelled` | `not-attempted`, per the matrix; "deployed" needs the deploy job's step named `Start production` to have succeeded), pure `decide(facts)` → `{ deploy, level, reason }` in the matrix's order, `gatherFacts({ tip, deployed, runId, git, api })` (git: is-commit, is-ancestor, committer date; api: GET JSON) and `main(env, deps)` that writes `deploy=true|false` and `deployed=<validated SHA or empty>` to `$GITHUB_OUTPUT`, prints `::notice::`/`::warning::` with the reason, appends it to `$GITHUB_STEP_SUMMARY`, and throws on any API error. Real deps use `git` via `execFileSync` and `fetch` on `$GITHUB_API_URL` with `$GH_TOKEN`; runs listed from `/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs` (`head_sha=T`; and `event=workflow_dispatch&branch=main&status=success`), jobs from `/actions/runs/{id}/jobs` (latest attempt). Excludes the current run (`$GITHUB_RUN_ID`). Runs as a CLI only when executed directly.
-- [ ] `scripts/deploy-catch-up.test.ts` -- new. Table tests of `decide` and `summariseRun` for every matrix row, `gatherFacts` with fake git/api (current run excluded, dispatch runs not counted as tip runs, reference time from earliest push run else committer date), and `main` with fakes as a dry run (output lines, notice text, throws on API error).
-- [ ] `vitest.config.ts` -- add the scripts test glob to `unit`, so `pnpm test` runs it.
-- [ ] `.github/workflows/ci.yml` -- add `schedule: cron '17,47 * * * *'`; new `catch-up` job (`if: github.event_name == 'schedule'`, permissions `contents: read`, `actions: read`, checkout `fetch-depth: 0`, setup-node `.nvmrc`, an SSH step needing only `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `DEPLOY_USER`, a read step with `set -o pipefail` reusing the guard's `docker ps`, then the script with `GH_TOKEN: ${{ github.token }}`; outputs `deploy`, `deployed`); `test` gets `needs: catch-up` and `if: !cancelled() && (push || needs.catch-up.outputs.deploy == 'true')`; `deploy` gets `needs: [catch-up, test]`; guard, download and GHCR push steps run for `push` or `schedule`; the guard also skips, on schedule only, when the live SHA differs from `needs.catch-up.outputs.deployed`. Add an actionlint step to `test` (Docker image `rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667`). Update the header comment.
-- [ ] `README.md` -- Deploy: describe the scheduled catch-up, its no-op cases and where it says so; Roll back: a rollback stays live until the next push to `main` (the catch-up respects it).
+- [ ] `scripts/deploy-catch-up.mjs` -- new, from the first attempt, changed to the Design Notes' decision order and queries: skip-token detection, the deploy candidate C, main-only runs, scheduled runs read by status with pagination, group-cancellation attribution from the deploy job's annotations, landed time from C's main push run. Export the names it matches (`test`, `deploy`, `Start production`) as constants. Fail closed on any git or API error and on more than 10 pages of one list.
+- [ ] `scripts/deploy-catch-up.test.ts` -- every row of the Design Notes' effective matrix, the skip tokens, pagination, attribution (group message, `***`-masked message, a person's cancel, no annotations) and `main` as a dry run.
+- [ ] `scripts/ci-workflow-steps.test.ts` -- from the first attempt, plus: the raced skip writes to `$GITHUB_STEP_SUMMARY`; `ci.yml` has jobs `test` and `deploy` with no `name:` override and a `deploy` step named exactly `Start production` (the script's exported constants).
+- [ ] `vitest.config.ts` -- as the first attempt.
+- [ ] `.github/workflows/ci.yml` -- as the first attempt, plus: `catch-up` permissions add `checks: read`; `test`'s `if:` requires `needs.catch-up.result == 'success'` with `deploy == 'true'` on schedule; the guard's raced skip also appends its reason to `$GITHUB_STEP_SUMMARY`.
+- [ ] `README.md` -- Deploy and Roll back as the first attempt, rewritten for the effective matrix: `[skip ci]` commits, deliberate cancels, group cancels.
 
 **Acceptance Criteria:**
-- Given a push to any branch or a `workflow_dispatch` rollback, when the workflow runs, then the same jobs and steps run with the same conditions as at the baseline (the `catch-up` job is skipped).
-- Given the branch's CI, when `pnpm test` runs, then the catch-up decision tests pass and actionlint reports no error in `ci.yml`.
-- Given the merged workflow on `main`, when a scheduled run finds production on the tip, then the run shows a notice naming T and the `test` and `deploy` jobs are skipped.
+- Given a push to any branch or a `workflow_dispatch` rollback, when the workflow runs, then `catch-up` is skipped and the baseline's jobs and steps run with the baseline's conditions, plus the actionlint step at the start of `test`.
+- Given the branch's CI, when it runs, then `pnpm test:all` (through its `unit` project) passes the catch-up tests and the actionlint step reports no error.
+- Given the merged workflow on `main`, when a scheduled run finds production on main's code (the tip, or only `[skip ci]` commits after it), then `catch-up` shows a "Deploy catch-up" notice naming the SHA and `test` and `deploy` are skipped.
 
 ## Implementation Notes
 
-- `scripts/deploy-catch-up.mjs`: `gatherFacts` reads the GitHub API only when T is newer than D (equal, older, unrelated and unreadable D decide from git alone), so an API outage cannot fail a no-op check; it fetches jobs only for completed tip runs. `deployed=` is written as D when D is 40-hex and a commit git knows, else empty. Tip runs are not filtered by branch, per the matrix's definition: a branch push of T with a green test and a skipped deploy summarises as `not-attempted`; with a red or cancelled test it counts as T's result. The API wrapper is scoped to `/repos/$GITHUB_REPOSITORY`. A raw image tag is printed only after replacing anything outside `[A-Za-z0-9_.-]`, so it cannot inject a workflow command. Errors print `::error title=Deploy catch-up::…` and exit 1.
-- `ci.yml`: the catch-up's read step uses `| sed -n 1p` rather than the guard's `| head -n 1`, so `set -o pipefail` cannot fail on SIGPIPE when `docker ps` prints more than one line. The guard reads `needs.catch-up.outputs.deployed` as `CHECKED`; with an SSH failure in the guard on schedule, the live SHA is empty, differs from `CHECKED`, and the deploy skips (fail closed). The actionlint step runs first in `test`, right after checkout, so it also runs on every branch push; the image digest was checked against Docker Hub's tag `1.7.12`.
-- Verified locally: `pnpm test` (608 pass, 47 in `scripts/deploy-catch-up.test.ts`), `pnpm typecheck`, `actionlint` with shellcheck 0.11.0 (no output, exit 0; a deliberately broken `needs.catchup` reference is reported, so the check is live), and a CLI dry run with fake env and an unreachable API URL (equal, tip older and no container decide without the API; tip newer exits 1 with nothing written to `$GITHUB_OUTPUT`). The scheduled path itself can only be seen on `main` after merge (Manual checks).
-- Matrix audit (parent): the Raced and SSH-error rows live in workflow bash, not the script, so `scripts/ci-workflow-steps.test.ts` (11 tests, `unit` project) extracts the guard step and `catch-up`'s read step from `ci.yml` as written and runs them under `bash -e` with a fake `ssh` in a temp git repo: push behaviour unchanged (older live deploys, newer live skips, nothing running deploys, an empty `CHECKED` is inert); on schedule, a live SHA changed since `catch-up` skips; the read step fails on an SSH failure and takes the first of several lines.
+- Re-plan of 2026-11-25: the first attempt's notes described code that was reverted; it is kept whole in the patch named in the Code Map.
+- Implementation of 2026-11-25: started from `bug-26-first-attempt.patch` (`git apply`), then changed per the Design Notes. `scripts/deploy-catch-up.mjs`: exports `TEST_JOB`, `DEPLOY_JOB`, `START_STEP`, `MAX_PAGES`, `hasSkipToken`, `cancelledByGroup`; new `git.firstParentLog(D, T)` (`git log --first-parent -z --format=%H%n%B D..T`) gives S and C; outcome `cancelled-by-group` from the deploy job's `/check-runs/{job id}/annotations` (message or title matching `higher priority waiting request for '(deploy|***)-prod'`), else `cancelled`; facts are `candidate`, `pushRunsOfCandidate`, `running`, `rollback`, `newest`, and `decide` applies rows 1-13 in order. Queries are read in the matrix's order and stop once a row matches (row 5 found: no dispatch or jobs read; row 6 found: no jobs read). Runs are also filtered client-side by `event`, `head_branch == main` and exact `head_sha`, in case the API ignores a filter.
+- Deviation, for the Never "re-test a red tip on every schedule": scheduled runs are listed by `status=failure`, `status=timed_out` and `status=cancelled` (the plan names failure and cancelled). If GitHub concludes a run with a timed-out job as `timed_out`, the two-list version would miss it and fall through to an older group-cancelled run, re-testing a timed-out tip.
+- `realGit` is exported with a `cwd` parameter, so `firstParentLog`, `isCommit`, `isAncestor` and `committerDate` are tested against a real temporary repository (a `--no-ff` merge, `[skip ci]` and `skip-checks: true` messages).
+- Skip tokens are matched exactly as listed (case-sensitive); the `skip-checks` trailer as a line `skip-checks: true` or `skip-checks:true`.
+- ci.yml: `catch-up` gains `checks: read`; `test`'s `if:` requires `needs.catch-up.result == 'success' && needs.catch-up.outputs.deploy == 'true'` off push; the guard's raced skip writes its reason as a notice and appends `### Deploy catch-up` and the reason to `$GITHUB_STEP_SUMMARY` (it now prints `${CHECKED:-none}`). The header comment names the group cancel and `[skip ci]`. No other step's commands changed.
+- Known limits, accepted by the Design Notes' queries: a scheduled run that deployed concludes `success` and is not listed, so row 8 sees only C's push runs; if a scheduled run deployed the tip and production was then changed by hand without a `workflow_dispatch` run, the decision falls to the older runs (a group-cancelled push run would redeploy the tip). The annotation text of a group cancel is taken from GitHub's documented wording and the masked form; no run on this repo has been cancelled yet, so it is unchecked against real data. If the text differs, a group cancel reads as deliberate (no deploy, a notice naming the run), which fails safe.
+- Verification: `pnpm test` 690 passed (129 in `scripts/`); `pnpm typecheck` passed. Six hand mutations of the script (no current-run exclusion, no client branch filter, no cancelled list, no pagination, first run decides, no skip tokens) each failed tests, then the file was restored. actionlint was not run: the `uvx` command was refused by this session's permission classifier and no local `actionlint` exists; CI's pinned actionlint step in `test` runs it on the branch push.
 
 ## Plan Change Log
+
+### 2026-11-25 — Re-plan after the first review's intent gap (po Decision in the ticket's Notes)
+- Trigger: review rows `[skip ci]` tip (high), M-in-progress-under-a-bookkeeping-tip (medium), deliberate cancel (medium), and the bad_plan/patch rows (page-1 run reading, landed time, branch runs, `needs.catch-up.result`, raced summary, name drift).
+- Amended: Code Map, Tasks, Acceptance Criteria, Design Notes (effective matrix, queries, attribution), Verification. The contract's Approach was amended by the coordinator from the po Decision; its matrix is unchanged, and the Design Notes say how the two combine.
+- Known-bad states avoided: testing and deploying `[skip ci]` tips; a second test while the merge under a bookkeeping tip is testing; deploying what a person cancelled; losing the decisive run beyond page 1 of noisy no-op scheduled runs; branch runs read as main's; a rollback before the tip landed counted as after it; `test` running after a failed `catch-up`.
+- KEEP: the `catch-up` job's shape (schedule only, not in `deploy-prod`, four `DEPLOY_*` secrets, `set -o pipefail` with `sed -n 1p`, the script with `GH_TOKEN`); `deploy` `needs: [catch-up, test]`; the guard's schedule-only `CHECKED` skip; `push || schedule` on the guard, download and GHCR push steps; the API read only when T is newer; printable-only image tags; `::error` and exit 1 on failure; the pinned actionlint step; `scripts/ci-workflow-steps.test.ts`'s extraction of `run:` blocks with a fake `ssh`.
 
 ## Review Triage Log
 
@@ -121,24 +142,81 @@ Tip T = scheduled run's `github.sha`; D = SHA production runs. "Tip runs" = othe
   - `[low]` `[reject]` (intent-alignment) The changed job conditions have no test. — Same as the blind-hunter gating row.
   - `[medium]` `[reject]` (intent-alignment) AC1's runtime surface (the scheduler, `deploy-prod`, the real API responses, SSH, the health check) is not exercised on the branch. — Inherent: the deploy path runs only on `main`. The manual check after merge covers it.
 
+### 2026-11-25 — Review pass (re-plan)
+- verdicts: 35 findings — high 0, medium 8, low 19, false 5, maybe-false 3 (the intent-alignment auditor's 8 divergence items are triaged as findings; the blind hunter's row-5 finding has two claims, logged as two rows)
+- findings:
+  - `[medium]` `[patch]` (verification-gap) The CLI entry and its exit 1 were never run by a test, so a broken entry guard or a dropped `exitCode` would make every scheduled run a silent no-op. — Patched: `the CLI, as ci.yml runs it` spawns `node scripts/deploy-catch-up.mjs` in a temp repo: production on the tip gives exit 0 with outputs, notice and summary; an unreachable API gives exit 1, an `::error` line and no output. Setting `exitCode = 0` fails the test.
+  - `[medium]` `[patch]` (verification-gap) Nothing pins the `catch-up` outputs wiring (`steps.decide.outputs.*`, `id: live`, `DEPLOYED`, the `needs.catch-up.outputs.*` readers). — Patched: three tests in `scripts/ci-workflow-steps.test.ts` check the outputs map, both step ids, the `DEPLOYED` env, `test`'s `if:` and the guard's `CHECKED`.
+  - `[medium]` `[patch]` (intent-alignment 1) The group's cancellation is attributed by annotation text never seen on this repo. — Real; the wording is an unverified assumption (deferred). Patched: row 11's notice now quotes the deploy job's first annotation, so the first deliberate-looking cancel shows a person the real wording.
+  - `[low]` `[reject]` (intent-alignment 2) A successful scheduled deploy is never listed, so a later change by hand without a dispatch falls back to older runs. — Known, accepted limit of the plan's queries; rare (production changed by hand outside the workflow).
+  - `[low]` `[patch]` (intent-alignment 3) On schedule, when production moved to the tip or newer since the check, the guard's first branch printed only a notice, with no step summary. — Patched: on schedule only, that branch also writes the reason to `$GITHUB_STEP_SUMMARY`; push still writes none. Tested both ways.
+  - `[false]` `[reject]` (intent-alignment 4) Row 13 (C has a main push run, none attempted) warns where the literal matrix would deploy. — The amended Approach deploys only a group cancel or "a push with no run on main"; C has such a run, so it is not that case.
+  - `[false]` `[reject]` (intent-alignment 5) The landed time uses C, not T. — The amended Approach: the landed time comes from a main push run, which only C has. It errs towards no deploy.
+  - `[low]` `[reject]` (intent-alignment 6) Push, branch and dispatch invariance is not exercised at the job-graph level. — Checked by inspection; actionlint (run locally, exit 0) type-checks the expressions; the guard's bash is run for push. A job-graph test could only assert YAML text.
+  - `[medium]` `[patch]` (intent-alignment 7) A rollback still running is invisible to rows 5 and 6. — Grouped with the edge-case rollback-in-progress row below.
+  - `[false]` `[reject]` (intent-alignment 8) `catch-up` reads four `DEPLOY_*` secrets; actionlint is added on push. — The Approach requires reading production over SSH as the guard does (an existing secret, none added); the plan's AC names the actionlint step.
+  - `[medium]` `[patch]` (edge-case-hunter) A `workflow_dispatch` rollback still in progress (not yet `success`) is not seen: if `catch-up` reads production after the rollback started production but before its run concluded, `CHECKED` is the rollback's SHA and the scheduled deploy undoes it. — Verified (the dispatch query read only `status=success`). Patched: one page of dispatch runs on main, unfiltered; any not completed is row 5 ("a run by hand … is still in progress on main"), checked first; row 6 reads successes from the same page. Tested; removing the check fails the test.
+  - `[low]` `[reject]` (edge-case-hunter) A scheduled deploy queued after a pending rollback deploy replaces it in `deploy-prod`, and the guard sees production unchanged. — Real but narrow (a rollback pending behind a running deploy just as a scheduled deploy queues); push deploys already replace pending rollbacks the same way; the fix needs an API check inside the deploy job, more than a direct correction.
+  - `[low]` `[patch]` (edge-case-hunter) Runs are ordered by `created_at`, so a re-run attempt of an older run is ranked by its creation. — Patched: ordering uses `run_started_at` (moved by a re-run), else `created_at`. Tested both ways.
+  - `[low]` `[reject]` (edge-case-hunter) An in-progress re-run of a scheduled run older than the newest 20 for that SHA is missed by row 5. — Unlikely (a person re-running an old scheduled run); the result is one duplicate test, and the guard still protects production.
+  - `[maybe-false]` `[reject]` (edge-case-hunter) A test job that hits `timeout-minutes` may be reported `cancelled`, so it reads as a deliberate cancel. — Settle by observing a timed-out job's API conclusion. If true, low: the outcome is still no deploy (safe), only the notice's wording is wrong.
+  - `[maybe-false]` `[reject]` (edge-case-hunter) A deploy job that hits its timeout may be reported `cancelled` with no group annotation, giving a notice not a warning. — Same as above; no deploy either way.
+  - `[low]` `[reject]` (edge-case-hunter) A list of exactly 1,000 runs fails with "More than 10 pages". — Needs 1,000 failed or cancelled scheduled runs of one SHA; fails closed.
+  - `[low]` `[reject]` (edge-case-hunter) Many skip-token commits between C and T cost four API calls each. — Bookkeeping commits between an undeployed code commit and the tip are few; the cost is well under the token's hourly limit.
+  - `[false]` `[reject]` (edge-case-hunter, claim) A merge commit whose message carries `[skip ci]` carries code and is skipped. — GitHub runs no push CI for it either, and the po Decision (ticket Notes) says a `[skip ci]` commit needs no deploy.
+  - `[low]` `[reject]` (edge-case-hunter, claim) "More than 10 pages" fires at exactly 10 full pages. — Same as the 1,000-runs row.
+  - `[medium]` `[patch]` (edge-case-hunter, claim) "Never undo a rollback": an in-progress dispatch is invisible. — Same root cause as the rollback-in-progress row; patched there.
+  - `[false]` `[reject]` (blind-hunter) Code commits quoting a skip token are never deployed. — Same as the merge-commit claim: the po Decision, and GitHub's own push skip.
+  - `[low]` `[reject]` (blind-hunter) Failed `catch-up` runs pile up under `status=failure` and each costs a jobs call; after about 21 days of outage, MAX_PAGES fails every check. — Real only over weeks of SSH or API outage, which the failing runs themselves show; it fails closed.
+  - `[low]` `[reject]` (blind-hunter) No grace period before row 12: a schedule seconds after a merge, before the push run exists, tests and deploys alongside it. — The window is seconds; the result is one duplicate test and a deploy of the same tip; a time guard adds complexity.
+  - `[low]` `[reject]` (blind-hunter) Row 5 misses an in-progress push run of an older code commit between D and C. — That run deploys an older commit than C, so waiting for it is not needed; the guard keeps the newer SHA.
+  - `[medium]` `[patch]` (blind-hunter) Row 5 does not see a manual deploy still running. — Same root cause as the edge-case rollback-in-progress row; patched there.
+  - `[low]` `[reject]` (blind-hunter) Two overlapping scheduled runs each see the other in progress and both do nothing. — The next schedule decides 30 minutes later; nothing is harmed.
+  - `[low]` `[patch]` (blind-hunter) Ordering by `created_at`, not latest attempt. — Same as the edge-case ordering row; patched there.
+  - `[low]` `[patch]` (blind-hunter) The README does not say that schedules are best-effort or that GitHub turns them off after 60 days without activity. — Patched: one sentence in Deploy.
+  - `[low]` `[reject]` (blind-hunter) "A person should look" warnings reach no one. — The ticket asks that the run says so; notification is a new design choice.
+  - `[maybe-false]` `[defer]` (blind-hunter) The group-cancellation wording is unverified, and a deploy job skipped by its `if:` might take part in `deploy-prod`. — Deferred (medium, unverified): the wording. Settle by the first real group cancel after merge (row 11's notice now quotes the annotation). A skipped job taking part in the group is false in practice: every branch push already has a skipped `deploy` in `deploy-prod`, and pending main deploys have not been replaced by them.
+  - `[low]` `[reject]` (blind-hunter) actionlint adds a Docker Hub pull to every `test`, and was never run locally. — The plan's AC names the step; it is pinned by digest; it was run locally by the parent (actionlint 1.7.12 with shellcheck 0.11.0, exit 0).
+  - `[low]` `[reject]` (blind-hunter) The plan names a patch path on one machine; Tasks unchecked; no result section. — The path is the coordinator's handoff, and every plan in this tree uses worktree paths; the result section is written at Finalize; the checkboxes are a plan edit.
+  - `[medium]` `[patch]` (blind-hunter) The fail-closed CLI paths (`realApi`, `::error`, `exitCode`) have no tests. — Same root cause as the verification-gap CLI row; patched there (the unreachable-API case exercises `realApi`'s error path).
+  - `[low]` `[reject]` (blind-hunter) The full-access deploy key is used 48 times a day for a read. — A restricted key needs a new secret and a host change, both forbidden here; story 2.17 (#64) moves the secrets into a protected environment.
+
 ## Design Notes
 
-Why the run-history rules beyond the agreed design: without them, the catch-up would redeploy the tip within 30 min of every rollback (the ticket forbids changing rollback), and re-run the 45-min `test` job every 30 min on a red tip. The ticket's Given names only a cancelled deploy and a missing run; those are the two outcomes that deploy.
+**Precedence.** The contract's Approach was amended on 2026-11-25 by the po Decision; where it and the contract's matrix differ, the Approach wins. The effective matrix below applies both, in this order; the first row that matches decides.
 
-The scheduled `deploy` job can still, as any queued deploy can, replace a pending push deploy in `deploy-prod` (GitHub keeps one pending job per group); the next schedule then catches that tip up, so production converges on the tip. The `catch-up` job is not in `deploy-prod`: a pending job there would itself replace a pending deploy. It reads deploy secrets, so story 2.17 must give it `environment: production` too.
+Terms: T = the scheduled run's `github.sha`; D = the SHA production runs; "skip token" = `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]` anywhere in the message, or a `skip-checks: true` trailer line; S = `git rev-list --first-parent D..T`, newest first; C = the newest commit in S without a skip token; "main push runs" = `ci.yml` runs with `event=push&branch=main&head_sha=<C>`; "scheduled runs" = runs with `event=schedule&branch=main` whose head SHA is in S from T down to C, the current run excluded. A run's outcome comes from its latest attempt's jobs, as in the first attempt, with the deploy job's cancellation split in two: `cancelled-by-group` when one of its annotations matches `higher priority waiting request for '(deploy|***)-prod'`, else `cancelled` (deliberate). A cancelled `test` is deliberate.
+
+| # | Case | Decision |
+|---|---|---|
+| 1-3 | Equal, tip older, unrelated or none | as the contract's matrix |
+| 4 | every commit in S has a skip token | notice, no deploy: production runs main's code; only skip-token commits since D |
+| 5 | a main push run of C, or a scheduled run, not completed | notice, no deploy: that run is still going (names it) |
+| 6 | a successful `workflow_dispatch` run on main created after C landed (C's earliest main push run; with none, C's committer date, which errs towards no deploy) | notice, no deploy until the next push |
+| 7 | newest attempted run (main push runs of C and scheduled runs together) is red | notice, no deploy |
+| 8 | ... deployed (Start production succeeded) | warning, no deploy |
+| 9 | ... deploy failed | warning, no deploy |
+| 10 | ... `cancelled-by-group` | notice, deploy T |
+| 11 | ... `cancelled` (deliberate, or not attributable) | notice naming the run, no deploy |
+| 12 | no attempted run, and C has no main push run | notice, deploy T (a push with no run on main) |
+| 13 | no attempted run, but C has a main push run | warning, no deploy: production moved off C some other way |
+
+**Queries (bounded, fail closed).** (a) main push runs of C, one page. (b) Scheduled runs for each SHA in S from T down to C: one page of 20, newest first, only for row 5; then `status=failure` and `status=cancelled`, every page (`per_page=100`, at most 10 pages per list, else fail), for rows 7-11. No-op scheduled runs conclude `success`, so they never fill those lists. (c) Jobs only for the candidate runs, newest first, stopping at the first attempted one; annotations only for a cancelled deploy job. (d) One page of successful `workflow_dispatch` runs on main, newest first, for row 6. Permissions: `contents: read`, `actions: read`, `checks: read`.
+
+The rest of the first attempt's Design Notes still hold: no deploy in a red-tip loop or over a rollback; a scheduled deploy can still replace a pending push deploy in `deploy-prod`, and the next schedule catches that tip up; `catch-up` stays outside `deploy-prod`, and story 2.17 must give it `environment: production` too, since it reads deploy secrets.
 
 ## Verification
 
 **Commands:**
-- `pnpm test` -- expected: all pass, including `scripts/deploy-catch-up.test.ts`.
+- `pnpm test` -- expected: all pass, including both `scripts/*.test.ts` files.
 - `pnpm typecheck` -- expected: pass.
 - `uvx --from actionlint-py actionlint -shellcheck "$(uvx --from shellcheck-py which shellcheck)" .github/workflows/ci.yml` -- expected: no output, exit 0.
-- `git diff 32c336542b843fdf53526b1f6bf88eb455fad5d9 -- .github/workflows/ci.yml` -- expected: only the changes listed in the ci.yml task.
+- `git diff 562a8c5548d4bec7d0032202c5725581313009c6 -- .github/workflows/ci.yml` -- expected: only the changes listed in the ci.yml task.
 
 **Manual checks (if no CLI):**
-- After merge, the first scheduled run on `main` (Actions › CI, event `schedule`) shows the `catch-up` job's notice and, with production on the tip, `test` and `deploy` skipped.
+- After merge, the first scheduled run on `main` (Actions › CI, event `schedule`) shows the `catch-up` job's "Deploy catch-up" notice, and with production on main's code, `test` and `deploy` skipped.
 
-## Auto Run Result
+## First Attempt Result (2026-11-25, blocked, superseded)
 
 Status: blocked
 Blocking condition: intent gap (review, 2026-11-25). `tickets.py mark` was refused ("store is github: change status through the store's write verb"), and this run may not edit the issue, so the status is set here only.
@@ -169,3 +247,48 @@ Blocking condition: intent gap (review, 2026-11-25). `tickets.py mark` was refus
 Before the revert: `pnpm test` passed (608, then 619 with the step tests), `pnpm typecheck` passed, and actionlint with shellcheck 0.11.0 reported nothing.
 
 Nothing was committed, pushed or opened as a PR. The todo-test stack lock was never taken.
+
+## Auto Run Result
+
+Status: built (second attempt, after the po Decision settled the first attempt's intent gap).
+
+**Summary.** A `schedule` trigger (at :17 and :47) runs a new `catch-up` job on `main`. It reads the SHA production runs over SSH, the deploy guard's way, and `scripts/deploy-catch-up.mjs` decides, by the Design Notes' effective matrix, whether main's tip needs testing and deploying. It needs none when only `[skip ci]` commits follow production's SHA. It deploys only when the judged commit's deploy was cancelled by the `deploy-prod` group, or when no push to `main` ran CI for it. In every other case it does nothing and says why in a "Deploy catch-up" notice or warning and in the step summary. When it does deploy, the existing `test` and `deploy` jobs run for the tip, with the existing guard, which on schedule also skips if production changed since the check.
+
+**Files changed**
+- `.github/workflows/ci.yml` -- schedule, the `catch-up` job, `test`/`deploy` wiring, the guard's schedule-only skip and summary, the pinned actionlint step.
+- `scripts/deploy-catch-up.mjs` -- the decision: skip tokens, candidate commit, bounded run queries, group attribution, outputs.
+- `scripts/deploy-catch-up.test.ts` -- 123 tests: every matrix row, the queries, attribution, `main` dry runs, `realGit` and the CLI on temporary repositories.
+- `scripts/ci-workflow-steps.test.ts` -- 16 tests: the guard and read steps run from `ci.yml` with a fake `ssh`; job, step and output names pinned.
+- `vitest.config.ts` -- the `unit` project includes `scripts/**/*.test.ts`.
+- `README.md` -- Deploy (the catch-up) and Roll back (a rollback stays live until the next push) only.
+
+**Review findings.**
+- Patches applied: 12 rows, 7 fixes:
+  - a run by hand still in progress on `main` makes the check wait;
+  - runs are ordered by their latest attempt;
+  - row 11's notice quotes the cancelled deploy's annotation;
+  - on schedule, the guard writes its skip reason to the step summary in both branches;
+  - the CLI test;
+  - the output-wiring tests;
+  - the README note on schedule limits.
+- Deferred: 1 (the group annotation wording, above).
+- Rejected: 22 rows, each with its reason in the Review Triage Log.
+
+**Follow-up review: true.** This pass patched 8 medium rows. The risk not yet seen by a fresh review is the new row-5 check on dispatch runs, which is now the first gate before every deploy, and the CLI and wiring tests added in this pass. The group annotation wording can only be settled on `main`.
+
+**Verification (parent, after patches).**
+- `pnpm test`: 700 passed.
+- `pnpm typecheck`: exit 0.
+- actionlint 1.7.12 with shellcheck 0.11.0 on `ci.yml`: no output, exit 0.
+- Mutation checks:
+  - `exitCode = 0` fails the CLI test;
+  - dropping the dispatch in-progress check fails its test.
+- `git diff 562a8c5 -- .github/workflows/ci.yml` holds only the planned changes.
+- No todo-test stack was used, so the lock was never taken.
+
+**Residual risks.**
+- The scheduled and deploy paths only run on `main`.
+- The group annotation wording is unverified. If it is wrong, the result is safe: no deploy, and a notice quoting the real text.
+- A scheduled deploy can still replace a pending push deploy, or a pending rollback, in `deploy-prod`. The next schedule then catches that tip up.
+- `catch-up` reads deploy secrets, so story 2.17 must give it `environment: production` too.
+

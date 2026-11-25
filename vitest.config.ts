@@ -24,7 +24,12 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'node',
-          include: ['apps/*/src/**/*.test.ts', 'apps/*/src/**/*.test.tsx', 'packages/*/src/**/*.test.ts'],
+          include: [
+            'apps/*/src/**/*.test.ts',
+            'apps/*/src/**/*.test.tsx',
+            'packages/*/src/**/*.test.ts',
+            'scripts/**/*.test.ts',
+          ],
           exclude: [...configDefaults.exclude, '**/*.component.test.tsx'],
         },
       },
