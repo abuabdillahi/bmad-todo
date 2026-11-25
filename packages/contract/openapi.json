@@ -1054,6 +1054,87 @@
           "204": {
             "description": "The todo was deleted."
           },
+          "400": {
+            "description": "The request is not valid (/problems/validation).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                  ],
+                  "properties": {
+                    "type": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/validation"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/not-found"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/conflict"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/unavailable"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/internal"
+                          ]
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "404": {
             "description": "No todo has this id (/problems/not-found).",
             "content": {

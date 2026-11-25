@@ -18,6 +18,10 @@ export const PROBLEM_MEDIA_TYPE: MediaType = 'application/problem+json';
 export const UNAVAILABLE_BODY =
   '{"type":"/problems/unavailable","title":"Service unavailable","status":503,"detail":"The service is unavailable. Try again shortly."}';
 
+/** AD-9's validation problem, byte for byte: the API's body for an invalid request, which nginx also answers with its own 400 and 413 under /api/ (#28). */
+export const VALIDATION_BODY =
+  '{"type":"/problems/validation","title":"Invalid request","status":400,"detail":"The request is not valid."}';
+
 export const document = JSON.parse(readFileSync(openApiPath, 'utf8'));
 
 // ajv-formats is CommonJS: under ESM its plugin is the `default` property.

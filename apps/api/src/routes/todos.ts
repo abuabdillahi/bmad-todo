@@ -14,7 +14,8 @@ function todoResponse(description: string) {
  * The `:id` of a single todo. Not held to the UUID format: an id that is not
  * stored, a non-UUID included, is simply not found (404), and the query is
  * parameterised. One longer than Fastify's `maxParamLength` (100) never reaches
- * the route: the not-found handler answers it, also with a 404.
+ * the route: Fastify refuses it (its own 414), and the one error handler answers
+ * it with the validation problem (400), as it does a malformed percent-encoding.
  */
 const TodoParams = Type.Object(
   {
@@ -115,6 +116,7 @@ export const todosRoutes: FastifyPluginAsyncTypebox<TodosRoutesOptions> = async 
         params: TodoParams,
         response: {
           204: Type.Null({ description: 'The todo was deleted.' }),
+          400: problemResponses[400],
           404: problemResponses[404],
           500: problemResponses[500],
           503: problemResponses[503],
