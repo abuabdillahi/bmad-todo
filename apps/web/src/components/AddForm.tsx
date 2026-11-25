@@ -1,12 +1,14 @@
 import {
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
+  type Ref,
   type RefObject,
 } from 'react';
 import { checkDescription, DESCRIPTION_MAX_LENGTH } from '@todo/contract/description';
@@ -89,13 +91,15 @@ function useFieldStatus() {
   };
 }
 
-export function AddForm() {
+export function AddForm({ fieldRef: externalFieldRef }: { fieldRef?: Ref<HTMLTextAreaElement> } = {}) {
   const addTodo = useAddTodo();
   const [value, setValue] = useState('');
   const [emptyShown, setEmptyShown] = useState(false);
   const status = useFieldStatus();
   const pending = useRef<string | null>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
+  // The add field is a focus target outside the form too (Dismiss, Try again).
+  useImperativeHandle(externalFieldRef, () => fieldRef.current!, []);
   const selection = useRef<[number, number] | null>(null);
   const wasOver = useRef(false);
   const fieldId = useId();
