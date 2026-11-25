@@ -1,4 +1,4 @@
-import { createTodo, isCancellation, listTodos, RequestFailure, type FailureKind } from './client.ts';
+import { createTodo, isCancellation, listTodos, RequestFailure, WRITE_TIMEOUT_MS, type FailureKind } from './client.ts';
 
 /** AD-9 classification, with `fetch` stubbed. */
 const fetchMock = vi.fn<typeof fetch>();
@@ -127,5 +127,94 @@ describe('API client failure classification', () => {
   it('K7 returns the parsed body on success', async () => {
     fetchMock.mockResolvedValue(answer(200, '[]', 'application/json; charset=utf-8'));
     expect(await listTodos()).toEqual([]);
+  });
+});
+
+describe('API client write timeout', () => {
+  const body = { id: 'a0000000-0000-4000-8000-000000000001', description: 'Buy milk' };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A fetch that never answers, and rejects as fetch does once its signal aborts. */
+  function stall(): void {
+    fetchMock.mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          signal?.addEventListener('abort', () => reject(signal.reason ?? new DOMException('Aborted', 'AbortError')));
+        }),
+    );
+  }
+
+  it('U4 a create with no response for 15 s is aborted and rejects as network, and not before', async () => {
+    expect(WRITE_TIMEOUT_MS).toBe(15_000);
+    stall();
+    let settled: unknown;
+    const pending = createTodo(body).then(
+      () => (settled = 'resolved'),
+      (reason: unknown) => (settled = reason),
+    );
+
+    await vi.advanceTimersByTimeAsync(WRITE_TIMEOUT_MS - 1);
+    expect(settled).toBeUndefined();
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(init!.signal!.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+    expect(init!.signal!.aborted).toBe(true);
+    expect(settled).toBeInstanceOf(RequestFailure);
+    expect((settled as RequestFailure).kind).toBe('network');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('U4 a create whose body stalls past 15 s rejects as network', async () => {
+    fetchMock.mockImplementation(async (_url, init) => {
+      const response = answer(201, JSON.stringify({ ...body, completed: false, createdAt: '2026-11-25T10:00:00.000Z' }), 'application/json');
+      vi.spyOn(response, 'json').mockImplementation(
+        () => new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason))),
+      );
+      return response;
+    });
+    const pending = failureOf(createTodo(body));
+
+    await vi.advanceTimersByTimeAsync(WRITE_TIMEOUT_MS);
+    expect((await pending).kind).toBe('network');
+  });
+
+  it('U4 a create answered in time resolves and leaves no timer behind', async () => {
+    fetchMock.mockResolvedValue(answer(201, JSON.stringify({ ...body, completed: false, createdAt: '2026-11-25T10:00:00.000Z' }), 'application/json'));
+
+    await expect(createTodo(body)).resolves.toMatchObject(body);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('U4 a create failing in time keeps its own kind and leaves no timer behind', async () => {
+    fetchMock.mockResolvedValue(answer(503, problem('/problems/unavailable', 503), 'application/problem+json'));
+
+    expect((await failureOf(createTodo(body))).kind).toBe('unavailable');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('U4 listTodos passes the caller\'s signal through untouched and arms no timer', async () => {
+    stall();
+    const controller = new AbortController();
+    const pending = listTodos(controller.signal).catch((reason: unknown) => reason);
+
+    expect(fetchMock.mock.calls[0]![1]!.signal).toBe(controller.signal);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(WRITE_TIMEOUT_MS * 2);
+
+    // The caller's own abort still rethrows, never classified.
+    controller.abort();
+    const error = await pending;
+    expect(error).not.toBeInstanceOf(RequestFailure);
+    expect(isCancellation(error, controller.signal)).toBe(true);
   });
 });

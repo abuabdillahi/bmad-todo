@@ -1,18 +1,11 @@
 import { expect, test, type CDPSession, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
+import { containing, fieldStatus, MESSAGES, todoItem, uniqueDescription, visibleText } from './helpers.ts';
 
 /**
  * Add-form validation in a real browser (E6, E7, E8, K1), by keyboard only.
  * Each test uses a unique description and asserts only on its own todos.
  */
-function uniqueDescription(project: string): string {
-  return `E6 ${project} ${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function todoItem(page: Page, description: string) {
-  return page.getByRole('list', { name: 'Todos' }).getByRole('listitem').filter({ hasText: description });
-}
-
 /** Records every create request the page sends, so a test can assert none went out. */
 function recordCreates(page: Page): string[] {
   const bodies: string[] = [];
@@ -32,14 +25,6 @@ async function focusAddField(page: Page) {
   await page.keyboard.press('Tab');
   await expect(field).toBeFocused();
   return field;
-}
-
-/**
- * The visible Inline error. The hidden Field status carries the same words one
- * animation frame later, so a bare getByText matches both once that frame runs.
- */
-function inlineError(page: Page) {
-  return page.getByText('Enter a description.').and(page.locator(':not([role="status"])'));
 }
 
 async function writeClipboard(page: Page, text: string) {
@@ -65,22 +50,22 @@ test.describe('add form validation', () => {
 
     await page.keyboard.press('Enter');
 
-    await expect(inlineError(page)).toBeVisible();
+    await expect(visibleText(page, MESSAGES.empty)).toBeVisible();
     await expect(field).toHaveAttribute('aria-invalid', 'true');
-    await expect(field).toHaveAccessibleDescription(/Enter a description\./);
+    await expect(field).toHaveAccessibleDescription(containing(MESSAGES.empty));
     await expect(field).toBeFocused();
-    await expect(page.getByRole('status').filter({ hasText: 'Enter a description.' })).toHaveCount(1);
+    await expect(fieldStatus(page, MESSAGES.empty)).toHaveCount(1);
     expect(creates).toEqual([]);
     await expectNoAxeViolations(page, 'empty submit');
 
     // The error clears on the next input that makes the text non-empty.
     await page.keyboard.type('a');
-    await expect(page.getByText('Enter a description.')).toHaveCount(0);
+    await expect(page.getByText(MESSAGES.empty)).toHaveCount(0);
     await expect(field).not.toHaveAttribute('aria-invalid', 'true');
   });
 
   test('E6 E7 K1 pasting two lines joins them with one space and counts the trimmed text', async ({ page }, testInfo) => {
-    const description = uniqueDescription(testInfo.project.name);
+    const description = uniqueDescription('E6', testInfo.project.name);
     const field = await focusAddField(page);
 
     await writeClipboard(page, `${description}\nsecond line\n`);
@@ -120,7 +105,7 @@ test.describe('add form validation', () => {
   test('E6 K1 a trusted Enter with keyCode 229 submits through beforeinput and inserts no newline', async ({ page, browserName }, testInfo) => {
     test.skip(browserName !== 'chromium', 'CDP key input is Chromium only');
     const creates = recordCreates(page);
-    const description = uniqueDescription(testInfo.project.name);
+    const description = uniqueDescription('E6', testInfo.project.name);
     const field = await focusAddField(page);
     // Every line break the engine itself raises, so the test knows the beforeinput path ran.
     await field.evaluate((el) => {
@@ -137,7 +122,7 @@ test.describe('add form validation', () => {
 
     // Empty: refused inline, nothing sent, no newline.
     await pressComposingEnter(cdp);
-    await expect(inlineError(page)).toBeVisible();
+    await expect(visibleText(page, MESSAGES.empty)).toBeVisible();
     await expect(field).toHaveValue('');
     expect(await lineBreaks()).toEqual(['insertLineBreak true']);
     expect(creates).toEqual([]);
@@ -158,7 +143,7 @@ test.describe('add form validation', () => {
   test('E6 K1 Enter with keyCode 229 during an open composition adds the composed word and the field stays empty', async ({ page, browserName }, testInfo) => {
     test.skip(browserName !== 'chromium', 'CDP key input is Chromium only');
     const creates = recordCreates(page);
-    const description = uniqueDescription(testInfo.project.name);
+    const description = uniqueDescription('E6', testInfo.project.name);
     const field = await focusAddField(page);
     const cdp = await page.context().newCDPSession(page);
 
@@ -184,7 +169,7 @@ test.describe('add form validation', () => {
 
   test('E6 E8 over 200 characters shows the over state, Enter adds nothing, and 200 clears it', async ({ page }, testInfo) => {
     const creates = recordCreates(page);
-    const description = uniqueDescription(testInfo.project.name);
+    const description = uniqueDescription('E6', testInfo.project.name);
     const field = await focusAddField(page);
     const text = `${description} ${'x'.repeat(200)}`.slice(0, 201);
 
@@ -192,11 +177,11 @@ test.describe('add form validation', () => {
     await expect(page.getByText('201/200')).toBeVisible();
     await expect(field).toHaveAttribute('aria-invalid', 'true');
     // Chromium's name computation puts a space before the absolutely positioned hidden suffix.
-    await expect(field).toHaveAccessibleDescription(/201\/200 ?, over the character limit/);
+    await expect(field).toHaveAccessibleDescription(new RegExp(`201/200 ?${containing(MESSAGES.overLimitSuffix).source}`));
 
     await page.keyboard.press('Enter');
     await expect(field).toBeFocused();
-    await expect(page.getByRole('status').filter({ hasText: 'over the character limit' })).toHaveCount(1);
+    await expect(fieldStatus(page, MESSAGES.overLimit)).toHaveCount(1);
     expect(creates).toEqual([]);
     await expect(todoItem(page, description)).toHaveCount(0);
     await expectNoAxeViolations(page, 'over limit');

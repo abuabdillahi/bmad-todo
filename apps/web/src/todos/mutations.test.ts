@@ -152,6 +152,42 @@ describe('mutation helper: add (U4)', () => {
     expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: todosQueryKey });
   });
 
+  it('U4 an add given a failed add\'s id sends that id, and a 200 replay announces Added', async () => {
+    const { helper, announce, list } = setup([first]);
+    const reused = 'b0000000-0000-4000-8000-000000000009';
+    fetchMock.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init!.body)) as { id: string; description: string };
+      return Response.json({ ...body, completed: false, createdAt: '2026-11-24T10:00:00.000Z' }, { status: 200 });
+    });
+
+    const pending = helper.addTodo('Buy milk', reused);
+    await flush();
+    expect(list()![0]).toMatchObject({ id: reused, description: 'Buy milk' });
+    const outcome = await pending;
+
+    expect(outcome).toEqual({ status: 'ok', id: reused });
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(JSON.parse(String(init!.body))).toEqual({ id: reused, description: 'Buy milk' });
+    expect(announce).toHaveBeenCalledExactlyOnceWith('status', 'Added “Buy milk”.');
+  });
+
+  it('U4 an add without an id mints a fresh UUID each time', async () => {
+    const { helper } = setup([first]);
+    fetchMock.mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init!.body)) as { id: string; description: string };
+      return Response.json({ ...body, completed: false, createdAt: '2026-11-25T10:00:00.000Z' }, { status: 201 });
+    });
+
+    const one = await helper.addTodo('Buy milk');
+    const two = await helper.addTodo('Buy milk', undefined);
+
+    expect(one.id).toMatch(UUID);
+    expect(two.id).toMatch(UUID);
+    expect(two.id).not.toBe(one.id);
+    const sent = fetchMock.mock.calls.map(([, init]) => (JSON.parse(String(init!.body)) as { id: string }).id);
+    expect(sent).toEqual([one.id, two.id]);
+  });
+
   it('U4 carries the failure kind and never rejects', async () => {
     const { helper } = setup([first]);
     const spec: MutationSpec = {
@@ -229,7 +265,6 @@ describe('mutation helper: per-todo order (U5)', () => {
       id: todo.id,
       kind: 'create',
       apply: () => todo,
-      position: 'top',
       send,
       failureText: (failure) => messages.failureMessage('add', failure, todo.description),
       successText: messages.added(todo.description),
@@ -280,6 +315,96 @@ describe('mutation helper: per-todo order (U5)', () => {
     expect([...store.getSnapshot().revertedAt.keys()]).toEqual([first.id]);
     expect(store.getSnapshot().pendingCount).toBe(0);
     expect(invalidate).toHaveBeenCalledOnce();
+  });
+
+  it('U5 a create resubmitted while the failed one\'s chain is alive: its follow-up is sent once it succeeds, the earlier follow-up is dropped', async () => {
+    const { helper, store, list } = setup([second]);
+    const create1 = held();
+    const f1 = held();
+    const create2 = held();
+    const f2 = held();
+
+    const created1 = helper.run(createSpec(first, create1.send));
+    const followed1 = helper.run(completeSpec(first, f1.send));
+    const created2 = helper.run(createSpec(first, create2.send));
+    const followed2 = helper.run(completeSpec(first, f2.send));
+    await flush();
+
+    create1.reject(new RequestFailure('network', 'x'));
+    await expect(created1).resolves.toMatchObject({ status: 'failed' });
+    await expect(followed1).resolves.toEqual({ status: 'dropped' });
+    expect(f1.send).not.toHaveBeenCalled();
+    // The resubmitted card stays, with its own follow-up's change.
+    expect(list()).toEqual([{ ...first, completed: true }, second]);
+    await flush();
+    expect(create2.send).toHaveBeenCalledOnce();
+    expect(f2.send).not.toHaveBeenCalled();
+
+    create2.resolve();
+    await expect(created2).resolves.toEqual({ status: 'ok' });
+    await flush();
+    expect(f2.send).toHaveBeenCalledOnce();
+    f2.resolve();
+    await expect(followed2).resolves.toEqual({ status: 'ok' });
+    expect(store.getSnapshot().pendingCount).toBe(0);
+    expect(list()).toEqual([{ ...first, completed: true }, second]);
+  });
+
+  it('U5 a resubmitted create that fails again drops the follow-up queued behind it', async () => {
+    const { helper, store, announce, list } = setup([second]);
+    const create1 = held();
+    const f1 = held();
+    const create2 = held();
+    const f2 = held();
+
+    const created1 = helper.run(createSpec(first, create1.send));
+    const followed1 = helper.run(completeSpec(first, f1.send));
+    const created2 = helper.run(createSpec(first, create2.send));
+    const followed2 = helper.run(completeSpec(first, f2.send));
+    await flush();
+
+    create1.reject(new RequestFailure('network', 'x'));
+    await expect(followed1).resolves.toEqual({ status: 'dropped' });
+    await flush();
+    create2.reject(new RequestFailure('unavailable', 'x'));
+    await expect(created1).resolves.toMatchObject({ status: 'failed' });
+    await expect(created2).resolves.toMatchObject({ status: 'failed' });
+    await expect(followed2).resolves.toEqual({ status: 'dropped' });
+
+    expect(f1.send).not.toHaveBeenCalled();
+    expect(f2.send).not.toHaveBeenCalled();
+    expect(announce.mock.calls.map(([kind]) => kind)).toEqual(['failure', 'failure']);
+    expect(list()).toEqual([second]);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+  });
+
+  it('U5 a create resubmitted after the failed one\'s chain is gone sends its follow-up once it succeeds', async () => {
+    const { helper, store } = setup([second]);
+    const create1 = held();
+    const f1 = held();
+
+    const created1 = helper.run(createSpec(first, create1.send));
+    const followed1 = helper.run(completeSpec(first, f1.send));
+    await flush();
+    create1.reject(new RequestFailure('network', 'x'));
+    await expect(created1).resolves.toMatchObject({ status: 'failed' });
+    await expect(followed1).resolves.toEqual({ status: 'dropped' });
+    await flush();
+
+    const create2 = held();
+    const f2 = held();
+    const created2 = helper.run(createSpec(first, create2.send));
+    const followed2 = helper.run(completeSpec(first, f2.send));
+    await flush();
+    create2.resolve();
+    await expect(created2).resolves.toEqual({ status: 'ok' });
+    await flush();
+    f2.resolve();
+    await expect(followed2).resolves.toEqual({ status: 'ok' });
+
+    expect(f1.send).not.toHaveBeenCalled();
+    expect(f2.send).toHaveBeenCalledOnce();
+    expect(store.getSnapshot().pendingCount).toBe(0);
   });
 
   it('U5 a follow-up on another id is not held back', async () => {

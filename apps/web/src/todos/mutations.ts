@@ -12,7 +12,7 @@ export type MutationOutcome =
   | { readonly status: 'failed'; readonly failure: FailureInfo }
   | { readonly status: 'dropped' };
 
-/** An add's outcome, with the id the client minted for it (AD-7). */
+/** An add's outcome, with its id (AD-7): the one the client minted, or the failed add's id passed back. */
 export type AddOutcome = MutationOutcome & { readonly id: string };
 
 /** One optimistic change to one todo (AD-13). */
@@ -22,8 +22,6 @@ export interface MutationSpec {
   readonly kind: 'create' | 'follow-up';
   /** The todo's new value from its current one; null removes it. */
   readonly apply: (prev: Todo | undefined) => Todo | null;
-  /** Where a todo that isn't in the cache yet goes. Only the top is supported. */
-  readonly position?: 'top';
   /** Sends the request. A rejection is the call's failure. */
   readonly send: () => Promise<unknown>;
   /** The failure message, announced with kind `failure`. */
@@ -34,8 +32,12 @@ export interface MutationSpec {
 
 export interface MutationHelper {
   run(spec: MutationSpec): Promise<MutationOutcome>;
-  /** Mints the id and adds the todo on top of the cache at once (AD-7, AD-13). */
-  addTodo(description: string): Promise<AddOutcome>;
+  /**
+   * Adds the todo on top of the cache at once (AD-7, AD-13), with a freshly
+   * minted id, or with `id` when resubmitting a failed add's unchanged text, so
+   * an add the server already stored replays instead of being stored twice (AD-6).
+   */
+  addTodo(description: string, id?: string): Promise<AddOutcome>;
 }
 
 export interface MutationHelperDeps {
@@ -61,7 +63,7 @@ interface Chain {
   tail: Promise<unknown>;
   /** Calls queued on this id and not yet settled, in order. */
   pending: Entry[];
-  /** The todo's create failed: its follow-ups are dropped. */
+  /** The todo's latest executed create failed: the follow-ups queued behind it are dropped. */
   createFailed: boolean;
 }
 
@@ -112,11 +114,14 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
    * Puts back only this call's change (AD-13): rebuilds the todo from the
    * failed call's base by re-applying every later pending call on it, in order,
    * and moves their bases back so a later failure never restores a refused
-   * value. A failed create removes the todo; its follow-ups are dropped.
+   * value. A failed create removes the todo; its follow-ups are dropped, but a
+   * resubmitted create queued after them, and its own follow-ups, stay.
    */
   function revert(entry: Entry, chain: Chain): void {
     const at = chain.pending.indexOf(entry);
-    const later = entry.spec.kind === 'create' ? [] : chain.pending.slice(at + 1).filter((e) => e.applied);
+    const resubmitted = chain.pending.findIndex((e, i) => i > at && e.spec.kind === 'create');
+    const from = entry.spec.kind === 'follow-up' ? at + 1 : resubmitted;
+    const later = from === -1 ? [] : chain.pending.slice(from).filter((e) => e.applied);
     if (!entry.applied) return;
     let value = entry.base;
     for (const next of later) {
@@ -151,6 +156,9 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
       settle(() => {});
       return { status: 'dropped' };
     }
+    // A resubmitted create starts over: the follow-ups queued behind it follow its outcome,
+    // while those queued behind the earlier failed create have already run and been dropped.
+    if (spec.kind === 'create') chain.createFailed = false;
     try {
       await applied;
       await spec.send();
@@ -201,14 +209,13 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
     });
   }
 
-  function addTodo(description: string): Promise<AddOutcome> {
-    const id = crypto.randomUUID();
+  function addTodo(description: string, reusedId?: string): Promise<AddOutcome> {
+    const id = reusedId ?? crypto.randomUUID();
     const todo: Todo = { id, description, completed: false, createdAt: new Date().toISOString() };
     return run({
       id,
       kind: 'create',
       apply: () => todo,
-      position: 'top',
       send: () => createTodo({ id, description }),
       failureText: (failure) => messages.failureMessage('add', failure, description),
       successText: messages.added(description),

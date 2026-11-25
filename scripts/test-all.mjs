@@ -96,7 +96,8 @@ try {
     await step('e2e', 'pnpm', ['--filter', '@todo/e2e', 'exec', 'playwright', 'test']);
     // Every passed e2e test must have run at least one axe scan.
     await step('axe coverage', 'node', ['scripts/axe-coverage.mjs']);
-    // Restarts the api (I6) and reads its logs, so it runs after e2e and before api stops.
+    // Restarts the api (I6), pauses it to check the stalled-API answer (I9, I10) and reads
+    // its logs, so it runs after e2e and before api stops.
     await step('profile', 'pnpm', ['exec', 'vitest', 'run', '--project', 'profile', ...jsonReport('profile')]);
     // Last, because it takes the API away: with api stopped and web-test still
     // up, nginx must answer /api/* with the unavailable problem (AD-4).

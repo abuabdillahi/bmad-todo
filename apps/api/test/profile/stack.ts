@@ -42,3 +42,23 @@ export async function listTodos(): Promise<Todo[]> {
   if (response.status !== 200) throw new Error(`GET /api/todos answered ${response.status}`);
   return (await response.json()) as Todo[];
 }
+
+const HEALTH_WAIT_MS = 30_000;
+
+/** Waits until /api/health answers 200 through web-test, e.g. after the api restarts. */
+export async function waitForHealth(): Promise<void> {
+  const deadline = Date.now() + HEALTH_WAIT_MS;
+  let last = 'no answer';
+  while (Date.now() < deadline) {
+    try {
+      const response = await call('GET', '/api/health');
+      await response.arrayBuffer();
+      if (response.status === 200) return;
+      last = String(response.status);
+    } catch (error) {
+      last = String(error);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`/api/health did not answer 200 within ${HEALTH_WAIT_MS / 1000} s (last: ${last})`);
+}

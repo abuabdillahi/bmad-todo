@@ -241,12 +241,16 @@ export function AddForm({ fieldRef: externalFieldRef }: { fieldRef?: Ref<HTMLTex
     // 'forbidden-character' can't happen after the replace (AD-8); it has no copy of its own.
     if (problem !== null) return;
 
+    // A failed add's restored text, submitted unchanged, goes with that add's id, so
+    // an add the server stored after all replays (AD-6) instead of being stored twice.
+    const reuse = restored.current?.text === description ? restored.current.id : undefined;
+
     // Submitted: the card is on top at once (the helper), the field clears and
     // focus stays in it, even when Add was pressed (EXPERIENCE Focus management).
     restored.current = null;
     setValue('');
     fieldRef.current?.focus();
-    const outcome = await addTodo(description);
+    const outcome = await addTodo(description, reuse);
     if (outcome.status !== 'failed') return;
 
     // Add failed: the sent text comes back only into an empty field, so newer typing is kept.

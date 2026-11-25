@@ -51,10 +51,10 @@ export type { AddOutcome };
 
 /**
  * Adds a todo through the optimistic-mutation helper (AD-13): the card goes on
- * top at once, and the promise resolves with the outcome and the minted id. It
- * never rejects.
+ * top at once, and the promise resolves with the outcome and the todo's id,
+ * minted unless a failed add's id is passed back. It never rejects.
  */
-export function useAddTodo(): (description: string) => Promise<AddOutcome> {
+export function useAddTodo(): (description: string, id?: string) => Promise<AddOutcome> {
   return useTodosContext().mutations.addTodo;
 }
 

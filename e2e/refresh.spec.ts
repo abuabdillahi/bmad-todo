@@ -1,31 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
+import { announcement, MESSAGES, todoItem, UNAVAILABLE_BODY, uniqueDescription } from './helpers.ts';
 
 /**
  * A failed background refresh (E6, E8, story 5): the list stays, the Announcer
  * reports it with its reason, and Dismiss clears it. Each test adds a unique
  * todo and asserts only on its own todo.
  */
-const REFRESH = "Couldn't refresh the list. You're seeing what was last loaded.";
-const UNAVAILABLE = "The server isn't available right now. Try again in a moment.";
-const NETWORK = 'Check your connection and try again.';
-
-/** AD-4's literal body, as nginx answers when the API can't be reached. */
-const UNAVAILABLE_BODY =
-  '{"type":"/problems/unavailable","title":"Service unavailable","status":503,"detail":"The service is unavailable. Try again shortly."}';
-
-function uniqueDescription(project: string): string {
-  return `E6 ${project} ${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function todoItem(page: Page, description: string) {
-  return page.getByRole('list', { name: 'Todos' }).getByRole('listitem').filter({ hasText: description });
-}
-
-function announcement(page: Page) {
-  return page.getByRole('status').filter({ hasText: REFRESH });
-}
-
 /** Opens the app and adds a todo by keyboard, leaving focus in the add field. */
 async function addTodo(page: Page, description: string) {
   await page.goto('/');
@@ -43,7 +24,7 @@ async function addTodo(page: Page, description: string) {
   await page.keyboard.press('Enter');
   await expect(todoItem(page, description)).toHaveCount(1);
   await expect(field).toHaveValue('');
-  await expect(page.getByRole('status').filter({ hasText: 'Added' })).toHaveText(`Added “${description}”.`);
+  await expect(announcement(page, MESSAGES.addOutcome)).toHaveText(MESSAGES.added(description));
   await refetched;
   return field;
 }
@@ -57,7 +38,7 @@ test.describe('refresh failure', () => {
   test('E6 E8 a failed refresh keeps the todo, reports the unavailable reason, and Dismiss by keyboard returns focus to the add field', async ({
     page,
   }, testInfo) => {
-    const description = uniqueDescription(testInfo.project.name);
+    const description = uniqueDescription('E6', testInfo.project.name);
     const field = await addTodo(page, description);
 
     await page.route('**/api/todos', (route) =>
@@ -67,7 +48,7 @@ test.describe('refresh failure', () => {
     );
     await regainFocus(page);
 
-    await expect(announcement(page)).toHaveText(`${REFRESH} ${UNAVAILABLE}`);
+    await expect(announcement(page, MESSAGES.refresh)).toHaveText(`${MESSAGES.refresh} ${MESSAGES.unavailable}`);
     await expect(todoItem(page, description)).toHaveCount(1);
     await expectNoAxeViolations(page, 'refresh failed');
 
@@ -87,7 +68,7 @@ test.describe('refresh failure', () => {
     await page.keyboard.press('Enter');
 
     await expect(dismiss).toHaveCount(0);
-    await expect(announcement(page)).toHaveCount(0);
+    await expect(announcement(page, MESSAGES.refresh)).toHaveCount(0);
     await expect(field).toBeFocused();
     await expect(todoItem(page, description)).toHaveCount(1);
   });
@@ -95,7 +76,7 @@ test.describe('refresh failure', () => {
   test('E6 E8 a refresh with no response reports the network reason, and Dismiss by pointer clears it', async ({
     page,
   }, testInfo) => {
-    const description = uniqueDescription(testInfo.project.name);
+    const description = uniqueDescription('E6', testInfo.project.name);
     const field = await addTodo(page, description);
 
     await page.route('**/api/todos', (route) =>
@@ -103,7 +84,7 @@ test.describe('refresh failure', () => {
     );
     await regainFocus(page);
 
-    await expect(announcement(page)).toHaveText(`${REFRESH} ${NETWORK}`);
+    await expect(announcement(page, MESSAGES.refresh)).toHaveText(`${MESSAGES.refresh} ${MESSAGES.network}`);
     await expect(todoItem(page, description)).toHaveCount(1);
     await expectNoAxeViolations(page, 'refresh failed offline');
 
@@ -117,6 +98,6 @@ test.describe('refresh failure', () => {
       await expect(field).toBeFocused();
     }
     await expect(dismiss).toHaveCount(0);
-    await expect(announcement(page)).toHaveCount(0);
+    await expect(announcement(page, MESSAGES.refresh)).toHaveCount(0);
   });
 });

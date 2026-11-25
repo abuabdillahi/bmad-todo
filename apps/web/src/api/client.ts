@@ -80,9 +80,14 @@ async function classify(response: Response, label: string, signal: AbortSignal |
   return new RequestFailure(kind, message, kind === 'validation' && namesDescription(problem.errors));
 }
 
-async function request<T>(path: string, init: RequestInit): Promise<T> {
-  const signal = init.signal ?? undefined;
-  const label = `${init.method ?? 'GET'} ${path}`;
+/**
+ * How long a write waits for its response before the client gives up, as `network`.
+ * nginx answers a stalled API with the unavailable problem after 10 s; this is
+ * the backstop for when nginx itself doesn't answer.
+ */
+export const WRITE_TIMEOUT_MS = 15_000;
+
+async function send<T>(path: string, init: RequestInit, signal: AbortSignal | undefined, label: string): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -103,6 +108,32 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   }
 }
 
+/**
+ * Sends one request and classifies its failure (AD-9). With `timeoutMs`, the
+ * request is aborted once that long passes before its body is read, and fails
+ * as `network` from whatever stage it reached, unless the caller's own signal
+ * aborted first: that stays a cancellation.
+ */
+async function request<T>(path: string, init: RequestInit, timeoutMs?: number): Promise<T> {
+  const signal = init.signal ?? undefined;
+  const label = `${init.method ?? 'GET'} ${path}`;
+  if (timeoutMs === undefined) return send<T>(path, init, signal, label);
+
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), timeoutMs);
+  const combined = signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal;
+  try {
+    return await send<T>(path, { ...init, signal: combined }, signal, label);
+  } catch (error) {
+    if (timeout.signal.aborted && !isCancellation(error, signal)) {
+      throw new RequestFailure('network', `${label} got no response within ${timeoutMs} ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The only web code that sends HTTP (AD-5). Paths are relative `/api/*` (AD-4). */
 export function listTodos(signal?: AbortSignal): Promise<TodoList> {
   return request<TodoList>('/api/todos', { method: 'GET', signal });
@@ -113,5 +144,5 @@ export function createTodo(body: CreateTodoBody): Promise<Todo> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }, WRITE_TIMEOUT_MS);
 }

@@ -67,7 +67,7 @@ docker compose -p todo-test --profile test down -v
 |---|---|---|
 | `pnpm test` | Unit, component and integration suites (Vitest), in-process | Node only |
 | `pnpm typecheck` | TypeScript across the workspace | Node only |
-| `pnpm test:all` | Every layer: starts `todo-test` on a fresh volume, runs unit, component and integration with coverage, then contract, e2e (Playwright, installs Chromium on first run), the axe coverage check, the profile checks (restart, logs, headers) and the API-down contract, and always tears `todo-test` down | Docker, port 8081 free |
+| `pnpm test:all` | Every layer: starts `todo-test` on a fresh volume, runs unit, component and integration with coverage, then contract, e2e (Playwright, installs Chromium on first run), the axe coverage check, the profile checks (restart, logs, headers, a stalled API answered within about 10 s and its create stored once) and the API-down contract, and always tears `todo-test` down | Docker, port 8081 free |
 
 `pnpm test:all` exits 0 only if every step passed, and prints a summary. It resets a `todo-test` you already have running.
 
