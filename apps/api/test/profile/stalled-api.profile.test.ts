@@ -62,13 +62,14 @@ describe('profile: the api container stalls', () => {
     }
   });
 
-  it('I10 the stalled create sent again with the same id once the api resumes is stored exactly once', async () => {
+  it('I10 the stalled create sent again with its id once the api resumes is replayed with 200 if the stall stored it, else created with 201, and listed once', async () => {
     await waitForHealth();
+    const storedDuringStall = (await listTodos()).some((todo) => todo.id === id);
 
     const response = await call('POST', '/api/todos', { id, description });
     const body = (await response.json()) as { id: string; description: string };
 
-    expect([200, 201]).toContain(response.status);
+    expect(response.status).toBe(storedDuringStall ? 200 : 201);
     expect(body).toMatchObject({ id, description });
     expect((await listTodos()).filter((todo) => todo.id === id)).toHaveLength(1);
   });

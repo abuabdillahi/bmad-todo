@@ -1,9 +1,19 @@
-import type { Locator, Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * Locators, test data and expected copy shared by the e2e specs. Each test
  * adds todos with unique descriptions and asserts only on its own.
  */
+
+/** Opens the app and moves focus to the add field with Tab, its first tab stop. */
+export async function focusAddField(page: Page): Promise<Locator> {
+  await page.goto('/');
+  const field = page.getByRole('textbox', { name: 'New todo' });
+  await expect(page.getByText('0/200')).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(field).toBeFocused();
+  return field;
+}
 
 /** A description no other test or run uses: `<prefix> <project> <time>-<random>`. */
 export function uniqueDescription(prefix: string, project: string): string {
@@ -64,10 +74,10 @@ export const UNAVAILABLE_BODY =
   '{"type":"/problems/unavailable","title":"Service unavailable","status":503,"detail":"The service is unavailable. Try again shortly."}';
 
 /**
- * Visible text only, never a `role="status"` live region: the hidden Field
- * status carries an Inline error's words one animation frame later, so a bare
- * getByText matches both once that frame runs.
+ * Elements matching `text` that are neither a `role="status"` live region nor
+ * inside one: the hidden Field status carries an Inline error's words one
+ * animation frame later, so a bare getByText matches both once that frame runs.
  */
 export function visibleText(page: Page, text: string | RegExp): Locator {
-  return page.getByText(text).and(page.locator(':not([role="status"])'));
+  return page.getByText(text).and(page.locator(':not([role="status"], [role="status"] *)'));
 }

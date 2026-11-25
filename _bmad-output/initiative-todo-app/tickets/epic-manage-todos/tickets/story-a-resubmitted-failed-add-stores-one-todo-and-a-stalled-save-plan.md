@@ -8,14 +8,28 @@ baseline_revision: 'e8b4cade8b38c6ae28d4f35302da7875af417d3d'
 route: full
 route_source: auto
 risk: high
-review: quick
+review: thorough
 review_source: pinned
-lenses_ran: [quick]
+lenses_ran: [blind-hunter, edge-case-hunter, verification-gap, intent-alignment]
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      The ticket's AC2 has no Decision recording that text edited and returned to exactly the restored value counts as unchanged and reuses the id.
+    evidence: |-
+      AC2 reads "changes the text in any way (even back and forth to a different value) ... a new id is minted"; the plan's Design Notes read it as ending at a different value, and K1 "a failed add edited and returned to exactly the restored text reuses its id" pins reuse. Safe under AD-6 (same description replays), but the reading lives only in the plan; the workflow never writes ticket files, so the PO should add a dated Decision to the ticket's Notes (or reverse it).
+    location: >-
+      _bmad-output/initiative-todo-app/tickets/epic-manage-todos/tickets/story-a-resubmitted-failed-add-stores-one-todo-and-a-stalled-save.md (AC2); apps/web/src/components/AddForm.tsx submit()
+    severity: low
+  - summary: >-
+      The architecture spine's Deferred line on a write that may have landed still reads as deferred, though this story built its revisit condition (id reuse on an unchanged resubmit).
+    evidence: |-
+      The epic's Notes (Decision 2026-11-25) leave the line for the architect and say this plan records the as-built behaviour (Design Notes, last bullet); nothing in the tracker or this plan's deferred list brought it back up. The spine is out of scope here (Never: changes to the architecture spine).
+    location: >-
+      _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md (Deferred)
+    severity: low
 ---
 
 <intent-contract>
@@ -86,12 +100,13 @@ deferred: []
 ## Implementation Notes
 
 - Files touched: `apps/web/src/api/client.ts` (+ test), `apps/web/nginx.conf`, `apps/web/src/todos/mutations.ts` (+ test), `apps/web/src/todos/hooks.ts`, `apps/web/src/components/AddForm.tsx` (+ component test), `apps/api/test/profile/stack.ts`, `restart.profile.test.ts`, new `stalled-api.profile.test.ts`, new `e2e/helpers.ts`, every `e2e/*.spec.ts`, `README.md`.
-- `request()` split into `send()` (the old classification, unchanged) and a `request()` wrapper that arms the timer only when given `timeoutMs`; `listTodos` takes the untouched path (its signal is passed through as is, no timer). The wrapper turns any error into `network` once the timer has fired and the caller's own signal has not aborted.
+- `request()` split into `send()` (the old classification, unchanged) and a `request()` wrapper that arms `WRITE_TIMEOUT_MS` for every non-GET method (so later PATCH/DELETE get it without opting in); a GET such as `listTodos` takes the untouched path (its signal is passed through as is, no timer). The wrapper turns any error into `network` once the timer has fired and the caller's own signal has not aborted.
 - Decision beyond the plan's literal tasks: `revert()` of a failed create used to remove the todo outright. With a resubmitted create for the same id already queued behind it (the matrix's "old failed chain still alive" row), that removed the resubmitted create's optimistic card too. It now re-applies the pending calls from the next queued create on, so the resubmitted card (and its own follow-ups' changes) stays, while the follow-ups queued between the two creates are still dropped. Without a later create the behaviour is unchanged. Covered by the U5 tests' cache assertions.
 - `waitForHealth` moved from `restart.profile.test.ts` into `stack.ts`, shared with the new profile test.
 - e2e descriptions now come from `uniqueDescription(prefix, project)` everywhere (offline and motion had inline variants); announcement assertions in add-failure, offline and refresh go through `quoteText`, since the longer random suffix could push a description past 40 code points.
 - In the component tests the server double hides the lost add from the list until a create is answered, standing in for the e2e's aborted settle-time GET.
 - Review round 1: every Announcer and Inline-error string the specs assert on now lives in `MESSAGES` (`addOutcome`, `added(t)`, `addFailed(t, reason)`, `empty`, `overLimit`, `overLimitSuffix`), with a `containing(text)` literal pattern; `announcement()` excludes the add form's status and a new `fieldStatus()` locates it. The profile comments in `vitest.config.ts` and `scripts/test-all.mjs` mention the pause.
+- Review round 2: the timeout is keyed on the method inside `request()`; its message says "got no complete response"; I10 reads the list after the api resumes and expects 200 if the stalled create was stored, else 201; `focusAddField` moved to `e2e/helpers.ts`; the stall e2e fast-forwards 14 s (card still listed, nothing announced) then 1 s; `visibleText()` also excludes descendants of a status region.
 
 ## Plan Change Log
 
@@ -104,6 +119,37 @@ deferred: []
   - `[low]` `[patch]` `announcement()` documented as the Announcer's message but matched any `role="status"`, including the add form's Field status that `validation.spec.ts` relied on; same text in both regions would break a strict assertion (the P2 pitfall) — verified at `AddForm.tsx` (form `role="status"`). Fixed: `announcement()` excludes `form [role="status"]`, new `fieldStatus()` helper used for the two Field-status assertions.
   - `[low]` `[patch]` `AddOutcome` doc in `mutations.ts` still said "the id the client minted" though the id can now be passed back — verified. Fixed: doc names both sources.
   - `[low]` `[patch]` `vitest.config.ts` and `scripts/test-all.mjs` comments described the profile step without the new api pause — verified. Fixed: both mention the pause (I9, I10).
+
+### 2026-11-25 — Review pass (follow-up, thorough: blind-hunter, edge-case-hunter, verification-gap, intent-alignment)
+- verdicts: 27 findings — high 0, medium 4, low 16, false 7, maybe-false 0
+- findings:
+  - `[medium]` `[patch]` (blind-hunter) The write timeout was opt-in per caller (`createTodo` passed `WRITE_TIMEOUT_MS`), so story 2.2's PATCH/DELETE could compile with none, against AC5's "same rule" — verified in `client.ts`. Fixed: `request()` keys the timeout on the method; every non-GET gets it, GET none; `createTodo` passes nothing.
+  - `[false]` `[reject]` (blind-hunter) Nothing pins nginx's 10 s below the client's 15 s — refuted: I9 bounds nginx's answer to 9-13 s and `client.test.ts` asserts `WRITE_TIMEOUT_MS` is 15 000, so raising either past the other breaks a test.
+  - `[low]` `[reject]` (blind-hunter) The `AbortSignal.any` branch (timer plus caller signal) has no caller and no test — true, but no write passes a signal today, and testing it needs a new exported path; unreachable in use and the fix is more than a direct correction.
+  - `[low]` `[patch]` (blind-hunter) I10 passed whether or not the stalled create landed, never showing the replay — verified: it accepted 200 or 201. Fixed: it reads the list first and expects 200 if the stall stored the todo, else 201, still listed once; title says so.
+  - `[medium]` `[patch]` (blind-hunter) No automated test drives the browser through a real nginx stall (both e2e tests hold the request in `page.route`) — true; AD-20 allows only `page.route` in e2e, which is why the ticket asks for the by-hand Verify. Action: ran the Verify on todo-test (see below).
+  - `[medium]` `[patch]` (blind-hunter) The ticket's risk-high by-hand Verify was skipped and called optional — verified in Auto Run Result. Action: run by an agent-driven Chromium against todo-test with `docker compose -p todo-test pause api` for 12 s: the card showed at once, reverted after 10.4 s with "Couldn't add “…”. The server isn't available right now. Try again in a moment.", the text came back; after unpause the settle-time refetch listed the stored todo and the field cleared (landed after all, so no resubmit was needed); after a refresh exactly one todo with that text.
+  - `[low]` `[defer]` (blind-hunter) AC2 is read as "ends at a different value" with no Decision on the ticket — the reading is in the plan's Design Notes only; the workflow never writes ticket files. Deferred for the PO.
+  - `[false]` `[reject]` (blind-hunter) Review metadata contradicts itself (thorough frontmatter vs quick Auto Run Result) — refuted: the frontmatter was set for this follow-up pass while it ran; the first pass's quick result stays as written and this pass appends its own.
+  - `[false]` `[reject]` (blind-hunter) `followup_review_recommended: false` is unjustified — refuted: it followed the step's rule (no high patched, one medium), and this follow-up thorough pass is that further review.
+  - `[low]` `[defer]` (blind-hunter) The spine's Deferred line on a write that may have landed is not tracked anywhere — true; the spine is out of this story's scope by the epic's Decision. Deferred for the architect.
+  - `[low]` `[patch]` (blind-hunter) The stall e2e never shows the card survives until 15 s — verified. Fixed: fast-forward 14 000 ms, assert the card is listed and nothing announced, then the last 1 000 ms.
+  - `[low]` `[patch]` (blind-hunter) `visibleText()` promised "never a role=status region" but matched a child inside one — verified selector. Fixed: `:not([role="status"], [role="status"] *)`, doc says exactly that.
+  - `[false]` `[reject]` (blind-hunter) The plan's files-touched list omits `vitest.config.ts` and `scripts/test-all.mjs` — refuted: the round-1 Implementation Notes line names both.
+  - `[low]` `[patch]` (blind-hunter) The timeout message said "no response" even when only the body stalled — verified. Fixed: "got no complete response within 15000 ms".
+  - `[low]` `[reject]` (blind-hunter) I9's `expectSecurityHeaders` failure does not name the route — true, but only met when the test fails, and the fix changes a shared helper's signature.
+  - `[low]` `[patch]` (edge-case-hunter) I10 answers 201 when the api drops the stalled POST, so the replay goes unexercised — same root as the I10 row above; fixed there.
+  - `[low]` `[reject]` (edge-case-hunter) I10 run alone (`-t I10`) passes vacuously on a fresh id — true, but nobody runs it alone in `pnpm test:all`, and a guard flag adds state.
+  - `[low]` `[reject]` (edge-case-hunter) An `unpause()` throw in I9's `finally` would mask the real failure — docker unpause on a paused container practically never fails; the fix adds a guard.
+  - `[low]` `[reject]` (edge-case-hunter) A rejected `route.fetch()` would leave `lost.stored` pending until the test times out — Playwright's timeout still reports the awaiting line; rare, and the fix adds error plumbing.
+  - `[low]` `[patch]` (verification-gap, other) I10 accepts 200 or 201, not proving the replay — same root as the I10 rows above; fixed there.
+  - `[medium]` `[patch]` (intent-alignment) The matrix's nginx-stall row lives in the browser, but tests reach it only in parts (I9 at HTTP, the e2e 503 test via `page.route`) — same root as the by-hand Verify rows; the Verify above ran it end to end.
+  - `[low]` `[reject]` (intent-alignment) The 200 replay is shown in the UI only for the network kind — true, but `AddForm` restores and reuses on any `failed` outcome regardless of kind, and the by-hand Verify exercised the unavailable kind.
+  - `[false]` `[reject]` (intent-alignment) The tests reach the reuse state through fixtures (an aborted settle GET) rather than real conditions — no defect: a stalled settle GET yields the same state (refresh fails, text stays), and the by-hand Verify covered the real path.
+  - `[false]` `[reject]` (intent-alignment) The U5 resubmit-while-chain-alive interleaving and the `revert()` extension act on a state the UI cannot produce yet — no bad outcome: the helper is AD-13's shared API that edit and complete will call, and its behaviour there is tested.
+  - `[false]` `[reject]` (intent-alignment) Clearing the field and retyping the same text still reuses the id (A1, not A2) — no bad outcome: the same description can only replay or create, never 409, and dedup is the intent's aim.
+  - `[low]` `[reject]` (intent-alignment) The `AbortSignal.any` branch is untested — same root as the blind-hunter row; rejected there.
+  - `[low]` `[patch]` (intent-alignment) `focusAddField` is copied identically in add-failure and validation specs — verified. Fixed: moved to `e2e/helpers.ts`, imported by both.
 
 ## Design Notes
 
@@ -139,3 +185,13 @@ deferred: []
 - **Follow-up review recommended:** false (no high patched; one medium patched, and it was test-copy consolidation now verified by the full run).
 - **Verification:** `pnpm typecheck` passes; `pnpm test` 291 passed; `pnpm test:all` exit 0 after the review patches (unit 188, component 48, integration 55, contract 6, e2e 45 across desktop/phone/desktop-dark, axe coverage 45 tests / 60 scans, profile 17 incl. the stalled-API I9 (503 after ~10.2 s in the first run) and I10, contract-unavailable 4, scenario coverage, teardown); the plan's two greps return nothing relevant.
 - **Residual risks:** the stall e2e uses `page.clock` and has passed twice in all projects but is not soak-tested; a timer firing just after an error body is read could report `network` (negligible window); the by-hand Verify on the test profile was not run (its API half is automated by the profile test, its UI half by the e2e tests).
+
+### Follow-up review pass (thorough)
+
+- **Lenses:** blind-hunter, edge-case-hunter, verification-gap, intent-alignment.
+- **Findings:** 27 — medium 4, low 16, false 7. Patched 4 medium, which share two root causes: the opt-in write timeout, and the end-to-end stall path, now proved by the by-hand Verify. Also patched 8 low, which share 6 root causes. Deferred 2 low: the AC2 Decision for the PO, and the spine's Deferred line for the architect. Rejected 8 low and 7 false, each with its reason in the Review Triage Log.
+- **Changes:** `client.ts` now times out every non-GET request, with a more accurate timeout message. The I10 profile test expects 200 or 201 depending on whether the stall stored the todo. `focusAddField` moved to `e2e/helpers.ts`. The stall e2e test checks the card is still there at 14 s. The `visibleText()` selector now excludes descendants of a status region.
+- **By-hand Verify (risk high):** run on todo-test with the api paused for 12 s. The card reverted after 10.4 s with the unavailable reason, and the text came back into the field. On unpause, the settle-time refetch listed the stored todo and cleared the field ("landed after all"). After a refresh there was exactly one todo.
+- **Follow-up review recommended:** false. This follow-up pass patched no high finding (medium 4, low 8).
+- **Verification:** `pnpm typecheck` passes. `pnpm test` passes 291. `pnpm test:all` exited 0 after the patches: e2e 45 in 3 projects, axe 60 scans, profile 17 including I9/I10, contract-unavailable 4, scenario coverage passed.
+- **Residual risks:** I10 assumes the api has handled the create it held during the pause before `/api/health` answers 200. In this run it did. The stall e2e test relies on `page.clock` with real time still flowing, and has passed in 3 runs.

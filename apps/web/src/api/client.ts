@@ -109,24 +109,25 @@ async function send<T>(path: string, init: RequestInit, signal: AbortSignal | un
 }
 
 /**
- * Sends one request and classifies its failure (AD-9). With `timeoutMs`, the
- * request is aborted once that long passes before its body is read, and fails
- * as `network` from whatever stage it reached, unless the caller's own signal
- * aborted first: that stays a cancellation.
+ * Sends one request and classifies its failure (AD-9). Every write (any method
+ * but GET) is aborted once `WRITE_TIMEOUT_MS` passes before its body is read,
+ * and fails as `network` from whatever stage it reached, unless the caller's
+ * own signal aborted first: that stays a cancellation. A GET has no timeout.
  */
-async function request<T>(path: string, init: RequestInit, timeoutMs?: number): Promise<T> {
+async function request<T>(path: string, init: RequestInit): Promise<T> {
   const signal = init.signal ?? undefined;
-  const label = `${init.method ?? 'GET'} ${path}`;
-  if (timeoutMs === undefined) return send<T>(path, init, signal, label);
+  const method = init.method ?? 'GET';
+  const label = `${method} ${path}`;
+  if (method === 'GET') return send<T>(path, init, signal, label);
 
   const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), timeoutMs);
+  const timer = setTimeout(() => timeout.abort(), WRITE_TIMEOUT_MS);
   const combined = signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal;
   try {
     return await send<T>(path, { ...init, signal: combined }, signal, label);
   } catch (error) {
     if (timeout.signal.aborted && !isCancellation(error, signal)) {
-      throw new RequestFailure('network', `${label} got no response within ${timeoutMs} ms`);
+      throw new RequestFailure('network', `${label} got no complete response within ${WRITE_TIMEOUT_MS} ms`);
     }
     throw error;
   } finally {
@@ -144,5 +145,5 @@ export function createTodo(body: CreateTodoBody): Promise<Todo> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  }, WRITE_TIMEOUT_MS);
+  });
 }

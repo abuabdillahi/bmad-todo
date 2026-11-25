@@ -1,22 +1,12 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { announcement, MESSAGES, todoItem, UNAVAILABLE_BODY, uniqueDescription } from './helpers.ts';
+import { announcement, focusAddField, MESSAGES, todoItem, UNAVAILABLE_BODY, uniqueDescription } from './helpers.ts';
 
 /**
  * A failed add (E6, E8, story 6), by keyboard: the card shows at once and
  * goes, the Announcer says why, the text is back in the field, and earlier
  * todos stay. Each test adds unique todos and asserts only on its own.
  */
-
-/** Opens the app with focus in the add field, by keyboard. */
-async function focusAddField(page: Page) {
-  await page.goto('/');
-  const field = page.getByRole('textbox', { name: 'New todo' });
-  await expect(page.getByText('0/200')).toBeVisible();
-  await page.keyboard.press('Tab');
-  await expect(field).toBeFocused();
-  return field;
-}
 
 /** Opens the app, adds a todo by keyboard and waits for the server's confirmation. */
 async function openWithTodo(page: Page, description: string) {
@@ -171,7 +161,11 @@ test('E6 E8 a stalled add gives up after 15 s with the network reason, and its u
   await expect(todoItem(page, description)).toHaveCount(1);
   await expect(field).toHaveValue('');
 
-  await page.clock.fastForward(15_000);
+  // Just short of the deadline the card is still there and nothing is announced.
+  await page.clock.fastForward(14_000);
+  await expect(todoItem(page, description)).toHaveCount(1);
+  await expect(announcement(page, MESSAGES.addOutcome)).toHaveCount(0);
+  await page.clock.fastForward(1_000);
   await expect(announcement(page, MESSAGES.addOutcome)).toHaveText(MESSAGES.addFailed(description, MESSAGES.network));
   await stalled.refreshAborted;
   await expect(todoItem(page, description)).toHaveCount(0);

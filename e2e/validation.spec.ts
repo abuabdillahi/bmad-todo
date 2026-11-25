@@ -1,6 +1,6 @@
 import { expect, test, type CDPSession, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { containing, fieldStatus, MESSAGES, todoItem, uniqueDescription, visibleText } from './helpers.ts';
+import { containing, fieldStatus, focusAddField, MESSAGES, todoItem, uniqueDescription, visibleText } from './helpers.ts';
 
 /**
  * Add-form validation in a real browser (E6, E7, E8, K1), by keyboard only.
@@ -15,16 +15,6 @@ function recordCreates(page: Page): string[] {
     }
   });
   return bodies;
-}
-
-/** Opens the app and moves focus to the add field with Tab. */
-async function focusAddField(page: Page) {
-  await page.goto('/');
-  const field = page.getByRole('textbox', { name: 'New todo' });
-  await expect(page.getByText('0/200')).toBeVisible();
-  await page.keyboard.press('Tab');
-  await expect(field).toBeFocused();
-  return field;
 }
 
 async function writeClipboard(page: Page, text: string) {
