@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "7"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/7"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # The add form cleans and checks a description before sending it
