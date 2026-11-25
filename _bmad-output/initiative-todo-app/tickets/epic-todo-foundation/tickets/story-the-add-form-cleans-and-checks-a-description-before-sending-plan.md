@@ -16,7 +16,14 @@ followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md'
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      A successful add started from the beforeinput line-break path may clear the controlled value while an IME composition is still open.
+    evidence: |-
+      submit() success runs setValue(current === value ? '' : current) with no isComposing check, which breaks the plan's "never rewrite during composition" rule if a composition is still open when the add resolves. Usually Enter commits the composition first, and if the user typed after that, `current !== value` and the value is not cleared. Settle it by submitting with Gboard on a real Android device and checking that the committed word does not come back after the field clears.
+    location: >-
+      apps/web/src/components/AddForm.tsx submit() success path with handleBeforeInput
+    severity: medium (unverified)
 ---
 
 <intent-contract>
@@ -100,6 +107,18 @@ deferred: []
   - `low` `reject` The e2e over-limit test has the same blind spot — real, but the behaviour is now pinned by the patched component test, and observing live-region mutations in Playwright adds harness code for no user-facing gain.
   - `low` `reject` Paste is handled on `paste` and drop on the input path, departing from EXPERIENCE.md's `beforeinput` wording; a drop of multi-line text loses its native undo step in Chrome — real for drop only (paste keeps caret and one undo, proven in e2e). Dropping multi-line text into the add field and then undoing is rare, and handling `insertFromDrop` needs a new engine-dependent branch (drop position, `dataTransfer` availability), more than a direct correction. Recorded as a residual risk.
 
+### 2026-11-25 — Review pass (follow-up, CI e2e strict-mode fix)
+- context: CI run 45529158868 failed `E6 E8 an empty Enter…` in desktop and desktop-dark. The blocked submit shows the Inline error at once but sets the hidden Field status (same words) one animation frame later (`sayAgain`), so on a slower runner the bare `getByText('Enter a description.')` matched both and broke strict mode. The app behaves as specified (AD-14), so only the test changed: the visible check now uses `inlineError(page)`, which excludes `[role="status"]`.
+- verdicts: 7 findings — high 0, medium 0, low 6, false 0, maybe-false 1
+- findings:
+  - `maybe-false` `defer` The success clear in `submit()` can rewrite the value while an IME composition is open, reachable now through the `beforeinput` submit path. If true it would be medium. Enter normally commits the composition before `insertLineBreak`, and later typing makes `current !== value`. Only a real Android keyboard test can settle it, so it is deferred as medium (unverified).
+  - `low` `reject` Shift+Enter arriving as `beforeinput` `insertLineBreak` after a composing/229 keydown submits instead of doing nothing. It is real, because the handler never sees Shift, but it needs a hardware Shift+Enter over an IME or an Android keyboard sending Shift+Enter, which is rare. The fix needs new keydown-state tracking, more than a direct correction.
+  - `low` `reject` The `beforeinput` component tests never model an open composition. That is a coverage gap: jsdom has no IME, and the handler does not branch on composition, so a synthetic `compositionstart` would prove little. It is already recorded as a residual risk (real keyboard untested).
+  - `low` `reject` The Inline error clears on non-empty input, not on valid input as EXPERIENCE.md says. The behaviour is real and was chosen deliberately in Design Notes: the counter's over state takes over with `aria-invalid`, so the user still sees an error. Resolving it means editing a planning document, not the code.
+  - `low` `reject` carried Paste is handled on `paste` and drop on the input path, departing from EXPERIENCE.md's `beforeinput` wording, and a multi-line drop loses Chrome's undo step. Same claim as the previous pass, and the code is unchanged.
+  - `low` `reject` carried The e2e over-limit test doesn't prove that a blocked Enter speaks again. Same claim as the previous pass; the component MutationObserver test pins it.
+  - `low` `reject` The microtask selection restore in `clean()` has no test. It is real and already listed as a residual risk. It only runs on a no-op clean, which users rarely hit, and testing it needs controlled write-back timing that jsdom does not reproduce faithfully.
+
 ## Design Notes
 
 - Paste is intercepted at `paste` rather than `beforeinput` `insertFromPaste`: a textarea's `beforeinput` may carry neither `data` nor `dataTransfer` in some engines, while `ClipboardEvent.clipboardData` always holds the text. `execCommand('insertText')` keeps the native undo stack and fires `input`, so React's `onChange` sees it and the caret lands after the text. Paste that needs no cleaning is left alone. Drop is cleaned on the input path (one-for-one, selection restored); its undo granularity is not a K1 clause.
@@ -139,3 +158,18 @@ deferred: []
 - A CR LF paste becomes two spaces (one for one, as the server would store it), not one.
 - Chromium reads a space before the hidden over-limit suffix ("201/200 , over the character limit").
 - The microtask selection restore in `clean()` (cleaned text equal to the current state) has no automated test.
+
+### Follow-up pass — 2026-11-25 (CI e2e fix)
+
+**Summary:** `e2e/validation.spec.ts` "E6 E8 an empty Enter…" failed in CI (run 45529158868, desktop and desktop-dark) with a strict-mode violation that depends on timing. The blocked submit shows the Inline error right away and sets the hidden Field status, with the same text, on the next animation frame. On a slower runner that frame had already run when the assertion ran, so a bare `getByText` matched both. The app is correct per AD-14. The test now checks the visible error through `inlineError(page)` (`getByText(…).and(':not([role="status"])')`). The "error clears" assertion still uses a bare `getByText` with count 0, which proves that both the error and the status cleared.
+
+**Files changed:**
+- `e2e/validation.spec.ts` -- `inlineError(page)` helper; the empty-submit visibility check uses it
+
+**Review findings:** 0 patches. 1 deferred (maybe-false, medium if true: the success clear may rewrite the value during an open IME composition). 6 rejected: 4 low (Shift+Enter through `beforeinput` after a composing keydown; composition not modelled in the `beforeinput` tests; the error clears on non-empty rather than on valid input, chosen in Design Notes; no test for the microtask selection restore) and 2 carried from the previous pass (drop on the input path; e2e re-speak blind spot).
+
+**Follow-up review recommended:** false (follow-up pass; patched: high 0, medium 0, low 0).
+
+**Verification:** `pnpm typecheck` passes. `pnpm test:all` exits 0 with every step passed (unit, component, integration, contract, e2e, contract-unavailable, scenario coverage: 16 ids, 124 tests).
+
+**Residual risks:** The CI failure could not be reproduced locally, since the race resolves the other way here. The fix removes the ambiguity in both orders: the locator never matches the status element, whether or not the frame has run.

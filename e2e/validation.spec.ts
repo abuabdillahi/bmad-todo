@@ -34,6 +34,14 @@ async function focusAddField(page: Page) {
   return field;
 }
 
+/**
+ * The visible Inline error. The hidden Field status carries the same words one
+ * animation frame later, so a bare getByText matches both once that frame runs.
+ */
+function inlineError(page: Page) {
+  return page.getByText('Enter a description.').and(page.locator(':not([role="status"])'));
+}
+
 async function writeClipboard(page: Page, text: string) {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.evaluate((value) => navigator.clipboard.writeText(value), text);
@@ -46,7 +54,7 @@ test.describe('add form validation', () => {
 
     await page.keyboard.press('Enter');
 
-    await expect(page.getByText('Enter a description.')).toBeVisible();
+    await expect(inlineError(page)).toBeVisible();
     await expect(field).toHaveAttribute('aria-invalid', 'true');
     await expect(field).toHaveAccessibleDescription(/Enter a description\./);
     await expect(field).toBeFocused();
