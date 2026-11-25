@@ -94,6 +94,8 @@ try {
     await step('contract', 'pnpm', ['exec', 'vitest', 'run', '--project', 'contract', ...jsonReport('contract')]);
     await step('playwright browsers', 'pnpm', ['--filter', '@todo/e2e', 'exec', 'playwright', 'install', 'chromium']);
     await step('e2e', 'pnpm', ['--filter', '@todo/e2e', 'exec', 'playwright', 'test']);
+    // Every passed e2e test must have run at least one axe scan.
+    await step('axe coverage', 'node', ['scripts/axe-coverage.mjs']);
     // Restarts the api (I6) and reads its logs, so it runs after e2e and before api stops.
     await step('profile', 'pnpm', ['exec', 'vitest', 'run', '--project', 'profile', ...jsonReport('profile')]);
     // Last, because it takes the API away: with api stopped and web-test still
@@ -108,6 +110,7 @@ try {
   } else {
     skip('contract', 'todo-test did not start');
     skip('e2e', 'todo-test did not start');
+    skip('axe coverage', 'todo-test did not start');
     skip('profile', 'todo-test did not start');
     skip('contract-unavailable', 'todo-test did not start');
   }
