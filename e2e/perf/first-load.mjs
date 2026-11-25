@@ -28,7 +28,7 @@ function fail(message) {
 
 const baseUrl = new URL(process.env.BASE_URL ?? 'http://127.0.0.1:8081');
 if (!LOCAL_HOSTS.has(baseUrl.hostname)) {
-  fail(`refusing ${baseUrl.origin}: only 127.0.0.1 or localhost (todo-test, todo-dev) may be measured`);
+  fail(`refusing ${baseUrl.origin}: only 127.0.0.1, localhost or [::1] (todo-test, todo-dev) may be measured`);
 }
 const runs = Number(process.env.PERF_RUNS ?? 5);
 const seed = Number(process.env.PERF_SEED ?? 50);
@@ -126,7 +126,8 @@ try {
       );
       const observer = new MutationObserver(() => {
         const items = document.querySelectorAll('ul[aria-label="Todos"] > li');
-        if (![...items].some((li) => li.textContent === text)) return;
+        // Match the card's text span: the card also holds its Edit and Delete buttons.
+        if (![...items].some((li) => [...li.querySelectorAll('span')].some((span) => span.textContent === text))) return;
         observer.disconnect();
         const inDom = performance.now();
         requestAnimationFrame(() => {

@@ -10,6 +10,10 @@
 // same Chromium and flags load a probe page and must report the expected
 // `prefers-color-scheme`, so a run that did not get its scheme fails.
 //
+// Before the runs it seeds the list through the public API, so the audit sees
+// active and done cards with their buttons: at least 10 todos, at least 3 of
+// them done. It only adds todos (done ones are its own), and prints the counts.
+//
 // Writes JSON and HTML reports to coverage/lighthouse/ (git-ignored), prints
 // category scores and every failing scored audit, and exits non-zero when the
 // accessibility category has any failing audit or a run fails.
@@ -34,7 +38,7 @@ function fail(message) {
 
 const baseUrl = new URL(process.env.BASE_URL ?? 'http://127.0.0.1:8081');
 if (!LOCAL_HOSTS.has(baseUrl.hostname)) {
-  fail(`refusing ${baseUrl.origin}: run it against todo-test or todo-dev only`);
+  fail(`refusing ${baseUrl.origin}: only 127.0.0.1, localhost or [::1] (todo-test, todo-dev) may be measured`);
 }
 const chromePath = process.env.CHROME_PATH ?? chromium.executablePath();
 const outDir = fileURLToPath(new URL('../../coverage/lighthouse/', import.meta.url));
@@ -47,6 +51,39 @@ function probeDark(flags) {
   if (status !== 0) fail(`the scheme probe could not run ${chromePath}`);
   return stdout.includes('dark=true');
 }
+
+async function api(method, path, body) {
+  let response;
+  try {
+    response = await fetch(new URL(path, baseUrl), {
+      method,
+      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (error) {
+    fail(`${method} ${path}: ${baseUrl.origin} unreachable (${error.cause?.code ?? error.message})`);
+  }
+  if (!response.ok) fail(`${method} ${path} answered ${response.status}`);
+  return response.json();
+}
+
+// The list the audit sees: at least MIN_TODOS todos, at least MIN_DONE of them done.
+const MIN_TODOS = 10;
+const MIN_DONE = 3;
+const stamp = Date.now().toString(36);
+let todos = await api('GET', '/api/todos');
+for (let i = todos.filter((t) => t.completed).length; i < MIN_DONE; i++) {
+  const id = crypto.randomUUID();
+  await api('POST', '/api/todos', { id, description: `lighthouse done ${i + 1} ${stamp}` });
+  await api('PATCH', `/api/todos/${encodeURIComponent(id)}`, { completed: true });
+}
+todos = await api('GET', '/api/todos');
+for (let i = todos.length; i < MIN_TODOS; i++) {
+  await api('POST', '/api/todos', { id: crypto.randomUUID(), description: `lighthouse open ${i + 1} ${stamp}` });
+}
+todos = await api('GET', '/api/todos');
+const done = todos.filter((t) => t.completed).length;
+console.log(`List audited: ${todos.length} todos, ${todos.length - done} active and ${done} done`);
 
 let a11yFailures = 0;
 for (const [scheme, value] of Object.entries(SCHEMES)) {

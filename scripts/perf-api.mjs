@@ -2,8 +2,11 @@
 // `pnpm perf:api` (R19, AD-20): one user's API timing against a local stack.
 // Sequential requests, a short warm-up, then at least 100 timed requests per
 // endpoint (GET /api/health, GET /api/todos with a seeded list, POST
-// /api/todos). Prints n, p50, p95, p99 and max per endpoint and exits non-zero
-// unless every request succeeded and every p95 is under 300 ms (C4).
+// /api/todos, PATCH /api/todos/{id} timed twice, once alternating `completed`
+// and once changing the description, each on one todo it created, and DELETE
+// /api/todos/{id} of a todo it created untimed just before).
+// Prints n, p50, p95, p99 and max per endpoint and exits non-zero unless every
+// request succeeded and every p95 is under 300 ms (C4).
 //
 // It creates todos, so it refuses any host but a local one: run it against
 // todo-test (default http://127.0.0.1:8081) or todo-dev (http://127.0.0.1:5173),
@@ -33,7 +36,7 @@ function intEnv(name, fallback, min) {
 const baseUrl = new URL(process.env.BASE_URL ?? 'http://127.0.0.1:8081');
 // Refuse before any request: this script POSTs, and production data is real.
 if (!LOCAL_HOSTS.has(baseUrl.hostname)) {
-  fail(`refusing ${baseUrl.origin}: only 127.0.0.1 or localhost (todo-test, todo-dev) may be measured`);
+  fail(`refusing ${baseUrl.origin}: only 127.0.0.1, localhost or [::1] (todo-test, todo-dev) may be measured`);
 }
 const n = intEnv('PERF_N', 200, 100);
 const warmup = intEnv('PERF_WARMUP', 20, 0);
@@ -70,26 +73,58 @@ function percentile(sorted, p) {
   return sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)];
 }
 
-const endpoints = [
-  { label: 'GET /api/health', request: () => ['GET', '/api/health'] },
-  { label: 'GET /api/todos', request: () => ['GET', '/api/todos'] },
-  { label: 'POST /api/todos', request: (i) => ['POST', '/api/todos', createBody(i)] },
-];
-
-// Seed the list so GET /api/todos returns a realistic one. Epic 1 has no
-// DELETE, so the list only grows: the size used is measured and printed.
+// Seed the list so GET /api/todos returns a realistic one. The size used is
+// measured and printed. Every timed DELETE removes a todo this script created
+// for it, so the list ends the run with the seeds, the POSTs and the two PATCH targets.
 const { text: before } = await timed('GET /api/todos', 'GET', '/api/todos');
 for (let i = JSON.parse(before).length; i < seed; i++) {
   await timed('POST /api/todos (seed)', 'POST', '/api/todos', createBody(`seed ${i}`));
 }
 
+// The PATCH targets: two todos of this run's own. One is toggled done and open
+// in turn; the other gets a new description each time (the edit's path, AD-8).
+const toggleTarget = createBody('patch completed target');
+await timed('POST /api/todos (PATCH target)', 'POST', '/api/todos', toggleTarget);
+const editTarget = createBody('patch description target');
+await timed('POST /api/todos (PATCH target)', 'POST', '/api/todos', editTarget);
+const todoPath = (id) => `/api/todos/${encodeURIComponent(id)}`;
+let toggles = 0;
+
+/**
+ * Each endpoint's `prepare` runs untimed before each request and returns its
+ * method, path and body. DELETE's creates the todo that request removes.
+ */
+const endpoints = [
+  { label: 'GET /api/health', prepare: async () => ['GET', '/api/health'] },
+  { label: 'GET /api/todos', prepare: async () => ['GET', '/api/todos'] },
+  { label: 'POST /api/todos', prepare: async (i) => ['POST', '/api/todos', createBody(i)] },
+  {
+    label: 'PATCH /api/todos/{id}',
+    note: 'completed',
+    prepare: async () => ['PATCH', todoPath(toggleTarget.id), { completed: ++toggles % 2 === 1 }],
+  },
+  {
+    label: 'PATCH /api/todos/{id}',
+    note: 'description',
+    prepare: async (i) => ['PATCH', todoPath(editTarget.id), { description: `perf edit ${Date.now().toString(36)} ${i}` }],
+  },
+  {
+    label: 'DELETE /api/todos/{id}',
+    prepare: async (i) => {
+      const body = createBody(`delete ${i}`);
+      await timed('POST /api/todos (DELETE target)', 'POST', '/api/todos', body);
+      return ['DELETE', todoPath(body.id)];
+    },
+  },
+];
+
 const results = [];
-for (const { label, request } of endpoints) {
-  for (let i = 0; i < warmup; i++) await timed(label, ...request(`warm ${i}`));
+for (const { label, note, prepare } of endpoints) {
+  for (let i = 0; i < warmup; i++) await timed(label, ...(await prepare(`warm ${i}`)));
   let listSize;
   const samples = [];
   for (let i = 0; i < n; i++) {
-    const { ms, text } = await timed(label, ...request(i));
+    const { ms, text } = await timed(label, ...(await prepare(i)));
     samples.push(ms);
     if (label === 'GET /api/todos' && i === 0) listSize = JSON.parse(text).length;
   }
@@ -101,21 +136,21 @@ for (const { label, request } of endpoints) {
     p95: percentile(samples, 95),
     p99: percentile(samples, 99),
     max: samples.at(-1),
-    note: listSize === undefined ? '' : `list of ${listSize}`,
+    note: listSize === undefined ? (note ?? '') : `list of ${listSize}`,
   });
 }
 
 const fmt = (ms) => ms.toFixed(1).padStart(7);
 console.log(`API timing, one user, sequential, against ${baseUrl.origin} (${new Date().toISOString()})`);
 console.log(`warm-up ${warmup} per endpoint; ms; pass bar p95 < ${p95Bar} ms\n`);
-console.log('| Endpoint         |   n |     p50 |     p95 |     p99 |     max | Result | Note');
-console.log('|------------------|-----|---------|---------|---------|---------|--------|-----');
+console.log('| Endpoint               |   n |     p50 |     p95 |     p99 |     max | Result | Note');
+console.log('|------------------------|-----|---------|---------|---------|---------|--------|-----');
 let ok = true;
 for (const r of results) {
   const pass = r.p95 < p95Bar;
   ok &&= pass;
   console.log(
-    `| ${r.label.padEnd(16)} | ${String(r.n).padStart(3)} | ${fmt(r.p50)} | ${fmt(r.p95)} | ${fmt(r.p99)} | ${fmt(r.max)} | ${pass ? 'pass  ' : 'FAIL  '} | ${r.note}`,
+    `| ${r.label.padEnd(22)} | ${String(r.n).padStart(3)} | ${fmt(r.p50)} | ${fmt(r.p95)} | ${fmt(r.p99)} | ${fmt(r.max)} | ${pass ? 'pass  ' : 'FAIL  '} | ${r.note}`,
   );
 }
 if (!ok) fail(`a p95 is at or over ${p95Bar} ms`);
