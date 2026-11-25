@@ -41,7 +41,7 @@ let newer: string;
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'ci-steps-'));
   const git = (...args: string[]) =>
-    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
       cwd: dir,
       encoding: 'utf8',
     }).trim();
@@ -215,5 +215,124 @@ describe("catch-up's outputs reach test and the guard", () => {
   it('test and the guard read those job outputs', () => {
     expect(jobBlock(TEST_JOB).join('\n')).toContain("needs.catch-up.outputs.deploy == 'true'");
     expect(jobBlock(DEPLOY_JOB).map((l) => l.trim())).toContain('CHECKED: ${{ needs.catch-up.outputs.deployed }}');
+  });
+});
+
+/** A job's or a step's `if:` (folded `>-` or plain), from `lines` at `indent`. */
+function ifAt(lines: string[], indent: number): string | null {
+  const at = lines.findIndex((line) => line.startsWith(`${' '.repeat(indent)}if: `));
+  if (at < 0) return null;
+  const value = lines[at].slice(indent + 4).trim();
+  if (value !== '>-' && value !== '>') return value;
+  const parts: string[] = [];
+  for (const line of lines.slice(at + 1)) {
+    if (line.trim() && line.search(/\S/) <= indent) break;
+    parts.push(line.trim());
+  }
+  return parts.join(' ').trim();
+}
+
+/** The `needs:` of job `id`. */
+function needsOf(id: string): string[] {
+  const line = jobBlock(id).find((l) => l.startsWith('    needs: '));
+  if (!line) return [];
+  return line.slice('    needs: '.length).replace(/[[\]]/g, '').split(',').map((n) => n.trim()).filter(Boolean);
+}
+
+/** The lines of step `name` in job `id`, and the step's indent. */
+function stepLines(id: string, name: string): { lines: string[]; indent: number } {
+  const block = jobBlock(id);
+  const start = block.findIndex((l) => l.trim() === `- name: ${name}`);
+  if (start < 0) throw new Error(`No step ${name} in ${id}`);
+  const indent = block[start].indexOf('-');
+  const end = block.findIndex((l, i) => i > start && l.trim() && l.search(/\S/) <= indent);
+  return { lines: block.slice(start, end < 0 ? undefined : end), indent };
+}
+
+type Ctx = { github: { event_name: string; ref: string }; needs: Record<string, { result: string; outputs: Record<string, string> }>; steps?: Record<string, { outputs: Record<string, string> }> };
+
+/**
+ * Evaluates a GitHub Actions `if:` over the few operators ci.yml uses, with
+ * GitHub's rule that an expression with no status function gets an implicit
+ * `success()` (every needed job succeeded).
+ */
+function evaluate(expression: string | null, ctx: Ctx, needed: string[]): boolean {
+  const success = needed.every((n) => ctx.needs[n]?.result === 'success');
+  if (expression === null) return success;
+  const js = expression.replace(/needs\.([\w-]+)\./g, (_m, id: string) => `needs[${JSON.stringify(id)}].`);
+  const fn = new Function('github', 'needs', 'steps', 'success', 'cancelled', 'always', 'failure', `return (${js});`);
+  const value = Boolean(fn(ctx.github, ctx.needs, ctx.steps ?? {}, () => success, () => false, () => true, () => false));
+  return /\b(success|failure|cancelled|always)\(\)/.test(expression) ? value : success && value;
+}
+
+type Scenario = {
+  event: string;
+  ref?: string;
+  /** catch-up's result when it runs, and its decision. */
+  catchUp?: { result: string; deploy?: string; deployed?: string };
+  test?: string;
+  gate?: { result: string; clear?: string };
+};
+
+/** Which jobs run, in dependency order, for one event. */
+function jobsThatRun(s: Scenario) {
+  const ctx: Ctx = { github: { event_name: s.event, ref: s.ref ?? 'refs/heads/main' }, needs: {} };
+  const ran: Record<string, boolean> = {};
+  const plan: Record<string, { result: string; outputs: Record<string, string> }> = {
+    'catch-up': { result: s.catchUp?.result ?? 'success', outputs: { deploy: s.catchUp?.deploy ?? '', deployed: s.catchUp?.deployed ?? '' } },
+    test: { result: s.test ?? 'success', outputs: {} },
+    'catch-up-gate': { result: s.gate?.result ?? 'success', outputs: { clear: s.gate?.clear ?? '' } },
+    deploy: { result: 'success', outputs: {} },
+  };
+  for (const id of ['catch-up', TEST_JOB, 'catch-up-gate', DEPLOY_JOB]) {
+    const needed = needsOf(id);
+    ran[id] = evaluate(ifAt(jobBlock(id), 4), { ...ctx, needs: Object.fromEntries(needed.map((n) => [n, ctx.needs[n]])) }, needed);
+    ctx.needs[id] = ran[id] ? plan[id] : { result: 'skipped', outputs: {} };
+  }
+  return ran;
+}
+
+describe('the job graph, evaluated from ci.yml', () => {
+  it('needs: catch-up before test; catch-up and test before the gate; all three before deploy', () => {
+    expect(needsOf(TEST_JOB)).toEqual(['catch-up']);
+    expect(needsOf('catch-up-gate')).toEqual(['catch-up', TEST_JOB]);
+    expect(needsOf(DEPLOY_JOB)).toEqual(['catch-up', TEST_JOB, 'catch-up-gate']);
+  });
+
+  it.each<[string, Scenario, Record<string, boolean>]>([
+    ['push to main: test and deploy, as before', { event: 'push' }, { 'catch-up': false, test: true, 'catch-up-gate': false, deploy: true }],
+    ['push to main, red test: no deploy', { event: 'push', test: 'failure' }, { 'catch-up': false, test: true, 'catch-up-gate': false, deploy: false }],
+    ['push to a branch: test only', { event: 'push', ref: 'refs/heads/story-x' }, { 'catch-up': false, test: true, 'catch-up-gate': false, deploy: false }],
+    ['rollback by hand on main: deploy only', { event: 'workflow_dispatch' }, { 'catch-up': false, test: false, 'catch-up-gate': false, deploy: true }],
+    ['dispatch on a branch: nothing', { event: 'workflow_dispatch', ref: 'refs/heads/x' }, { 'catch-up': false, test: false, 'catch-up-gate': false, deploy: false }],
+    ['schedule, nothing to deploy', { event: 'schedule', catchUp: { result: 'success', deploy: 'false' } }, { 'catch-up': true, test: false, 'catch-up-gate': false, deploy: false }],
+    ['schedule, catch-up failed after writing deploy=true', { event: 'schedule', catchUp: { result: 'failure', deploy: 'true' } }, { 'catch-up': true, test: false, 'catch-up-gate': false, deploy: false }],
+    ['schedule, deploy, red test', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, test: 'failure' }, { 'catch-up': true, test: true, 'catch-up-gate': false, deploy: false }],
+    ['schedule, deploy, gate clear', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, gate: { result: 'success', clear: 'true' } }, { 'catch-up': true, test: true, 'catch-up-gate': true, deploy: true }],
+    ['schedule, deploy, a rollback pending or ran meanwhile', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, gate: { result: 'success', clear: 'false' } }, { 'catch-up': true, test: true, 'catch-up-gate': true, deploy: false }],
+    ['schedule, deploy, gate failed', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, gate: { result: 'failure' } }, { 'catch-up': true, test: true, 'catch-up-gate': true, deploy: false }],
+  ])('%s', (_title, scenario, expected) => {
+    expect(jobsThatRun(scenario)).toEqual(expected);
+  });
+
+  it.each([
+    ['Skip if a newer SHA is already deployed', { push: true, schedule: true, workflow_dispatch: false }],
+    ['Download the tested images', { push: true, schedule: true, workflow_dispatch: false }],
+    ['Push the tested images to GHCR', { push: true, schedule: true, workflow_dispatch: false }],
+    ['Start production', { push: true, schedule: true, workflow_dispatch: true }],
+  ])('deploy step %s runs for %j (guard not skipping)', (name, expected) => {
+    const { lines, indent } = stepLines(DEPLOY_JOB, name);
+    for (const [event, runs] of Object.entries(expected)) {
+      const ctx: Ctx = { github: { event_name: event, ref: 'refs/heads/main' }, needs: {}, steps: { guard: { outputs: { skip: '' } } } };
+      expect(evaluate(ifAt(lines, indent + 2), ctx, []), `${name} on ${event}`).toBe(runs);
+    }
+  });
+
+  it('the steps after the guard are skipped when it skips', () => {
+    for (const name of ['Download the tested images', 'Push the tested images to GHCR', 'Start production']) {
+      const { lines, indent } = stepLines(DEPLOY_JOB, name);
+      const ctx: Ctx = { github: { event_name: 'schedule', ref: 'refs/heads/main' }, needs: {}, steps: { guard: { outputs: { skip: 'true' } } } };
+      expect(evaluate(ifAt(lines, indent + 2), ctx, [])).toBe(false);
+    }
   });
 });

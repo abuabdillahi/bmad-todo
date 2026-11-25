@@ -1,4 +1,6 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +12,7 @@ import {
   TEST_JOB,
   cancelledByGroup,
   decide,
+  gate,
   gatherFacts,
   hasSkipToken,
   main,
@@ -92,6 +95,11 @@ const KINDS = {
     conclusion: 'cancelled',
     jobs: [job('test', 'success'), job('deploy', 'cancelled')],
     annotations: [{ message: 'The operation was canceled.' }],
+  },
+  personTwo: {
+    conclusion: 'cancelled',
+    jobs: [job('test', 'success'), job('deploy', 'cancelled')],
+    annotations: [{ message: 'The operation was canceled.' }, { title: 'Canceling', message: "since a newer   request for 'deploy-prod' exists" }],
   },
   bare: { conclusion: 'cancelled', jobs: [job('test', 'success'), job('deploy', 'cancelled')], annotations: [] },
   testCancelled: { conclusion: 'cancelled', jobs: [job('test', 'cancelled'), job('deploy', 'skipped')] },
@@ -200,6 +208,8 @@ describe('hasSkipToken', () => {
     ['Subject\n\nBody line\n[skip ci]\n'],
     ['Subject\n\nskip-checks: true\n'],
     ['Subject\n\nskip-checks:true'],
+    ['Subject\r\n\r\nskip-checks: true\r\n'],
+    ['Subject\n\nBody\n\n\nskip-checks: true\n\n'],
   ])('%j skips CI', (message) => {
     expect(hasSkipToken(message)).toBe(true);
   });
@@ -210,6 +220,8 @@ describe('hasSkipToken', () => {
     ['[skip-ci]'],
     ['Subject\n\nskip-checks: false\n'],
     ['Subject\n\nnot a trailer skip-checks: true\n'],
+    ['Subject\n\nskip-checks: true\n\nMore body after it\n'],
+    ['Subject\nskip-checks: true'],
   ])('%j does not', (message) => {
     expect(hasSkipToken(message)).toBe(false);
   });
@@ -423,9 +435,22 @@ describe('gatherFacts and decide', () => {
       expect((await check([dispatch(7, -90)], dated)).decision).toMatchObject({ deploy: true });
     });
 
-    it('a failed dispatch, or one on another branch, does not count', async () => {
-      const runs = [push(1, T, 'group', 0), dispatch(7, 10, { kind: 'deployFailed', conclusion: 'failure' }), dispatch(8, 10, { head_branch: 'x' })];
+    it('a dispatch on another branch does not count', async () => {
+      const runs = [push(1, T, 'group', 0), dispatch(8, 10, { head_branch: 'x' })];
       expect((await check(runs)).facts.rollback).toBeNull();
+    });
+
+    it('a failed rollback counts too: its health check may have failed with it live', async () => {
+      const runs = [push(1, T, 'group', 0), dispatch(7, 10, { kind: 'deployFailed', conclusion: 'failure' })];
+      expect((await check(runs)).decision).toMatchObject({ deploy: false, level: 'notice' });
+    });
+
+    it('a rollback created before C landed but re-run after counts, from its latest attempt', async () => {
+      const rerun = dispatch(7, -10, { run_started_at: at(20) } as Partial<FakeRun>);
+      const { facts, decision } = await check([push(1, T, 'group', 0), rerun]);
+      expect(facts.rollback?.id).toBe(7);
+      expect(decision).toMatchObject({ deploy: false });
+      expect(decision.reason).toContain('until the next push to main that runs CI');
     });
   });
 
@@ -474,8 +499,14 @@ describe('gatherFacts and decide', () => {
     it("a deliberate cancel quotes the deploy job's annotation, so a person can see why it was not the group's", async () => {
       const { decision } = await check([push(1, T, 'person', 0)]);
       expect(decision).toMatchObject({ deploy: false, level: 'notice' });
-      expect(decision.reason).toContain(`The cancelled deploy's annotation: "The operation was canceled.".`);
+      expect(decision.reason).toContain(`The cancelled deploy's annotations: "The operation was canceled.".`);
       expect((await check([push(1, T, 'bare', 0)])).decision.reason).not.toContain('annotation');
+    });
+
+    it('quotes every annotation, titles too, so the text the group check missed is shown', async () => {
+      const runs = [push(1, T, 'personTwo', 0)];
+      const { decision } = await check(runs);
+      expect(decision.reason).toContain(`annotations: "The operation was canceled. | Canceling | since a newer request for 'deploy-prod' exists".`);
     });
 
     it('orders runs by their latest attempt, so a re-run decides over a newer-created run', async () => {
@@ -752,10 +783,129 @@ describe('the CLI, as ci.yml runs it', () => {
     expect(r.summary).toContain('### Deploy catch-up');
   });
 
+  it('reads the real GitHub API shape over HTTP: a deploy the group cancelled gives deploy=true', async () => {
+    const requests: { url: string; auth?: string; accept?: string; version?: string }[] = [];
+    const server = createServer((req, res) => {
+      requests.push({
+        url: req.url ?? '',
+        auth: req.headers.authorization,
+        accept: req.headers.accept,
+        version: req.headers['x-github-api-version'] as string | undefined,
+      });
+      const url = new URL(req.url ?? '/', 'http://x');
+      const send = (body: unknown) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(body));
+      };
+      const base = '/repos/owner/repo';
+      if (url.pathname === `${base}/actions/workflows/ci.yml/runs`) {
+        const pushOfTip = url.searchParams.get('event') === 'push' && url.searchParams.get('head_sha') === tip;
+        const run = { id: 1, event: 'push', status: 'completed', conclusion: 'cancelled', created_at: '2026-11-25T10:00:00Z', html_url: 'https://github.example/runs/1', head_sha: tip, head_branch: 'main' };
+        return send({ total_count: pushOfTip ? 1 : 0, workflow_runs: pushOfTip ? [run] : [] });
+      }
+      if (url.pathname === `${base}/actions/runs/1/jobs`) {
+        return send({ total_count: 2, jobs: [
+          { id: 11, name: 'test', status: 'completed', conclusion: 'success', steps: [] },
+          { id: 12, name: 'deploy', status: 'completed', conclusion: 'cancelled', steps: [] },
+        ] });
+      }
+      if (url.pathname === `${base}/check-runs/12/annotations`) {
+        return send([{ message: "Canceling since a higher priority waiting request for 'deploy-prod' exists" }]);
+      }
+      res.writeHead(404);
+      res.end('{}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const output = join(dir, 'output-http');
+      writeFileSync(output, '');
+      const child = spawn(process.execPath, [script], {
+        cwd: dir,
+        env: {
+          PATH: process.env.PATH,
+          GITHUB_SHA: tip,
+          GITHUB_RUN_ID: '900',
+          GITHUB_OUTPUT: output,
+          GITHUB_REPOSITORY: 'owner/repo',
+          GITHUB_API_URL: `http://127.0.0.1:${port}`,
+          GH_TOKEN: 'fake-token',
+          DEPLOYED: older,
+        },
+      });
+      let stdout = '';
+      child.stdout.on('data', (chunk) => (stdout += chunk));
+      const status = await new Promise<number | null>((resolve) => child.on('close', resolve));
+      expect(stdout).toContain('was replaced in the deploy-prod group');
+      expect(status).toBe(0);
+      expect(readFileSync(output, 'utf8')).toBe(`deploy=true\ndeployed=${older}\n`);
+      expect(requests.every((r) => r.url.startsWith('/repos/owner/repo/'))).toBe(true);
+      expect(requests.every((r) => r.auth === 'Bearer fake-token' && r.accept === 'application/vnd.github+json' && r.version === '2022-11-28')).toBe(true);
+      expect(requests.map((r) => r.url)).toContain('/repos/owner/repo/check-runs/12/annotations?per_page=100');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
   it('an API error: exit 1, an ::error line, and no output, so test and deploy are skipped', () => {
     const r = cli(older);
     expect(r.status).toBe(1);
     expect(r.stdout).toMatch(/^::error title=Deploy catch-up::/m);
     expect(r.output).toBe('');
+  });
+});
+
+describe('gate: the scheduled deploy never replaces or undoes a rollback by hand', () => {
+  const SELF = { id: RUN_ID, event: 'schedule', status: 'in_progress', conclusion: null, created_at: at(0), run_started_at: at(1), html_url: 'u', head_sha: T, head_branch: 'main' };
+
+  async function runGate(dispatches: FakeRun[], self: Record<string, unknown> = SELF, options: { fail?: (p: string) => boolean } = {}) {
+    const gh = fakeGitHub(dispatches, { ...options, raw: { [`/actions/runs/${RUN_ID}`]: self } });
+    const files: Record<string, string> = {};
+    const lines: string[] = [];
+    const deps = {
+      api: gh.api,
+      appendFile: (path: string, text: string) => {
+        files[path] = (files[path] ?? '') + text;
+      },
+      log: (line: string) => lines.push(line),
+    };
+    const result = await gate({ GITHUB_RUN_ID: String(RUN_ID), GITHUB_OUTPUT: '/out', GITHUB_STEP_SUMMARY: '/summary' }, deps);
+    return { result, files, lines, calls: gh.calls };
+  }
+
+  it('clear when every run by hand finished before this run started', async () => {
+    const { result, files, lines, calls } = await runGate([dispatch(7, -60), dispatch(8, -30, { kind: 'deployFailed', conclusion: 'failure' })]);
+    expect(result.clear).toBe(true);
+    expect(files['/out']).toBe('clear=true\n');
+    expect(lines[0]).toMatch(/^::notice title=Deploy catch-up::No run by hand/);
+    expect(calls).toEqual([`/actions/runs/${RUN_ID}`, `${runsPath}?event=workflow_dispatch&branch=main&per_page=100`]);
+  });
+
+  it.each(['queued', 'waiting', 'pending', 'requested', 'in_progress'])('not clear while a rollback is %s (pending in deploy-prod)', async (status) => {
+    const { result, files, lines } = await runGate([dispatch(7, -120, { status, conclusion: null })]);
+    expect(result.clear).toBe(false);
+    expect(files['/out']).toBe('clear=false\n');
+    expect(lines[0]).toContain(`https://github.example/runs/7, ${status}`);
+    expect(files['/summary']).toContain('a rollback is never replaced or undone');
+  });
+
+  it('not clear after a rollback that ran during this run, even one back to the SHA catch-up read', async () => {
+    expect((await runGate([dispatch(7, 20)])).result.clear).toBe(false);
+  });
+
+  it('not clear after an old rollback re-run during this run', async () => {
+    expect((await runGate([dispatch(7, -300, { run_started_at: at(20) } as Partial<FakeRun>)])).result.clear).toBe(false);
+  });
+
+  it('a run by hand on another branch does not block', async () => {
+    expect((await runGate([dispatch(7, 20, { head_branch: 'x', status: 'queued', conclusion: null })])).result.clear).toBe(true);
+  });
+
+  it('fails closed: an API error throws and writes no output', async () => {
+    const gh = fakeGitHub([], { fail: () => true });
+    const files: Record<string, string> = {};
+    const deps = { api: gh.api, appendFile: (p: string, t: string) => void (files[p] = t), log: () => {} };
+    await expect(gate({ GITHUB_RUN_ID: String(RUN_ID), GITHUB_OUTPUT: '/out' }, deps)).rejects.toThrow('500');
+    expect(files).toEqual({});
   });
 });

@@ -7,7 +7,8 @@
 # scripts/deploy-catch-up.mjs decides whether main's tip, left undeployed by a deploy
 # the deploy-prod group cancelled or a push with no run, needs deploying (`[skip ci]`
 # commits need none); only then do `test` and `deploy` run for the tip, exactly as
-# for a push. Otherwise it says why and does nothing.
+# for a push, with `catch-up-gate` between them so a rollback by hand is never
+# replaced or undone. Otherwise it says why and does nothing.
 name: CI
 
 on:
@@ -156,11 +157,42 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  deploy:
+  # Scheduled runs only, after a green test and before deploy joins deploy-prod, which
+  # keeps one pending job: a deploy queued now would replace a rollback by hand still
+  # pending there, or undo one that ran during this run. So deploy runs on schedule only
+  # when no run by hand on main is unfinished and none started after this run did.
+  catch-up-gate:
     needs: [catch-up, test]
+    if: github.event_name == 'schedule' && needs.catch-up.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      clear: ${{ steps.gate.outputs.clear }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Check that no rollback by hand is pending or ran during this run
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/deploy-catch-up.mjs gate
+
+  deploy:
+    needs: [catch-up, test, catch-up-gate]
     if: >-
       !cancelled() && github.ref == 'refs/heads/main' &&
-      (github.event_name == 'workflow_dispatch' || needs.test.result == 'success')
+      (github.event_name == 'workflow_dispatch' || needs.test.result == 'success') &&
+      (github.event_name != 'schedule' ||
+       (needs.catch-up.outputs.deploy == 'true' && needs.catch-up-gate.outputs.clear == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:

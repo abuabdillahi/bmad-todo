@@ -9,7 +9,7 @@ route: full
 route_source: auto
 risk: high
 review: thorough
-review_source: auto
+review_source: pinned
 lenses_ran: [blind-hunter, edge-case-hunter, verification-gap, intent-alignment]
 review_loop_iteration: 0
 followup_review_recommended: true
@@ -97,6 +97,7 @@ Tip T = scheduled run's `github.sha`; D = SHA production runs. "Tip runs" = othe
 - ci.yml: `catch-up` gains `checks: read`; `test`'s `if:` requires `needs.catch-up.result == 'success' && needs.catch-up.outputs.deploy == 'true'` off push; the guard's raced skip writes its reason as a notice and appends `### Deploy catch-up` and the reason to `$GITHUB_STEP_SUMMARY` (it now prints `${CHECKED:-none}`). The header comment names the group cancel and `[skip ci]`. No other step's commands changed.
 - Known limits, accepted by the Design Notes' queries: a scheduled run that deployed concludes `success` and is not listed, so row 8 sees only C's push runs; if a scheduled run deployed the tip and production was then changed by hand without a `workflow_dispatch` run, the decision falls to the older runs (a group-cancelled push run would redeploy the tip). The annotation text of a group cancel is taken from GitHub's documented wording and the masked form; no run on this repo has been cancelled yet, so it is unchecked against real data. If the text differs, a group cancel reads as deliberate (no deploy, a notice naming the run), which fails safe.
 - Verification: `pnpm test` 690 passed (129 in `scripts/`); `pnpm typecheck` passed. Six hand mutations of the script (no current-run exclusion, no client branch filter, no cancelled list, no pagination, first run decides, no skip tokens) each failed tests, then the file was restored. actionlint was not run: the `uvx` command was refused by this session's permission classifier and no local `actionlint` exists; CI's pinned actionlint step in `test` runs it on the branch push.
+- Follow-up pass (2026-11-25, parent): added `catch-up-gate` (schedule only, after a green `test`): `node scripts/deploy-catch-up.mjs gate` reads this run's `run_started_at` and one page of `workflow_dispatch` runs on main, and writes `clear=false` if any is unfinished or was created or started after this run started. `deploy` now `needs: [catch-up, test, catch-up-gate]`, and on schedule its `if:` also requires `catch-up`'s `deploy == 'true'` and the gate's `clear == 'true'`, so a blocked scheduled deploy is skipped and never joins `deploy-prod`. Row 6 now counts any completed dispatch on main after C landed, ordered by latest attempt. The `skip-checks` trailer is matched only as the last line after a blank line (CRLF tolerated). Row 11 quotes every annotation. The reasons and README say "the next push to main that runs CI". New tests: `gate`, the job graph evaluated from `ci.yml` (11 scenarios and the deploy step gates), the CLI against a local HTTP server. `pnpm test` 735 passed; typecheck and actionlint (1.7.12, shellcheck 0.11.0) clean. Mutations (dropping `!cancelled()` from `test`, `schedule` from the GHCR push step, the gate from `deploy`) each fail a test.
 
 ## Plan Change Log
 
@@ -180,6 +181,40 @@ Tip T = scheduled run's `github.sha`; D = SHA production runs. "Tip runs" = othe
   - `[low]` `[reject]` (blind-hunter) The plan names a patch path on one machine; Tasks unchecked; no result section. — The path is the coordinator's handoff, and every plan in this tree uses worktree paths; the result section is written at Finalize; the checkboxes are a plan edit.
   - `[medium]` `[patch]` (blind-hunter) The fail-closed CLI paths (`realApi`, `::error`, `exitCode`) have no tests. — Same root cause as the verification-gap CLI row; patched there (the unreachable-API case exercises `realApi`'s error path).
   - `[low]` `[reject]` (blind-hunter) The full-access deploy key is used 48 times a day for a read. — A restricted key needs a new secret and a host change, both forbidden here; story 2.17 (#64) moves the secrets into a protected environment.
+
+### 2026-11-25 — Review pass (follow-up, review pinned thorough)
+- verdicts: 30 findings — high 3, medium 6, low 15, false 5, maybe-false 1 (the intent-alignment auditor's 9 divergence items and the coordinator's named risk are triaged as findings)
+- findings:
+  - `[high]` `[patch]` (coordinator) A scheduled `deploy` queued in `deploy-prod` replaces a rollback deploy still pending there (GitHub keeps one pending job per group), silently undoing a person's rollback; the check waits for a queued, waiting or running dispatch only at decision time, 45 minutes before the deploy queues. — Verified: `catch-up` checks `status !== 'completed'` (covers queued, waiting, pending, requested, in_progress) but nothing re-checks before `deploy` joins the group, and a pending job is replaced at queue time, whatever the guard later decides. Patched: new `catch-up-gate` job (schedule only, after a green `test`, `actions: read`) runs `node scripts/deploy-catch-up.mjs gate`: clear only when no `workflow_dispatch` run on main is unfinished and none was created or started after this run started. On schedule, `deploy`'s `if:` now requires `catch-up`'s `deploy == 'true'` and the gate's `clear == 'true'`, so a blocked deploy is skipped and never joins `deploy-prod`. Tests: `gate` for each unfinished status, a rollback during the run, a re-run, another branch, an API error; the job graph evaluated from `ci.yml` (gate clear, not clear, failed). Residual window: the seconds between the gate's API read and `deploy` joining the group.
+  - `[medium]` `[patch]` (verification-gap) The job and step `if:` conditions (push, branch, dispatch, schedule) were only pinned as text; dropping `!cancelled()` or `push ||` from `test`, or `schedule` from the GHCR push step, passed every test. — Patched: `the job graph, evaluated from ci.yml` reads each job's `if:`/`needs:` and the deploy steps' `if:`, evaluates them with GitHub's implicit `success()` rule for 11 event scenarios and the step gates. Each of those three mutations fails it.
+  - `[false]` `[reject]` (intent-alignment a) Row 13 warns where the literal matrix would deploy. — carried: the amended Approach deploys only a group cancel or a push with no run on main.
+  - `[low]` `[reject]` (intent-alignment b) A successful scheduled deploy is never listed, so "deployed before" via a scheduled run is invisible. — carried: known, accepted limit (production changed by hand outside the workflow).
+  - `[false]` `[reject]` (intent-alignment c) The landed time uses C, not T. — carried: the Approach takes it from a main push run, which only C has; errs towards no deploy.
+  - `[false]` `[reject]` (intent-alignment d) A cancelled `test` counts as deliberate, against the matrix's "test or deploy cancelled". — The amended Approach: only a deploy cancelled by the group deploys.
+  - `[low]` `[reject]` (intent-alignment e) actionlint changes every push run. — carried: named in the plan's AC; pinned by digest.
+  - `[false]` `[reject]` (intent-alignment f) `catch-up` reads the `DEPLOY_*` secrets and runs `docker ps` on production. — carried: the Approach requires reading production as the guard does; no secret is added.
+  - `[false]` `[reject]` (intent-alignment g) First-parent history lets a skip-token merge commit hide the feature commits it brings in. — GitHub runs no push CI for that merge either; the po Decision says such a commit needs no deploy.
+  - `[low]` `[reject]` (intent-alignment h) On schedule, an SSH failure in the guard reads as "production changed", naming the wrong cause. — The outcome is no deploy; the guard's read is the push path's, left unchanged.
+  - `[maybe-false]` `[defer]` (intent-alignment i) The group-cancel case rests on fixtures written from documented wording; if GitHub's text or shape differs, the bug stays unfixed with no error. — carried: the deferred item. Row 11 now quotes every annotation title and message, so the first real group cancel shows the real text.
+  - `[high]` `[patch]` (edge-case-hunter) A→B→A: during the scheduled test, a push deploys N, then a rollback returns production to the SHA `catch-up` read; the guard's `deployed == CHECKED` passes and the scheduled deploy undoes the rollback. — Verified. Patched by the coordinator row's gate: a dispatch created or started after this run started blocks the deploy.
+  - `[medium]` `[patch]` (edge-case-hunter) A rollback created before C landed and re-run after it is not row 6, so a group-cancelled C run redeploys T over it. — Verified (`created_at`). Patched: row 6 compares the dispatch's latest attempt (`run_started_at`, else `created_at`). Tested.
+  - `[low]` `[patch]` (edge-case-hunter) `skip-checks: true` mid-body counts as a skip, though GitHub reads it only as the final trailer. — Patched: matched only as the message's last line after a blank line. Tests for mid-body, no blank line, trailing blank lines.
+  - `[low]` `[patch]` (edge-case-hunter) A CRLF `skip-checks: true\r\n` trailer is missed. — Patched with the trailer rule (CRLF tolerated). Tested.
+  - `[low]` `[reject]` (edge-case-hunter) A schedule reading production while a push deploy recreates the api container sees no container and warns falsely. — Transient (seconds of `up -d`); a warning and no deploy, and the next check reads the new SHA.
+  - `[low]` `[patch]` (edge-case-hunter) `scripts/ci-workflow-steps.test.ts` commits without `commit.gpgsign=false`, so a signing setup breaks it locally. — Patched.
+  - `[medium]` `[patch]` (edge-case-hunter, claim) A rollback whose health check failed concludes `failure` and is ignored by row 6, though it may be live. — Verified. Patched: any completed dispatch run on main after C landed, whatever its conclusion, is row 6 (never undo a rollback). Tested.
+  - `[high]` `[patch]` (edge-case-hunter, claim) A rollback back to the same SHA passes the guard. — Same root cause as the A→B→A row; patched by the gate.
+  - `[medium]` `[patch]` (blind-hunter) Row 6 still uses `created_at`, so a re-run rollback is missed. — Same as the edge-case re-run row; patched there.
+  - `[low]` `[reject]` (blind-hunter) Row 4 trusts commit messages; a skip-token commit that changes code is reported as "main's code". — The po Decision (ticket Notes) settles that a skip-token commit needs no deploy; GitHub runs no CI for its push either.
+  - `[low]` `[patch]` (blind-hunter) The `skip-checks` match is looser than GitHub's trailer rule. — Same as the edge-case trailer row; patched there.
+  - `[low]` `[reject]` (blind-hunter) Row 5 has no age limit; a run stuck queued for days blocks the catch-up with only a notice. — Unlikely; an age threshold adds a branch; the stuck run itself is visible in Actions.
+  - `[low]` `[patch]` (blind-hunter) Row 11 quotes only the first annotation's message. — Patched: every annotation's title and message, joined, whitespace-collapsed, at most 300 characters. Tested.
+  - `[low]` `[patch]` (blind-hunter) "The next push to main deploys" is wrong when most pushes are skip-CI commits. — Patched: the reasons and README say the next push to `main` that runs CI (a code merge).
+  - `[low]` `[reject]` (blind-hunter) The plan's Design Notes no longer match the code after the patches. — The fix is to edit this build's plan; Implementation Notes record each change.
+  - `[medium]` `[patch]` (blind-hunter) Only part of the job wiring is pinned. — Same root cause as the verification-gap job-graph row; patched there.
+  - `[medium]` `[patch]` (blind-hunter) `realApi` never runs against a server that answers. — Patched: the CLI test serves a group-cancelled run from a local HTTP server and checks `deploy=true`, the `/repos/owner/repo/` prefix, the auth, accept and API-version headers, and the annotations path.
+  - `[low]` `[patch]` (blind-hunter) `deploy` does not check the catch-up's decision itself; a loosened `test` gate would deploy every 30 minutes. — Patched with the gate: on schedule, `deploy` requires `needs.catch-up.outputs.deploy == 'true'`. The job-graph test covers it.
+  - `[low]` `[reject]` (blind-hunter) A group cancel re-runs the 45-minute test and builds images tagged with a skip-CI SHA instead of redeploying C's tested artifact. — The contract deploys through the same `test` and `deploy` jobs; a re-run of the cancelled job needs `actions: write` and expires with the one-day artifact. Recorded as a trade-off, not a defect.
 
 ## Design Notes
 
@@ -291,4 +326,24 @@ Status: built (second attempt, after the po Decision settled the first attempt's
 - The group annotation wording is unverified. If it is wrong, the result is safe: no deploy, and a notice quoting the real text.
 - A scheduled deploy can still replace a pending push deploy, or a pending rollback, in `deploy-prod`. The next schedule then catches that tip up.
 - `catch-up` reads deploy secrets, so story 2.17 must give it `environment: production` too.
+
+### Follow-up pass (2026-11-25, review pinned thorough)
+
+- **Summary.** A new `catch-up-gate` job sits between a green scheduled `test` and `deploy`. When any `workflow_dispatch` run on `main` is unfinished, or started during the scheduled run, the scheduled `deploy` is skipped. A skipped job never joins `deploy-prod`, so it can never replace a pending rollback or undo one that already ran.
+- Row 6 now counts any completed rollback, from its latest attempt.
+- The `skip-checks` trailer follows GitHub's rule.
+- The workflow's job graph is evaluated in tests.
+- The CLI is tested against a local HTTP server.
+- **Files changed this pass:** `.github/workflows/ci.yml`, `scripts/deploy-catch-up.mjs`, `scripts/deploy-catch-up.test.ts`, `scripts/ci-workflow-steps.test.ts`, `README.md` (Deploy and Roll back only).
+- **Findings.** 17 rows patched, grouped into 11 fixes. 0 newly deferred (1 carried). 13 rejected, each with its reason in the triage log.
+- **Follow-up review: true.** This follow-up pass patched a high (a scheduled deploy could replace or undo a rollback). The new `catch-up-gate` job runs only on `main` and has not been reviewed by a fresh pass. It leaves a window of seconds between its API read and `deploy` joining `deploy-prod`.
+- **Verification.**
+  - `pnpm test`: 735 passed.
+  - typecheck: clean.
+  - actionlint: clean.
+  - Mutation checks: dropping `!cancelled()` from `test`, `schedule` from the GHCR push step, or the gate from `deploy` each fails a test.
+- **Residual risks.**
+  - The gate's window of seconds.
+  - The group annotation wording is still unverified (deferred).
+  - A scheduled deploy can still replace a newer commit's pending push deploy, delaying it up to 30 minutes plus a test. The README now says so.
 

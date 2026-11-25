@@ -31,7 +31,8 @@ export const ENDED_STATUSES = ['failure', 'timed_out', 'cancelled'];
 
 const SHA = /^[0-9a-f]{40}$/;
 const SKIP_TOKENS = ['[skip ci]', '[ci skip]', '[no ci]', '[skip actions]', '[actions skip]'];
-const SKIP_CHECKS_TRAILER = /^skip-checks: ?true[ \t]*$/m;
+// GitHub reads `skip-checks: true` only as a trailer: the message's last line, after a blank line.
+const SKIP_CHECKS_TRAILER = /\n[ \t]*\r?\nskip-checks: ?true$/;
 // GitHub's message when a newer pending job in the group replaces this one.
 // A secret's value in the text is masked as ***.
 const GROUP_CANCELLATION = /higher priority waiting request for '(deploy|\*\*\*)-prod'/;
@@ -68,7 +69,7 @@ const GROUP_CANCELLATION = /higher priority waiting request for '(deploy|\*\*\*)
  * @param {string} message
  */
 export function hasSkipToken(message) {
-  return SKIP_TOKENS.some((token) => message.includes(token)) || SKIP_CHECKS_TRAILER.test(message);
+  return SKIP_TOKENS.some((token) => message.includes(token)) || SKIP_CHECKS_TRAILER.test(message.replace(/\s+$/, ''));
 }
 
 /**
@@ -177,14 +178,14 @@ export function decide(facts) {
   // Row 6.
   if (facts.rollback) {
     return notice(
-      `A deploy by hand (run ${facts.rollback.url}, ${facts.rollback.createdAt}) ran after ${judged} landed on main; production stays on ${deployed} until the next push to main.`,
+      `A deploy by hand (run ${facts.rollback.url}, ${facts.rollback.createdAt}) ran after ${judged} landed on main; production stays on ${deployed} until the next push to main that runs CI (a code merge).`,
     );
   }
   // Rows 7-13.
   const newest = facts.newest;
   switch (newest?.outcome) {
     case 'red':
-      return notice(`${judged} failed its tests in run ${newest.url}; not testing it again. The next push to main deploys.`);
+      return notice(`${judged} failed its tests in run ${newest.url}; not testing it again. The next push to main that runs CI deploys.`);
     case 'deployed':
       return warning(
         `Run ${newest.url} deployed ${judged}, but production now runs the older ${deployed}: production was changed by hand. Not deploying; a person should check production.`,
@@ -198,8 +199,8 @@ export function decide(facts) {
       );
     case 'cancelled':
       return notice(
-        `The test or deploy of ${judged} was cancelled in run ${newest.url}, not by the deploy-prod group, so on purpose; not deploying. The next push to main deploys.${
-          newest.note ? ` The cancelled deploy's annotation: "${newest.note}".` : ''
+        `The test or deploy of ${judged} was cancelled in run ${newest.url}, not by the deploy-prod group, so on purpose; not deploying. The next push to main that runs CI deploys.${
+          newest.note ? ` The cancelled deploy's annotations: "${newest.note}".` : ''
         }`,
       );
     case undefined:
@@ -314,12 +315,15 @@ export async function gatherFacts({ tip, deployed: rawDeployed, runId, git, api 
   if (running) return { ...judging, running: { id: running.id, url: running.html_url, byHand: false } };
 
   // (d) Row 6. C landed with its earliest push run on main; with none, at its
-  // committer date, which is earlier and so errs towards no deploy.
+  // committer date, which is earlier and so errs towards no deploy. Any run by
+  // hand that completed since, whatever its conclusion, may have changed
+  // production (a rollback whose health check failed is still live), and a
+  // re-run counts from its latest attempt.
   const landed =
     pushRuns.length > 0 ? Math.min(...pushRuns.map((run) => Date.parse(run.created_at))) : Date.parse(git.committerDate(candidate));
   if (Number.isNaN(landed)) throw new Error(`No landing time for ${candidate}`);
   const rollback = dispatches
-    .filter((run) => run.conclusion === 'success' && Date.parse(run.created_at) > landed)
+    .filter((run) => startedAt(run) > landed)
     .sort(byNewest)[0];
   if (rollback) return { ...judging, rollback: { id: rollback.id, url: rollback.html_url, createdAt: rollback.created_at } };
 
@@ -339,7 +343,13 @@ export async function gatherFacts({ tip, deployed: rawDeployed, runId, git, api 
       const annotations = await api(`/check-runs/${deployJob.id}/annotations?per_page=100`);
       outcome = summariseRun(run, jobs, annotations);
       // Quoted in row 11's notice, so a person can see why it was not attributed to the group.
-      note = (annotations[0]?.message ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      note = annotations
+        .flatMap((a) => [a.title, a.message])
+        .filter((text) => typeof text === 'string' && text.trim())
+        .join(' | ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 300);
     }
     if (outcome !== 'not-attempted') {
       return { ...judging, newest: { id: run.id, url: run.html_url, outcome, ...(note ? { note } : {}) } };
@@ -439,14 +449,49 @@ function realApi(env) {
   };
 }
 
+/**
+ * The scheduled deploy's last gate, run after a green `test` and before
+ * `deploy` joins `deploy-prod`: GitHub keeps one pending job per group, so a
+ * deploy queued now would replace a rollback by hand still pending there, and
+ * a rollback that ran during this run (even one back to the SHA `catch-up`
+ * read) would be undone. So it is clear only when no `workflow_dispatch` run
+ * on main is unfinished, and none started after this run did.
+ * @param {Record<string, string | undefined>} env
+ * @param {{ api: Api, appendFile(path: string, text: string): void, log(line: string): void }} deps
+ * @returns {Promise<{ clear: boolean, reason: string }>}
+ */
+export async function gate(env, deps) {
+  for (const name of ['GITHUB_RUN_ID', 'GITHUB_OUTPUT']) {
+    if (!env[name]) throw new Error(`${name} is not set`);
+  }
+  /** @type {Run} */
+  const self = await deps.api(`/actions/runs/${env.GITHUB_RUN_ID}`);
+  const since = startedAt(self);
+  if (Number.isNaN(since)) throw new Error(`Run ${env.GITHUB_RUN_ID} has no start time`);
+  /** @type {Run[]} */
+  const dispatches = (await deps.api(`${WORKFLOW_RUNS}?event=workflow_dispatch&branch=main&per_page=100`)).workflow_runs.filter(
+    (/** @type {Run} */ run) => run.event === 'workflow_dispatch' && run.head_branch === 'main',
+  );
+  const blocker = dispatches
+    .filter((run) => run.status !== 'completed' || startedAt(run) >= since || Date.parse(run.created_at) >= since)
+    .sort(byNewest)[0];
+  const result = blocker
+    ? {
+        clear: false,
+        reason: `A run by hand on main (${blocker.html_url}, ${blocker.status}) is unfinished or started during this run; not deploying, so a rollback is never replaced or undone. The next scheduled check decides again.`,
+      }
+    : { clear: true, reason: 'No run by hand on main is unfinished or started during this run; deploying.' };
+  deps.appendFile(env.GITHUB_OUTPUT ?? '', `clear=${result.clear}\n`);
+  deps.log(`::notice title=Deploy catch-up::${escapeData(result.reason)}`);
+  if (env.GITHUB_STEP_SUMMARY) deps.appendFile(env.GITHUB_STEP_SUMMARY, `### Deploy catch-up\n\n${result.reason}\n`);
+  return result;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    await main(process.env, {
-      git: realGit(),
-      api: realApi(process.env),
-      appendFile: appendFileSync,
-      log: (line) => console.log(line),
-    });
+    const deps = { appendFile: appendFileSync, log: (/** @type {string} */ line) => console.log(line) };
+    if (process.argv[2] === 'gate') await gate(process.env, { ...deps, api: realApi(process.env) });
+    else await main(process.env, { ...deps, git: realGit(), api: realApi(process.env) });
   } catch (error) {
     console.log(`::error title=Deploy catch-up::${escapeData(String(error instanceof Error ? error.message : error))}`);
     process.exitCode = 1;
