@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type CDPSession, type Locator, type Page } from '@playwright/test';
 
 /**
  * Locators, test data, list setup and expected copy shared by the e2e specs.
@@ -55,6 +55,22 @@ export async function focusAddField(page: Page): Promise<Locator> {
   await page.keyboard.press('Tab');
   await expect(field).toBeFocused();
   return field;
+}
+
+/**
+ * Enter as a keyboard that keeps every word composing sends it (e.g. Gboard): keyCode 229,
+ * which the keydown handler stands aside for, so Chromium's own default action raises a
+ * trusted `beforeinput` line break. CDP sends a real key, not a synthetic DOM event.
+ * With `shift`, Shift goes down first, Enter carries it, and Shift comes up after.
+ */
+export async function pressComposingEnter(cdp: CDPSession, { shift = false }: { shift?: boolean } = {}): Promise<void> {
+  const composing = { windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 };
+  const shiftKey = { key: 'Shift', code: 'ShiftLeft', ...composing };
+  const enter = { key: 'Enter', code: 'Enter', ...composing, ...(shift ? { modifiers: 8 } : {}) };
+  if (shift) await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', modifiers: 8, ...shiftKey });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', text: '\r', unmodifiedText: '\r', ...enter });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...enter });
+  if (shift) await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', modifiers: 0, ...shiftKey });
 }
 
 /** A description no other test or run uses: `<prefix> <project> <time>-<random>`. */

@@ -515,6 +515,34 @@ describe('EditForm', () => {
     expect(screen.queryByRole('textbox', { name: 'Edit description' })).toBeNull();
   });
 
+  it('K3 a beforeinput line break with Shift held (keyCode 229) is cancelled and does not save; Enter then saves', async () => {
+    const state = serve([milk]);
+    state.release.open();
+    const { user } = await renderLoaded(['Buy milk']);
+    const lineBreak = () => new InputEvent('beforeinput', { inputType: 'insertLineBreak', bubbles: true, cancelable: true });
+
+    await user.click(editButton('Buy milk'));
+    fireEvent.change(editField(), { target: { value: 'Buy oat milk' } });
+    fireEvent.keyDown(editField(), { key: 'Enter', keyCode: 229, shiftKey: true });
+    const shifted = lineBreak();
+    fireEvent(editField(), shifted);
+
+    expect(shifted.defaultPrevented).toBe(true);
+    expect(editField().value).toBe('Buy oat milk');
+    expect(document.activeElement).toBe(editField());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(state.patches).toEqual([]);
+
+    fireEvent.keyUp(editField(), { key: 'Shift', keyCode: 229 });
+    fireEvent.keyDown(editField(), { key: 'Enter', keyCode: 229 });
+    const plain = lineBreak();
+    fireEvent(editField(), plain);
+
+    expect(plain.defaultPrevented).toBe(true);
+    await waitFor(() => expect(state.patches).toEqual([{ id: milk.id, body: { description: 'Buy oat milk' } }]));
+    expect(screen.queryByRole('textbox', { name: 'Edit description' })).toBeNull();
+  });
+
   it('K3 a failed add removing its card in edit mode announces only the add failure, and focus moves to the next check', async () => {
     const state = serve([milk]);
     state.failCreate = () => problem('/problems/unavailable', 503);

@@ -1,6 +1,16 @@
-import { expect, test, type CDPSession, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { containing, fieldStatus, focusAddField, MESSAGES, resetList, todoItem, uniqueDescription, visibleText } from './helpers.ts';
+import {
+  containing,
+  fieldStatus,
+  focusAddField,
+  MESSAGES,
+  pressComposingEnter,
+  resetList,
+  todoItem,
+  uniqueDescription,
+  visibleText,
+} from './helpers.ts';
 
 /**
  * Add-form validation in a real browser (E6, E7, E8, K1), by keyboard only.
@@ -23,17 +33,6 @@ function recordCreates(page: Page): string[] {
 async function writeClipboard(page: Page, text: string) {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.evaluate((value) => navigator.clipboard.writeText(value), text);
-}
-
-/**
- * Enter as a keyboard that keeps every word composing sends it (e.g. Gboard): keyCode 229,
- * which the keydown handler stands aside for, so Chromium's own default action raises a
- * trusted `beforeinput` line break. CDP sends a real key, not a synthetic DOM event.
- */
-async function pressComposingEnter(cdp: CDPSession) {
-  const key = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 };
-  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', text: '\r', unmodifiedText: '\r', ...key });
-  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
 }
 
 test.describe('add form validation', () => {
@@ -131,6 +130,45 @@ test.describe('add form validation', () => {
     expect(creates).toHaveLength(1);
     expect(JSON.parse(creates[0]!).description).toBe(description);
     await expectNoAxeViolations(page, 'keyCode 229 Enter added');
+  });
+
+  test('E6 K1 a trusted Shift+Enter with keyCode 229 neither adds nor inserts a line break, and Enter then adds', async ({ page, browserName }, testInfo) => {
+    test.skip(browserName !== 'chromium', 'CDP key input is Chromium only');
+    const creates = recordCreates(page);
+    const description = uniqueDescription('E6', testInfo.project.name);
+    const field = await focusAddField(page);
+    // Every line break the engine itself raises, so the test knows the beforeinput path ran.
+    await field.evaluate((el) => {
+      const seen: string[] = [];
+      (window as unknown as { lineBreaks: string[] }).lineBreaks = seen;
+      el.addEventListener('beforeinput', (event) => {
+        const { inputType, isTrusted } = event as InputEvent;
+        if (inputType === 'insertLineBreak' || inputType === 'insertParagraph') seen.push(`${inputType} ${isTrusted}`);
+      });
+    });
+    const lineBreaks = () => page.evaluate(() => (window as unknown as { lineBreaks: string[] }).lineBreaks);
+    const cdp = await page.context().newCDPSession(page);
+
+    // Shift+Enter: the line break is raised and cancelled, and nothing is sent.
+    await page.keyboard.insertText(description);
+    await pressComposingEnter(cdp, { shift: true });
+    expect(await lineBreaks()).toEqual(['insertLineBreak true']);
+    // Give a wrongly sent create time to go out before asserting none did.
+    await page.waitForTimeout(300);
+    await expect(field).toHaveValue(description);
+    await expect(field).toBeFocused();
+    await expect(todoItem(page, description)).toHaveCount(0);
+    expect(creates).toEqual([]);
+    await expectNoAxeViolations(page, 'keyCode 229 Shift+Enter');
+
+    // Enter alone then adds it once.
+    await pressComposingEnter(cdp);
+    await expect(todoItem(page, description)).toHaveCount(1);
+    await expect(field).toHaveValue('');
+    await expect(field).toBeFocused();
+    expect(await lineBreaks()).toEqual(['insertLineBreak true', 'insertLineBreak true']);
+    expect(creates).toHaveLength(1);
+    expect(JSON.parse(creates[0]!).description).toBe(description);
   });
 
   test('E6 K1 Enter with keyCode 229 during an open composition adds the composed word and the field stays empty', async ({ page, browserName }, testInfo) => {
