@@ -75,15 +75,29 @@ export async function pressComposingEnter(cdp: CDPSession, { shift = false }: { 
 
 /**
  * Drops `text` into `field` through Chromium's real drag path, as a drag from another app
- * does: CDP drag events raise a trusted `beforeinput` `insertFromDrop`. The point is inside
- * the field near its right edge on the first line, past the end of a one-line value, so
- * the drop caret is the end of the value.
+ * does: CDP drag events raise a trusted `beforeinput` `insertFromDrop`. The point is the
+ * end of the field's last line (the right edge of its content box, the middle of its last
+ * line), so the drop caret is the end of the value however the text wraps. The point is
+ * checked with `caretPositionFromPoint` first: one that would not drop at the end throws.
  */
 export async function dropText(page: Page, cdp: CDPSession, field: Locator, text: string): Promise<void> {
-  const box = await field.boundingBox();
-  if (!box) throw new Error('dropText: the field has no box');
-  const x = box.x + box.width - 8;
-  const y = box.y + 12;
+  const { x, y } = await field.evaluate((el: HTMLTextAreaElement) => {
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    const px = (value: string) => parseFloat(value) || 0;
+    const lineHeight = px(style.lineHeight) || px(style.fontSize) * 1.2;
+    const point = {
+      x: rect.right - px(style.borderRightWidth) - px(style.paddingRight) - 2,
+      y: rect.bottom - px(style.borderBottomWidth) - px(style.paddingBottom) - lineHeight / 2,
+    };
+    const caret = document.caretPositionFromPoint(point.x, point.y);
+    if (caret?.offsetNode !== el || caret.offset !== el.value.length) {
+      throw new Error(
+        `dropText: (${point.x}, ${point.y}) is not the end of the field's text: offset ${caret?.offset} of ${el.value.length}`,
+      );
+    }
+    return point;
+  });
   const data = { items: [{ mimeType: 'text/plain', data: text }], dragOperationsMask: 1 };
   for (const type of ['dragEnter', 'dragOver', 'drop'] as const) {
     await cdp.send('Input.dispatchDragEvent', { type, x, y, data });
