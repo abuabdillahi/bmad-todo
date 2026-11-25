@@ -9,7 +9,7 @@ hitl: true
 risk: medium
 tracker_id: "5"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/5"
-tracker_status: backlog
+tracker_status: done
 ---
 
 # A green push to main deploys the tested images behind the Cloudflare Tunnel
