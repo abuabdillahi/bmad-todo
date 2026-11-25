@@ -5,12 +5,12 @@ title: "The security headers are tested on assets, a missing asset and the unava
 covers: []
 after: []
 assignee: ""
-refined: false
+refined: true
 hitl: false
 risk: low
 tracker_id: "24"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/24"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # The security headers are tested on assets, a missing asset and the unavailable response
@@ -21,7 +21,35 @@ The header profile test checks `web`'s security headers on `/` and `/api/health`
 
 ## Requirements
 
-Verify: `pnpm test:all` passes, and its profile step checks the AD-19 security headers on a hashed asset (plus its `Cache-Control`), on a missing asset that answers 404, and on the 503 unavailable response; adding an `add_header` inside the asset location makes the step fail.
+1. **A hashed asset carries the security headers and a year's cache** (R20; AD-19)
+   **Given** `todo-test` is up
+   **When** a client requests a hashed asset that the served `index.html` links to
+   **Then** the response is `200`, carries every AD-19 header with the values `/` carries, and has `Cache-Control: max-age=31536000`
+2. **The page itself is revalidated on every load** (report P1)
+   **Given** `todo-test` is up
+   **When** a client requests `/`
+   **Then** the response has `Cache-Control: no-cache`, as well as the AD-19 headers it is already tested for
+3. **A missing asset is a 404 with the security headers, never the page** (AD-19; report P1)
+   **Given** `todo-test` is up
+   **When** a client requests an asset path under `/assets/` that does not exist
+   **Then** the response is `404`, carries every AD-19 header, and its body is not `index.html`
+4. **The unavailable response carries the security headers** (AD-4, AD-19)
+   **Given** the `api` container is stopped and `web-test` is up, which in `pnpm test:all` is only the contract-unavailable step (`apps/api/test/unavailable/`), so this check lives there
+   **When** a client requests `GET /api/todos`
+   **Then** the response is nginx's `503` unavailable problem and carries every AD-19 header
+5. **The tests catch the mistake they exist for**
+   **Given** an `add_header` line is added inside nginx's asset location
+   **When** `pnpm test:all` runs
+   **Then** it fails on criterion 1 or 3. This is proved once by hand and recorded in the plan, not left in the code.
+6. **The suite passes**
+   **Given** the change
+   **When** `pnpm test:all` runs, locally and in CI
+   **Then** it passes, and each new test's title starts with a scenario id
+
+## Boundaries
+
+- Must not change: nginx's configuration, unless a new test exposes a real defect. Then the fix stays inside AD-19 and the plan says what was wrong.
+- Must not change: the order of `pnpm test:all`'s steps, or the AD-4 body nginx sends. Adding the header check to the contract-unavailable step keeps AD-20's rule for it (every `/api` route answers the literal `503` problem); the plan notes it for the next AD-20 amendment.
 
 ## References
 
