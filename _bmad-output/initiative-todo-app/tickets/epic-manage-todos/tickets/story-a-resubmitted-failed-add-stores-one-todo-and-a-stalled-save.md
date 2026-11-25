@@ -10,7 +10,7 @@ hitl: false
 risk: high
 tracker_id: "42"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/42"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # A resubmitted failed add stores one todo, and a stalled save gives up in time
