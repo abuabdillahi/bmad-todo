@@ -9,6 +9,7 @@ const HEADERS: Record<string, string | RegExp> = {
   'referrer-policy': 'no-referrer',
   'cross-origin-opener-policy': 'same-origin',
   'permissions-policy': /camera=\(\)/,
+  'strict-transport-security': /^max-age=\d+$/,
 };
 
 describe('profile: web-test security headers', () => {

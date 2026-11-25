@@ -10,7 +10,10 @@
     "test": "vitest run --project unit --project component --project integration",
     "test:all": "node scripts/test-all.mjs",
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
-    "gen:openapi": "pnpm --filter @todo/api gen:openapi"
+    "gen:openapi": "pnpm --filter @todo/api gen:openapi",
+    "perf:api": "node scripts/perf-api.mjs",
+    "perf:first-load": "node e2e/perf/first-load.mjs",
+    "perf:lighthouse": "node e2e/perf/lighthouse.mjs"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
