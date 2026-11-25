@@ -2,7 +2,7 @@
 
 # Build context: the repository root.
 
-FROM node:26.13.1-bookworm-slim AS build
+FROM node:26.13.1-bookworm-slim AS deps
 RUN npm i -g pnpm@12.23.0
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -11,6 +11,21 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY e2e/package.json e2e/
 RUN pnpm install --frozen-lockfile --filter @todo/web...
+
+# The dev profile's web-dev (AD-16): Vite with HMR. compose.yml mounts the source
+# read-only over these copies; the image's Linux node_modules are never replaced.
+FROM deps AS dev
+COPY tsconfig.base.json ./
+COPY packages/contract packages/contract
+COPY apps/web apps/web
+# Vite writes its cache under apps/web/node_modules/.vite*; only that directory
+# needs to be writable by node, so the chown is not recursive.
+RUN chown node:node apps/web/node_modules
+USER node
+EXPOSE 5173
+CMD ["pnpm", "--filter", "@todo/web", "exec", "vite", "--host", "0.0.0.0"]
+
+FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/contract packages/contract
 COPY apps/web apps/web

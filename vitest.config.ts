@@ -5,7 +5,8 @@ import { configDefaults, defineConfig } from 'vitest/config';
  * One Vitest project per layer (AD-20). `unit`, `component` and `integration`
  * run in-process and report coverage per project. `contract` runs only from
  * `pnpm test:all`, against the test profile at E2E_BASE_URL;
- * `contract-unavailable` runs there too, after e2e, with the api container
+ * `profile` runs there after e2e (it restarts the api container, and checks
+ * logs and headers); `contract-unavailable` runs last, with the api container
  * stopped. Every project reports by scenario id.
  */
 export default defineConfig({
@@ -47,6 +48,16 @@ export default defineConfig({
           name: 'contract',
           environment: 'node',
           include: ['apps/api/test/contract/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
+          name: 'profile',
+          environment: 'node',
+          include: ['apps/api/test/profile/**/*.test.ts'],
+          testTimeout: 60_000,
+          // One stack: never restart the api while another file is calling it.
+          fileParallelism: false,
         },
       },
       {

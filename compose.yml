@@ -1,5 +1,15 @@
 # Every service and profile (AD-16). Run each environment under its own project name:
+#   docker compose -p todo-dev --profile dev up -d --build --wait    # http://127.0.0.1:5173
 #   docker compose -p todo-test --profile test up -d --build --wait
+#   docker compose -p todo --profile prod up -d --wait               # the deploy runs this (AD-18)
+
+# Every service logs to stdout through json-file, rotated so logs can't fill the disk (AD-17).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   api:
     image: ghcr.io/abuabdillahi/bmad-todo-api:${IMAGE_TAG:-local}
@@ -22,6 +32,7 @@ services:
       start_interval: 1s
       retries: 3
     restart: unless-stopped
+    logging: *logging
 
   web:
     image: ghcr.io/abuabdillahi/bmad-todo-web:${IMAGE_TAG:-local}
@@ -40,6 +51,7 @@ services:
       start_interval: 1s
       retries: 3
     restart: unless-stopped
+    logging: *logging
 
   web-test:
     extends: web
@@ -47,6 +59,57 @@ services:
     profiles: !override [test]
     ports:
       - "127.0.0.1:${TEST_WEB_PORT:-8081}:8080"
+    logging: *logging
+
+  # The dev profile (project todo-dev). api-dev runs the api image with the source
+  # mounted read-only and Node's --watch. The `data` volume stays mounted (AD-2).
+  api-dev:
+    extends: api
+    # !override: extends would otherwise merge in api's test and prod profiles.
+    profiles: !override [dev]
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+    volumes:
+      - ./apps/api/src:/app/apps/api/src:ro
+      - ./packages/contract/src:/app/packages/contract/src:ro
+      - ./apps/api/drizzle:/app/apps/api/drizzle:ro
+    command: ["node", "--watch", "apps/api/src/server.ts"]
+    # The alias lets Vite's proxy reach it as `api`, as nginx does. No ports (AD-4).
+    networks:
+      default:
+        aliases: [api]
+    logging: *logging
+
+  # Vite with HMR. It proxies /api to api:3000 with the path unchanged (AD-4).
+  web-dev:
+    image: ghcr.io/abuabdillahi/bmad-todo-web-dev:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: dev
+    profiles: [dev]
+    volumes:
+      - ./apps/web/src:/app/apps/web/src:ro
+      # Single-file mounts pin the original inode: an editor that saves by renaming a temp
+      # file (vim, JetBrains safe write) needs `docker compose -p todo-dev up -d --force-recreate web-dev`.
+      - ./apps/web/index.html:/app/apps/web/index.html:ro
+      - ./apps/web/vite.config.ts:/app/apps/web/vite.config.ts:ro
+      - ./packages/contract/src:/app/packages/contract/src:ro
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      api-dev:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      start_interval: 1s
+      retries: 3
+    restart: unless-stopped
+    logging: *logging
 
   # The only ingress in prod (AD-3): connects outbound to Cloudflare, which forwards the
   # public hostname to web:8080. It publishes no port. TUNNEL_TOKEN comes from the host .env.
@@ -67,6 +130,7 @@ services:
       start_interval: 1s
       retries: 3
     restart: unless-stopped
+    logging: *logging
 
 volumes:
   data:

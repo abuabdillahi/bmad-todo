@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // Coverage by scenario id (AD-20, R18): reads every suite's JSON report (the
-// Vitest unit, component, integration, contract and contract-unavailable
-// reports and the Playwright e2e report), takes each test title's leading
-// scenario id, and writes coverage/scenarios.md, listing each id by suite.
+// Vitest unit, component, integration, contract, profile and
+// contract-unavailable reports and the Playwright e2e report), takes each test
+// title's leading scenario id, and writes coverage/scenarios.md, listing each
+// id by suite.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const coverageDir = `${root}coverage`;
-const vitestSuites = ['unit', 'component', 'integration', 'contract', 'contract-unavailable'];
+const vitestSuites = ['unit', 'component', 'integration', 'contract', 'profile', 'contract-unavailable'];
 const reports = {
   ...Object.fromEntries(vitestSuites.map((suite) => [suite, `${coverageDir}/${suite}-report.json`])),
   e2e: `${coverageDir}/e2e-report.json`,

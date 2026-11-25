@@ -11,6 +11,9 @@ const port = process.env.TEST_WEB_PORT ?? '8081';
 const env = {
   ...process.env,
   APP_ENV: 'test',
+  // The profile tests read these (stack.ts); pin them to the project this script starts.
+  COMPOSE_PROJECT: 'todo-test',
+  COMPOSE_PROFILE: 'test',
   TEST_WEB_PORT: port,
   E2E_BASE_URL: process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`,
 };
@@ -91,6 +94,8 @@ try {
     await step('contract', 'pnpm', ['exec', 'vitest', 'run', '--project', 'contract', ...jsonReport('contract')]);
     await step('playwright browsers', 'pnpm', ['--filter', '@todo/e2e', 'exec', 'playwright', 'install', 'chromium']);
     await step('e2e', 'pnpm', ['--filter', '@todo/e2e', 'exec', 'playwright', 'test']);
+    // Restarts the api (I6) and reads its logs, so it runs after e2e and before api stops.
+    await step('profile', 'pnpm', ['exec', 'vitest', 'run', '--project', 'profile', ...jsonReport('profile')]);
     // Last, because it takes the API away: with api stopped and web-test still
     // up, nginx must answer /api/* with the unavailable problem (AD-4).
     if (await step('stop api', 'docker', [...compose, 'stop', 'api'])) {
@@ -103,6 +108,7 @@ try {
   } else {
     skip('contract', 'todo-test did not start');
     skip('e2e', 'todo-test did not start');
+    skip('profile', 'todo-test did not start');
     skip('contract-unavailable', 'todo-test did not start');
   }
 
