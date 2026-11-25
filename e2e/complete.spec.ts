@@ -202,7 +202,7 @@ test('E6 E8 Space on a todo deleted elsewhere says so, moves focus to the other 
   await expect(check).toBeVisible();
   await expect(completionCheck(page, stays)).toBeVisible();
   // Tab to its check, wherever the server ordered it.
-  for (let presses = 0; presses < 4 && !(await check.evaluate((el) => el === document.activeElement)); presses += 1) {
+  for (let presses = 0; presses < 5 && !(await check.evaluate((el) => el === document.activeElement)); presses += 1) {
     await page.keyboard.press('Tab');
   }
   await expect(check).toBeFocused();

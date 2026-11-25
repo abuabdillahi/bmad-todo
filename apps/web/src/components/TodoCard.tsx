@@ -1,4 +1,4 @@
-import { useEffect, useId, useReducer, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useId, useReducer, useRef, useState, type ChangeEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { flushSync } from 'react-dom';
 import type { Todo } from '@todo/contract';
 import { useEditDescription, useRevertedAt, useSetCompleted } from '../todos/hooks.ts';
@@ -43,6 +43,18 @@ function checkOf(item: Element | null): HTMLInputElement | null {
   return item?.querySelector<HTMLInputElement>('input[type="checkbox"]') ?? null;
 }
 
+/** The nearest row after (`next`) or before `item` that isn't a Leaving copy: focus targets skip those. */
+function operableSibling(item: Element, next: boolean): Element | null {
+  let sibling = next ? item.nextElementSibling : item.previousElementSibling;
+  while (sibling?.hasAttribute('data-leaving')) sibling = next ? sibling.nextElementSibling : sibling.previousElementSibling;
+  return sibling;
+}
+
+/** The add field: the textarea its visible label names "New todo". */
+function addField(): HTMLTextAreaElement | null {
+  return [...document.querySelectorAll('textarea')].find((el) => el.labels?.[0]?.textContent?.trim() === 'New todo') ?? null;
+}
+
 /** What the list area gives each card for edit mode: it owns which row edits, and the drafts. */
 export interface CardEditing {
   /** This row is in edit mode. */
@@ -65,37 +77,71 @@ const NOT_EDITING: CardEditing = {
   keepDraft: () => {},
 };
 
+/** What the list area gives each card for the Delete confirm: it owns the one open row, and the Leaving rows. */
+export interface CardConfirm {
+  /** This row is in the Delete confirm. */
+  readonly confirming: boolean;
+  /** Puts this row in the Delete confirm, closing any other row's edit or confirm silently. */
+  readonly open: () => void;
+  /** Closes the Delete confirm. */
+  readonly close: () => void;
+  /** Deletes the todo: the row turns into its Leaving copy, and the helper sends the delete. */
+  readonly remove: () => void;
+}
+
+const NOT_CONFIRMING: CardConfirm = {
+  confirming: false,
+  open: () => {},
+  close: () => {},
+  remove: () => {},
+};
+
 export interface TodoCardProps {
   todo: Todo;
   /** Play the enter motion when this card mounts (read once, at mount). */
   enter?: boolean;
   /** Edit mode, owned by the list area. */
   edit?: CardEditing;
+  /** The Delete confirm, owned by the list area. */
+  confirm?: CardConfirm;
+  /** A Leaving copy: inert and hidden from assistive tech, playing the leave motion only. */
+  leaving?: boolean;
 }
 
 /**
  * One todo: its Completion check, its text, when done the Done chip, and its
- * Edit button; in edit mode, the Edit form in place of the text and Edit
- * (DESIGN.md Components › Todo card). The check is controlled by the cached
- * `completed` (AD-11) and changes it only through the helper (AD-13), as a save
- * does. The text renders only through React's escaping (AD-19).
+ * Edit and Delete buttons; in edit mode, the Edit form in place of the text
+ * and the buttons; in the Delete confirm, "Delete this todo?", Confirm delete
+ * and Cancel in place of the buttons (DESIGN.md Components › Todo card). The
+ * check is controlled by the cached `completed` (AD-11) and changes it only
+ * through the helper (AD-13), as a save does. The text renders only through
+ * React's escaping (AD-19).
  */
-export function TodoCard({ todo, enter = false, edit = NOT_EDITING }: TodoCardProps) {
-  const [entering] = useState(enter);
+export function TodoCard({ todo, enter = false, edit = NOT_EDITING, confirm = NOT_CONFIRMING, leaving = false }: TodoCardProps) {
+  const [entering] = useState(enter && !leaving);
   const textId = useId();
+  const promptId = useId();
   const itemRef = useRef<HTMLLIElement>(null);
   const editButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  // The last pointerdown's type on this card, so a tapped Confirm delete on the last row sends focus to the heading.
+  const lastPointerType = useRef<string | null>(null);
   // Counts this card's changed saves, so only the latest one keeps a failed draft.
   const latestSave = useRef(0);
   const setCompleted = useSetCompleted();
   const editDescription = useEditDescription();
   const flagged = useRevertFlag(useRevertedAt(todo.id));
   const { editing } = edit;
+  const confirming = confirm.confirming && !editing;
   // The Edit form's opening text, set in the Edit handler, never during render (StrictMode).
   const [initial, setInitial] = useState('');
-  // The text view fades in only when it comes back from edit mode, never on first load.
+  // The text view fades in only when it comes back from edit mode, never on first load;
+  // Edit and Delete also fade in when they come back from the Delete confirm.
   const [leftEdit, setLeftEdit] = useState(false);
   if (editing && !leftEdit) setLeftEdit(true);
+  const [leftSwap, setLeftSwap] = useState(false);
+  if ((editing || confirming) && !leftSwap) setLeftSwap(true);
 
   /**
    * Deleted elsewhere: the row goes on the settle-time refetch, so focus inside it
@@ -104,7 +150,7 @@ export function TodoCard({ todo, enter = false, edit = NOT_EDITING }: TodoCardPr
   function moveFocusOffRow() {
     const item = itemRef.current;
     if (!item?.contains(document.activeElement)) return;
-    const target = checkOf(item.nextElementSibling) ?? checkOf(item.previousElementSibling) ?? item.closest('ul');
+    const target = checkOf(operableSibling(item, true)) ?? checkOf(operableSibling(item, false)) ?? item.closest('ul');
     target?.focus();
   }
 
@@ -128,6 +174,43 @@ export function TodoCard({ todo, enter = false, edit = NOT_EDITING }: TodoCardPr
     editButtonRef.current?.focus();
   }
 
+  /** Swaps Edit and Delete for the Delete confirm, then focuses Cancel in the same task. Nothing is sent. */
+  function openConfirm() {
+    flushSync(() => confirm.open());
+    cancelButtonRef.current?.focus();
+  }
+
+  /** Closes the Delete confirm, then focuses Delete in the same task. */
+  function closeConfirm() {
+    flushSync(() => confirm.close());
+    deleteButtonRef.current?.focus();
+  }
+
+  function handleConfirmKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'Escape') return;
+    // Escape ends an IME composition first; it never cancels the confirm then.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    closeConfirm();
+  }
+
+  /**
+   * The after-delete rule (EXPERIENCE Focus management), then the delete: focus
+   * moves first, to the next operable row's check, else the previous one's,
+   * else the add field, or the heading after a tap, so the phone keyboard stays
+   * closed. Only then does the row turn into its inert Leaving copy.
+   */
+  function confirmDelete(event: MouseEvent<HTMLButtonElement>) {
+    const item = itemRef.current;
+    const touch = (lastPointerType.current === 'touch' || lastPointerType.current === 'pen') && event.detail !== 0;
+    lastPointerType.current = null;
+    const check = item ? (checkOf(operableSibling(item, true)) ?? checkOf(operableSibling(item, false))) : null;
+    if (check) check.focus();
+    else if (touch) document.querySelector<HTMLHeadingElement>('main h1')?.focus({ preventScroll: true });
+    else addField()?.focus();
+    flushSync(() => confirm.remove());
+  }
+
   async function save(text: string) {
     closeEdit();
     // Unchanged text sends nothing: the prepared draft is compared with the cached description.
@@ -149,11 +232,20 @@ export function TodoCard({ todo, enter = false, edit = NOT_EDITING }: TodoCardPr
     .filter(Boolean)
     .join(' ');
   const swapBack = leftEdit ? ` ${styles.swapIn}` : '';
+  const actionsBack = leftSwap ? ` ${styles.swapIn}` : '';
+  const itemClass = [styles.item, entering && styles.enter, leaving && styles.leaving].filter(Boolean).join(' ');
 
   return (
-    <li ref={itemRef} className={entering ? `${styles.item} ${styles.enter}` : styles.item} data-todo-id={todo.id}>
+    <li
+      ref={itemRef}
+      className={itemClass}
+      data-todo-id={todo.id}
+      data-leaving={leaving ? '' : undefined}
+      inert={leaving}
+      aria-hidden={leaving ? 'true' : undefined}
+    >
       <div className={styles.body}>
-        <div className={cardClass}>
+        <div className={cardClass} onPointerDown={(event) => (lastPointerType.current = event.pointerType)}>
           <div className={styles.main}>
             <span className={styles.check}>
               {/* In edit mode the text element is gone, so the check is named by the saved text directly. */}
@@ -182,19 +274,52 @@ export function TodoCard({ todo, enter = false, edit = NOT_EDITING }: TodoCardPr
               </div>
             )}
           </div>
-          {!editing && (
-            <div className={`${styles.actions}${swapBack}`}>
-              {/* The name starts with the visible label (WCAG 2.5.3) and quotes the full text, never cut, so names are unique whenever the texts differ. */}
-              <button
-                ref={editButtonRef}
-                type="button"
-                className={`${buttons.button} ${todo.completed ? buttons.done : buttons.soft}`}
-                aria-label={`Edit “${todo.description}”`}
-                onClick={openEdit}
-              >
-                Edit
-              </button>
+          {/* Keyed, so each swap remounts the actions and only the incoming content fades in. */}
+          {confirming ? (
+            <div key="confirm" className={`${styles.actions} ${styles.confirming} ${styles.swapIn}`}>
+              <div role="group" aria-labelledby={`${promptId} ${textId}`} className={styles.confirm} onKeyDown={handleConfirmKeyDown}>
+                <span id={promptId} className={todo.completed ? `${styles.prompt} ${styles.promptDone}` : styles.prompt}>
+                  Delete this todo?
+                </span>
+                <span className={styles.confirmButtons}>
+                  <button
+                    type="button"
+                    className={`${buttons.button} ${buttons.dangerStrong}`}
+                    aria-label={`Delete “${todo.description}”`}
+                    onClick={confirmDelete}
+                  >
+                    Delete
+                  </button>
+                  <button ref={cancelButtonRef} type="button" className={`${buttons.button} ${buttons.cancel}`} onClick={closeConfirm}>
+                    Cancel
+                  </button>
+                </span>
+              </div>
             </div>
+          ) : (
+            !editing && (
+              <div key="buttons" className={`${styles.actions}${actionsBack}`}>
+                {/* The name starts with the visible label (WCAG 2.5.3) and quotes the full text, never cut, so names are unique whenever the texts differ. */}
+                <button
+                  ref={editButtonRef}
+                  type="button"
+                  className={`${buttons.button} ${todo.completed ? buttons.done : buttons.soft}`}
+                  aria-label={`Edit “${todo.description}”`}
+                  onClick={openEdit}
+                >
+                  Edit
+                </button>
+                <button
+                  ref={deleteButtonRef}
+                  type="button"
+                  className={`${buttons.button} ${todo.completed ? buttons.done : buttons.danger}`}
+                  aria-label={`Delete “${todo.description}”`}
+                  onClick={openConfirm}
+                >
+                  Delete
+                </button>
+              </div>
+            )
           )}
         </div>
       </div>

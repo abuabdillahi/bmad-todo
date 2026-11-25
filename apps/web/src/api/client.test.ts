@@ -1,4 +1,4 @@
-import { createTodo, isCancellation, listTodos, RequestFailure, updateTodo, WRITE_TIMEOUT_MS, type FailureKind } from './client.ts';
+import { createTodo, deleteTodo, isCancellation, listTodos, RequestFailure, updateTodo, WRITE_TIMEOUT_MS, type FailureKind } from './client.ts';
 
 /** AD-9 classification, with `fetch` stubbed. */
 const fetchMock = vi.fn<typeof fetch>();
@@ -82,6 +82,11 @@ describe('API client failure classification', () => {
 
   it('K7 classifies a 2xx with an unreadable body as generic', async () => {
     fetchMock.mockResolvedValue(answer(200, '<html>', 'text/html'));
+    expect((await failureOf(listTodos())).kind).toBe('generic');
+  });
+
+  it('K7 classifies an empty 200 on listTodos as generic, never resolving undefined', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 200 }));
     expect((await failureOf(listTodos())).kind).toBe('generic');
   });
 
@@ -202,6 +207,25 @@ describe('API client write timeout', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('U4 a delete with no response for 15 s is aborted and rejects as network, and not before', async () => {
+    stall();
+    let settled: unknown;
+    const pending = deleteTodo(body.id).then(
+      () => (settled = 'resolved'),
+      (reason: unknown) => (settled = reason),
+    );
+
+    await vi.advanceTimersByTimeAsync(WRITE_TIMEOUT_MS - 1);
+    expect(settled).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+    expect(fetchMock.mock.calls[0]![1]!.signal!.aborted).toBe(true);
+    expect(settled).toBeInstanceOf(RequestFailure);
+    expect((settled as RequestFailure).kind).toBe('network');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('U4 listTodos passes the caller\'s signal through untouched and arms no timer', async () => {
     stall();
     const controller = new AbortController();
@@ -243,5 +267,45 @@ describe('API client update', () => {
     fetchMock.mockResolvedValue(answer(404, problem('/problems/not-found', 404), 'application/problem+json; charset=utf-8'));
 
     expect((await failureOf(updateTodo(todo.id, { completed: false }))).kind).toBe('not-found');
+  });
+});
+
+describe('API client delete', () => {
+  const id = 'a0000000-0000-4000-8000-000000000001';
+
+  it('U3 deleteTodo sends DELETE to the encoded path with no body and no Content-Type, and a 204 resolves undefined', async () => {
+    const response = new Response(null, { status: 204 });
+    const json = vi.spyOn(response, 'json');
+    fetchMock.mockResolvedValue(response);
+
+    await expect(deleteTodo('a/b c?')).resolves.toBeUndefined();
+
+    expect(json).not.toHaveBeenCalled();
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/api/todos/a%2Fb%20c%3F');
+    expect(init!.method).toBe('DELETE');
+    expect(init!.body).toBeUndefined();
+    expect(init!.headers).toEqual({ Accept: 'application/json' });
+  });
+
+  it('U3 deleteTodo resolves undefined on any 2xx without reading its body', async () => {
+    const response = new Response('{"unexpected":true}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const json = vi.spyOn(response, 'json');
+    fetchMock.mockResolvedValue(response);
+
+    await expect(deleteTodo(id)).resolves.toBeUndefined();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it('U3 deleteTodo rejects a 404 problem as not-found', async () => {
+    fetchMock.mockResolvedValue(answer(404, problem('/problems/not-found', 404), 'application/problem+json; charset=utf-8'));
+
+    expect((await failureOf(deleteTodo(id))).kind).toBe('not-found');
+  });
+
+  it('U3 deleteTodo rejects a 503 problem as unavailable', async () => {
+    fetchMock.mockResolvedValue(answer(503, problem('/problems/unavailable', 503), 'application/problem+json'));
+
+    expect((await failureOf(deleteTodo(id))).kind).toBe('unavailable');
   });
 });

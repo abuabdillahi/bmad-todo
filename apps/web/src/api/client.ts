@@ -87,7 +87,18 @@ async function classify(response: Response, label: string, signal: AbortSignal |
  */
 export const WRITE_TIMEOUT_MS = 15_000;
 
-async function send<T>(path: string, init: RequestInit, signal: AbortSignal | undefined, label: string): Promise<T> {
+/** `readBody: false` resolves any 2xx with `undefined` without reading its body (DELETE's 204, AD-6). */
+interface RequestOptions {
+  readonly readBody?: boolean;
+}
+
+async function send<T>(
+  path: string,
+  init: RequestInit,
+  signal: AbortSignal | undefined,
+  label: string,
+  { readBody = true }: RequestOptions = {},
+): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -100,6 +111,7 @@ async function send<T>(path: string, init: RequestInit, signal: AbortSignal | un
     throw new RequestFailure('network', `${label} got no response`);
   }
   if (!response.ok) throw await classify(response, label, signal);
+  if (!readBody) return undefined as T;
   try {
     return (await response.json()) as T;
   } catch (error) {
@@ -114,17 +126,17 @@ async function send<T>(path: string, init: RequestInit, signal: AbortSignal | un
  * and fails as `network` from whatever stage it reached, unless the caller's
  * own signal aborted first: that stays a cancellation. A GET has no timeout.
  */
-async function request<T>(path: string, init: RequestInit): Promise<T> {
+async function request<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
   const signal = init.signal ?? undefined;
   const method = init.method ?? 'GET';
   const label = `${method} ${path}`;
-  if (method === 'GET') return send<T>(path, init, signal, label);
+  if (method === 'GET') return send<T>(path, init, signal, label, options);
 
   const timeout = new AbortController();
   const timer = setTimeout(() => timeout.abort(), WRITE_TIMEOUT_MS);
   const combined = signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal;
   try {
-    return await send<T>(path, { ...init, signal: combined }, signal, label);
+    return await send<T>(path, { ...init, signal: combined }, signal, label, options);
   } catch (error) {
     if (timeout.signal.aborted && !isCancellation(error, signal)) {
       throw new RequestFailure('network', `${label} got no complete response within ${WRITE_TIMEOUT_MS} ms`);
@@ -155,4 +167,9 @@ export function updateTodo(id: string, body: UpdateTodoBody): Promise<Todo> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+/** Deletes a todo (AD-6): no body and no `Content-Type`; any 2xx resolves without reading a body (204). */
+export function deleteTodo(id: string): Promise<void> {
+  return request<void>(`/api/todos/${encodeURIComponent(id)}`, { method: 'DELETE' }, { readBody: false });
 }

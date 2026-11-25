@@ -753,3 +753,137 @@ describe('mutation helper: edit (U4, U5)', () => {
     expect(store.getSnapshot().pendingCount).toBe(0);
   });
 });
+
+describe('mutation helper: delete (U4, U5)', () => {
+  const UNAVAILABLE = "The server isn't available right now. Try again in a moment.";
+  const NETWORK = 'Check your connection and try again.';
+  const GENERIC = 'Something went wrong on our side. Try again.';
+
+  /** Answers each request once the test settles it, recording its method and path. */
+  function heldRequests() {
+    const calls: { method: string; path: string; body: unknown; settle: (answer: () => Response | Promise<Response>) => void }[] = [];
+    fetchMock.mockImplementation(
+      (url, init) =>
+        new Promise<Response>((resolve, reject) => {
+          calls.push({
+            method: init!.method!,
+            path: String(url),
+            body: init!.body === undefined ? undefined : JSON.parse(String(init!.body)),
+            settle: (answer) => void Promise.resolve().then(answer).then(resolve, reject),
+          });
+        }),
+    );
+    return calls;
+  }
+
+  it('U4 a delete removes the todo at once, sends DELETE with no body, and announces Deleted only once the server answers 204', async () => {
+    const { helper, store, announce, invalidate, list } = setup([first, second]);
+    const calls = heldRequests();
+
+    const pending = helper.deleteTodo(first);
+    await flush();
+
+    expect(list()).toEqual([second]);
+    expect(store.getSnapshot().pendingCount).toBe(1);
+    expect(calls.map(({ method, path, body }) => ({ method, path, body }))).toEqual([
+      { method: 'DELETE', path: `/api/todos/${first.id}`, body: undefined },
+    ]);
+    expect(announce).not.toHaveBeenCalled();
+
+    calls[0]!.settle(() => new Response(null, { status: 204 }));
+    await expect(pending).resolves.toEqual({ status: 'ok' });
+    expect(list()).toEqual([second]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('status', 'Deleted “Already here”.');
+    expect(store.getSnapshot().revertedAt.size).toBe(0);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: todosQueryKey });
+  });
+
+  it('U5 a delete answered 404 is success: announces Deleted, never reverts or records a revert', async () => {
+    const { helper, store, announce, list } = setup([first, second]);
+    const calls = heldRequests();
+
+    const pending = helper.deleteTodo(first);
+    await flush();
+    calls[0]!.settle(() => problem('/problems/not-found', 404));
+
+    await expect(pending).resolves.toEqual({ status: 'ok' });
+    expect(list()).toEqual([second]);
+    expect(store.getSnapshot().revertedAt.size).toBe(0);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('status', 'Deleted “Already here”.');
+  });
+
+  it.each([
+    ['a 503 problem', () => problem('/problems/unavailable', 503), UNAVAILABLE],
+    ['a 500 problem', () => problem('/problems/internal', 500), GENERIC],
+    ['an HTML 502', () => new Response('<html>bad gateway</html>', { status: 502, headers: { 'Content-Type': 'text/html' } }), GENERIC],
+    ['no response', () => Promise.reject(new TypeError('Failed to fetch')), NETWORK],
+  ])('U4 a delete failing with %s puts the todo back at its old index, records the revert and announces delete plus the reason', async (_name, answer, reason) => {
+    const { helper, store, announce, list, queryClient } = setup([second, first]);
+    const calls = heldRequests();
+
+    const pending = helper.deleteTodo(first);
+    await flush();
+    expect(list()).toEqual([second]);
+    // Another todo changes meanwhile; the revert keeps that change.
+    queryClient.setQueryData<Todo[]>(todosQueryKey, (todos) => todos!.map((t) => ({ ...t, completed: true })));
+    calls[0]!.settle(answer);
+
+    await expect(pending).resolves.toMatchObject({ status: 'failed' });
+    expect(list()).toEqual([{ ...second, completed: true }, first]);
+    expect([...store.getSnapshot().revertedAt]).toEqual([[first.id, 1234]]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't delete “Already here”, so it's back in the list. ${reason}`);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+  });
+
+  it('U5 a delete on a todo whose create is pending removes it at once and is sent only after the POST settles', async () => {
+    const { helper, announce, list } = setup([second]);
+    const calls = heldRequests();
+
+    const added = helper.addTodo('Buy milk');
+    await flush();
+    const id = list()![0]!.id;
+    const deleted = helper.deleteTodo({ id, description: 'Buy milk' });
+    await flush();
+
+    expect(list()).toEqual([second]);
+    expect(calls.map(({ method }) => method)).toEqual(['POST']);
+
+    calls[0]!.settle(() => Response.json({ ...(calls[0]!.body as object), completed: false, createdAt: '2026-11-25T10:00:00.000Z' }, { status: 201 }));
+    await expect(added).resolves.toMatchObject({ status: 'ok' });
+    await flush();
+    expect(calls.map(({ method, path }) => ({ method, path }))).toEqual([
+      { method: 'POST', path: '/api/todos' },
+      { method: 'DELETE', path: `/api/todos/${id}` },
+    ]);
+
+    calls[1]!.settle(() => new Response(null, { status: 204 }));
+    await expect(deleted).resolves.toEqual({ status: 'ok' });
+    expect(list()).toEqual([second]);
+    expect(announce.mock.calls).toEqual([
+      ['status', 'Added “Buy milk”.'],
+      ['status', 'Deleted “Buy milk”.'],
+    ]);
+  });
+
+  it('U5 a delete behind a create that fails is dropped: not sent, announced or reverted, and the pending count returns to 0', async () => {
+    const { helper, store, announce, list } = setup([second]);
+    const calls = heldRequests();
+
+    const added = helper.addTodo('Buy milk');
+    await flush();
+    const id = list()![0]!.id;
+    const deleted = helper.deleteTodo({ id, description: 'Buy milk' });
+    await flush();
+    expect(store.getSnapshot().pendingCount).toBe(2);
+
+    calls[0]!.settle(() => problem('/problems/unavailable', 503));
+    await expect(added).resolves.toMatchObject({ status: 'failed' });
+    await expect(deleted).resolves.toEqual({ status: 'dropped' });
+
+    expect(calls.map(({ method }) => method)).toEqual(['POST']);
+    expect(list()).toEqual([second]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't add “Buy milk”. ${UNAVAILABLE}`);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+  });
+});

@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { Todo } from '@todo/contract';
-import { createTodo, RequestFailure, updateTodo } from '../api/client.ts';
+import { createTodo, deleteTodo as sendDelete, RequestFailure, updateTodo } from '../api/client.ts';
 import type { Announcer } from './announcer.ts';
 import { messages, type FailureInfo } from './messages.ts';
 import { todosQueryKey } from './query.ts';
@@ -54,6 +54,14 @@ export interface MutationHelper {
    * the todo shows once reverted (the pre-edit text, or a later queued edit).
    */
   editDescription(todo: Pick<Todo, 'id' | 'description'>, description: string): Promise<MutationOutcome>;
+  /**
+   * Removes the todo at once (R5), as a follow-up: behind a pending create it
+   * waits, and is dropped if that create fails. A 204, or a 404 (already gone),
+   * is success: it announces `deleted` on server confirmation. Any other
+   * failure puts the todo back at its place and announces the `delete` lead
+   * plus the reason.
+   */
+  deleteTodo(todo: Pick<Todo, 'id' | 'description'>): Promise<MutationOutcome>;
 }
 
 export interface MutationHelperDeps {
@@ -265,5 +273,21 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
     });
   }
 
-  return { run, addTodo, setCompleted, editDescription };
+  function deleteTodo({ id, description }: Pick<Todo, 'id' | 'description'>): Promise<MutationOutcome> {
+    return run({
+      id,
+      kind: 'follow-up',
+      apply: () => null,
+      send: () =>
+        sendDelete(id).catch((error: unknown) => {
+          // Already gone is what a delete wants (AD-13): never reverted.
+          if (error instanceof RequestFailure && error.kind === 'not-found') return;
+          throw error;
+        }),
+      failureText: (failure) => messages.failureMessage('delete', failure, description),
+      successText: messages.deleted(description),
+    });
+  }
+
+  return { run, addTodo, setCompleted, editDescription, deleteTodo };
 }

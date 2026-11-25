@@ -71,6 +71,44 @@
 }
 
 /*
+ * Delete (EXPERIENCE Motion): the Leaving copy's card fades out while its row,
+ * and the gap inside it, collapses, so the cards below close up. It holds its
+ * end state until the list area unmounts it, by a timer that is 0 under
+ * reduced motion, where nothing animates.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .leaving {
+    animation: todo-card-close var(--motion-duration-base) var(--motion-ease-out) forwards;
+  }
+
+  .leaving .body {
+    animation: todo-card-clip var(--motion-duration-base) linear forwards;
+  }
+
+  .leaving .card {
+    animation: todo-card-out var(--motion-duration-base) var(--motion-ease-out) forwards;
+  }
+}
+
+@keyframes todo-card-close {
+  from {
+    grid-template-rows: 1fr;
+  }
+  to {
+    grid-template-rows: 0fr;
+  }
+}
+
+@keyframes todo-card-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/*
  * Todo card (DESIGN.md Components › Todo card). The shadow and the done card's
  * dashed outline each sit on their own layer, so each fades by opacity: a
  * border can't animate from solid to dashed, and box-shadow is not animated
@@ -140,8 +178,44 @@
   margin-top: var(--todo-card-actions-gap);
 }
 
+/*
+ * Delete confirm (DESIGN.md Components › Delete confirm): the prompt, then
+ * Confirm delete and Cancel, right-aligned and vertically centred. The row
+ * wraps, so on a narrow card the prompt sits on its own line above the buttons.
+ */
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--delete-confirm-gap);
+  min-width: 0;
+}
+
+.prompt {
+  color: var(--delete-confirm-foreground);
+  font-size: var(--font-body-size);
+  font-weight: var(--font-body-weight);
+  line-height: var(--font-body-line-height);
+}
+
+.promptDone {
+  color: var(--delete-confirm-foreground-done);
+}
+
+.confirmButtons {
+  display: flex;
+  gap: var(--delete-confirm-gap);
+}
+
 /* spacing.breakpoint-wide (768px), repeated literally: CSS can't read custom properties in @media. */
 @media (min-width: 768px) {
+  /* The confirm may shrink beside the text, so it wraps instead of pushing the text out. */
+  .actions.confirming {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
   .card {
     display: flex;
     align-items: flex-start;

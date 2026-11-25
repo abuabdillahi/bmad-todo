@@ -1,6 +1,6 @@
 /*
- * Card buttons (DESIGN.md Components › Card buttons): Edit, Save and Cancel
- * here; story 5 adds Delete and Confirm delete. Every one has rest, hover
+ * Card buttons (DESIGN.md Components › Card buttons): Edit, Delete, Confirm
+ * delete, Save and Cancel. Every one has rest, hover
  * (pointer only), pressed (one more step plus the press scale) and
  * focus-visible (the global ring) states, and none has a disabled look.
  */
@@ -37,7 +37,20 @@
   color: var(--save-button-foreground);
 }
 
-/* Edit on a done card: no fill, a done-coloured edge and label, so the card recedes. */
+/* Delete: the soft danger button. */
+.danger {
+  background: var(--delete-button-background);
+  color: var(--delete-button-foreground);
+}
+
+/* Confirm delete: the strong danger button, used only in the Delete confirm. */
+.dangerStrong {
+  border: 0;
+  background: var(--confirm-delete-button-background);
+  color: var(--confirm-delete-button-foreground);
+}
+
+/* Edit and Delete on a done card: no fill, a done-coloured edge and label, so the card recedes. */
 .done {
   border-color: var(--card-button-done-border-color);
   background: var(--card-button-done-background);
@@ -57,6 +70,14 @@
     background: var(--save-button-background-hover);
   }
 
+  .danger:hover {
+    background: var(--delete-button-background-hover);
+  }
+
+  .dangerStrong:hover {
+    background: var(--confirm-delete-button-background-hover);
+  }
+
   .done:hover {
     background: var(--card-button-done-background-hover);
   }
@@ -72,6 +93,14 @@
 
 .primary:active {
   background: var(--save-button-background-pressed);
+}
+
+.danger:active {
+  background: var(--delete-button-background-pressed);
+}
+
+.dangerStrong:active {
+  background: var(--confirm-delete-button-background-pressed);
 }
 
 .done:active {
@@ -90,9 +119,10 @@
   }
 }
 
-/* Forced colours: Save has no border of its own, so it gets a system-painted edge like Edit and Cancel. */
+/* Forced colours: Save and Confirm delete have no border of their own, so they get a system-painted edge like Edit and Cancel. */
 @media (forced-colors: active) {
-  .primary {
+  .primary,
+  .dangerStrong {
     border: var(--card-button-border-width) solid ButtonText;
   }
 }

@@ -158,7 +158,7 @@ describe('TodoCard', () => {
     expect(liveElement().textContent).toBe('');
   });
 
-  it('K6 the check is named by the todo text alone, and Tab reaches it after the Add button, then its Edit button', async () => {
+  it('K6 the check is named by the todo text alone, and Tab reaches it after the Add button, then its Edit and Delete buttons', async () => {
     serve([rent, milk]).release.open();
     const { user, field, addButton } = await renderLoaded(['Pay rent', 'Buy milk']);
 
@@ -174,6 +174,8 @@ describe('TodoCard', () => {
     expect(document.activeElement).toBe(check('Pay rent'));
     await user.tab();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit “Pay rent”' }));
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Delete “Pay rent”' }));
     await user.tab();
     expect(document.activeElement).toBe(check('Buy milk'));
   });
