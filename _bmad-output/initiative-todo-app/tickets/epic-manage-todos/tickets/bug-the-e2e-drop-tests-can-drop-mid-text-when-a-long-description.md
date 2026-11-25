@@ -10,7 +10,7 @@ hitl: false
 risk: low
 tracker_id: "60"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/60"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # The e2e drop tests can drop mid-text when a long description wraps
