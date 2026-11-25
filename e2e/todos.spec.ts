@@ -1,35 +1,18 @@
-import { expect, test, type BrowserContextOptions, type Page, type Route } from '@playwright/test';
+import { expect, test, type BrowserContextOptions, type Route } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
+import { announcement, MESSAGES, todoItem, todoList, uniqueDescription } from './helpers.ts';
 
 /**
  * List reset (story 1 Decision 2026-11-24): each test adds a todo with a unique
  * description and asserts only on its own todo. `pnpm test:all` starts
  * todo-test on a fresh volume. Epic 2 adds the AD-20 reset through DELETE.
  */
-function uniqueDescription(project: string): string {
-  return `E1 ${project} ${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** `{t}`'s text: cut at 40 code points with "…" inside the quote (EXPERIENCE Voice and Tone). */
-function quoteText(description: string): string {
-  const points = [...description];
-  return points.length <= 40 ? description : `${points.slice(0, 40).join('').trimEnd()}…`;
-}
-
-function todoList(page: Page) {
-  return page.getByRole('list', { name: 'Todos' });
-}
-
-function todoItem(page: Page, description: string) {
-  return todoList(page).getByRole('listitem').filter({ hasText: description });
-}
-
 test.describe('add a todo', () => {
   test('E1 E7 E8 a todo added by keyboard is listed, and is still there after a reload and in a new session', async ({
     page,
     browser,
   }, testInfo) => {
-    const description = uniqueDescription(testInfo.project.name);
+    const description = uniqueDescription('E1', testInfo.project.name);
 
     await page.goto('/');
     await expect(page).toHaveTitle('BMad Todos');
@@ -59,12 +42,12 @@ test.describe('add a todo', () => {
     await expect(field).toHaveValue('');
     await expect(page.getByText('0/200')).toBeVisible();
     await expect(field).toBeFocused();
-    await expect(page.getByRole('status').filter({ hasText: 'Added' })).toHaveCount(0);
+    await expect(announcement(page, MESSAGES.addOutcome)).toHaveCount(0);
 
     // Once the server answers, the Announcer says so.
     await create.continue();
     await page.unroute('**/api/todos');
-    await expect(page.getByRole('status').filter({ hasText: 'Added' })).toHaveText(`Added “${quoteText(description)}”.`);
+    await expect(announcement(page, MESSAGES.addOutcome)).toHaveText(MESSAGES.added(description));
     await expect(todoList(page).getByRole('listitem').first()).toHaveText(description);
     await expectNoAxeViolations(page, 'added');
 

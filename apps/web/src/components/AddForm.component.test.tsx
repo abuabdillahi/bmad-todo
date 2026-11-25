@@ -526,6 +526,110 @@ describe('AddForm: optimistic add', () => {
     expect(field.value).toBe('Buy milk now');
   });
 
+  /**
+   * A server that keeps what it stores and replays a repeated id with 200
+   * (AD-6). The first create is answered with `firstAnswer`, after it is stored
+   * if `storedFirst`: a lost response. The list shows only creates that were
+   * answered, so a failed add's restored text stays in the field.
+   */
+  function replaying(firstAnswer: () => Response, storedFirst: boolean) {
+    const state = { lists: 0, landed: [] as Todo[], bodies: [] as CreateTodoBody[], statuses: [] as number[], release: gate() };
+    const stored = new Map<string, Todo>();
+    server.use(
+      http.get('*/api/todos', () => {
+        state.lists += 1;
+        return HttpResponse.json([...state.landed, existing]);
+      }),
+      http.post('*/api/todos', async ({ request }) => {
+        const body = (await request.json()) as CreateTodoBody;
+        state.bodies.push(body);
+        if (state.bodies.length === 1) {
+          await state.release.opened;
+          if (storedFirst) stored.set(body.id, { ...body, completed: false, createdAt: '2026-11-25T10:00:00.000Z' });
+          return firstAnswer();
+        }
+        const replay = stored.get(body.id);
+        const todo = replay ?? { ...body, completed: false, createdAt: '2026-11-25T10:00:01.000Z' };
+        stored.set(body.id, todo);
+        state.landed = [...stored.values()].reverse();
+        state.statuses.push(replay ? 200 : 201);
+        return HttpResponse.json(todo, { status: replay ? 200 : 201 });
+      }),
+    );
+    return state;
+  }
+
+  /** Adds `text`, lets its create fail, and waits until the text is restored and the list has settled. */
+  async function failAndRestore(text: string, state: ReturnType<typeof replaying>) {
+    const app = await renderLoaded();
+    await app.user.type(app.field, `${text}{Enter}`);
+    state.release.open();
+    await waitFor(() => expect(app.field.value).toBe(text));
+    await waitFor(() => expect(state.lists).toBe(2));
+    await waitFor(() => expect(app.queryClient.getQueryState(['todos'])?.fetchStatus).toBe('idle'));
+    return app;
+  }
+
+  it('K1 a failed add stored after all, resubmitted unchanged, sends the first id, is replayed and leaves one card', async () => {
+    const state = replaying(() => HttpResponse.error(), true);
+    const { user, list } = await failAndRestore('Buy milk', state);
+    expect(liveElement().textContent).toBe("Couldn't add “Buy milk”. Check your connection and try again.");
+
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(liveElement().textContent).toBe('Added “Buy milk”.'));
+    expect(state.bodies).toHaveLength(2);
+    expect(state.bodies[1]).toEqual(state.bodies[0]);
+    expect(state.statuses).toEqual([200]);
+    await waitFor(() => expect(state.lists).toBe(3));
+    expect(items(list)).toEqual(['Buy milk', 'Already here']);
+  });
+
+  it('K1 a failed add resubmitted with different text sends a new id', async () => {
+    const state = replaying(unavailable, false);
+    const { user, list } = await failAndRestore('Buy milk', state);
+
+    await user.keyboard(' now{Enter}');
+
+    await waitFor(() => expect(liveElement().textContent).toBe('Added “Buy milk now”.'));
+    expect(state.bodies[1]).toEqual({ id: expect.stringMatching(UUID), description: 'Buy milk now' });
+    expect(state.bodies[1]!.id).not.toBe(state.bodies[0]!.id);
+    expect(state.statuses).toEqual([201]);
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk now', 'Already here']));
+  });
+
+  it('K1 a failed add edited and returned to exactly the restored text reuses its id', async () => {
+    const state = replaying(unavailable, false);
+    const { user, field } = await failAndRestore('Buy milk', state);
+
+    await user.keyboard('s');
+    expect(field.value).toBe('Buy milks');
+    await user.keyboard('{Backspace}{Enter}');
+
+    await waitFor(() => expect(liveElement().textContent).toBe('Added “Buy milk”.'));
+    expect(state.bodies[1]).toEqual(state.bodies[0]);
+    expect(state.statuses).toEqual([201]);
+  });
+
+  it('K1 a failed add whose text was not restored never lends its id to the same text typed later', async () => {
+    const state = replaying(unavailable, false);
+    const { user, field, list } = await renderLoaded();
+
+    await user.type(field, 'Buy milk{Enter}');
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    await user.keyboard('Call mum');
+    state.release.open();
+    await waitFor(() => expect(liveElement().textContent).toBe(`Couldn't add “Buy milk”. ${UNAVAILABLE}`));
+    expect(field.value).toBe('Call mum');
+
+    await user.clear(field);
+    await user.type(field, 'Buy milk{Enter}');
+
+    await waitFor(() => expect(liveElement().textContent).toBe('Added “Buy milk”.'));
+    expect(state.bodies[1]).toEqual({ id: expect.stringMatching(UUID), description: 'Buy milk' });
+    expect(state.bodies[1]!.id).not.toBe(state.bodies[0]!.id);
+  });
+
   it('K1 two adds, the first failing: only its card goes', async () => {
     const firstAnswer = gate();
     const saved: Todo[] = [existing];

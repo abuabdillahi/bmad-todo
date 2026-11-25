@@ -80,9 +80,14 @@ async function classify(response: Response, label: string, signal: AbortSignal |
   return new RequestFailure(kind, message, kind === 'validation' && namesDescription(problem.errors));
 }
 
-async function request<T>(path: string, init: RequestInit): Promise<T> {
-  const signal = init.signal ?? undefined;
-  const label = `${init.method ?? 'GET'} ${path}`;
+/**
+ * How long a write waits for its response before the client gives up, as `network`.
+ * nginx answers a stalled API with the unavailable problem after 10 s; this is
+ * the backstop for when nginx itself doesn't answer.
+ */
+export const WRITE_TIMEOUT_MS = 15_000;
+
+async function send<T>(path: string, init: RequestInit, signal: AbortSignal | undefined, label: string): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -100,6 +105,33 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   } catch (error) {
     if (isCancellation(error, signal)) throw error;
     throw new RequestFailure('generic', `${label} answered ${response.status} with an unreadable body`);
+  }
+}
+
+/**
+ * Sends one request and classifies its failure (AD-9). Every write (any method
+ * but GET) is aborted once `WRITE_TIMEOUT_MS` passes before its body is read,
+ * and fails as `network` from whatever stage it reached, unless the caller's
+ * own signal aborted first: that stays a cancellation. A GET has no timeout.
+ */
+async function request<T>(path: string, init: RequestInit): Promise<T> {
+  const signal = init.signal ?? undefined;
+  const method = init.method ?? 'GET';
+  const label = `${method} ${path}`;
+  if (method === 'GET') return send<T>(path, init, signal, label);
+
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), WRITE_TIMEOUT_MS);
+  const combined = signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal;
+  try {
+    return await send<T>(path, { ...init, signal: combined }, signal, label);
+  } catch (error) {
+    if (timeout.signal.aborted && !isCancellation(error, signal)) {
+      throw new RequestFailure('network', `${label} got no complete response within ${WRITE_TIMEOUT_MS} ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
