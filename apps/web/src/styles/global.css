@@ -6,6 +6,8 @@ html {
   font-family: var(--font-base-family);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* A focused control is never scrolled under the Announcer (WCAG 2.4.11, DESIGN Components › Announcer). */
+  scroll-padding-bottom: var(--announcer-block-size, 0px);
 }
 
 body {

@@ -1,32 +1,33 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { CreateTodoBody, Todo } from '@todo/contract';
 import { server } from '../../test/msw.ts';
-import { AddForm } from './AddForm.tsx';
-import { TodoList } from './TodoList.tsx';
+import { renderApp } from '../../test/render.tsx';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+// The app's list loads on mount; a test's own GET handler, added later, wins.
+beforeEach(() => {
+  server.use(http.get('*/api/todos', () => HttpResponse.json([])));
+});
+
 function renderAddForm() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false, networkMode: 'always' },
-      mutations: { retry: false, networkMode: 'always' },
-    },
-  });
-  render(
-    <QueryClientProvider client={queryClient}>
-      <AddForm />
-    </QueryClientProvider>,
-  );
-  return {
-    user: userEvent.setup(),
-    field: screen.getByRole('textbox', { name: 'New todo' }),
-    addButton: screen.getByRole('button', { name: 'Add' }),
-  };
+  const { user, field, addButton } = renderApp();
+  return { user, field: field as HTMLElement, addButton };
 }
+
+/** The add form's Field status, beside the app's other live regions. */
+function addFormStatus() {
+  return within(screen.getByRole('textbox', { name: 'New todo' }).closest('form')!).getByRole('status');
+}
+
+/**
+ * Text queries that skip the live regions (the hidden Field status, and the
+ * Announcer's live element). A blocked submit shows the Inline error at once
+ * and puts the same words in the Field status one animation frame later, so an
+ * unscoped text query matches both once that frame has run.
+ */
+const NOT_STATUS = { ignore: '[role="status"], script, style' };
 
 /** Answers POST /api/todos with 201 and records each request body. */
 function acceptCreates(): CreateTodoBody[] {
@@ -101,7 +102,7 @@ describe('AddForm', () => {
     expect(field).toHaveProperty('value', 'Buy milk');
     expect(screen.getByText('8/200')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.getByRole('status').textContent).toBe('');
+    expect(addFormStatus().textContent).toBe('');
   });
 
   it('K1 leaves the list unchanged when the add fails', async () => {
@@ -123,23 +124,10 @@ describe('AddForm', () => {
         return HttpResponse.json({ message: 'boom' }, { status: 500 });
       }),
     );
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false, networkMode: 'always' },
-        mutations: { retry: false, networkMode: 'always' },
-      },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <AddForm />
-        <TodoList />
-      </QueryClientProvider>,
-    );
-    const list = screen.getByRole('list', { name: 'Todos' });
+    const { user, field, list } = renderApp();
     await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
 
-    const user = userEvent.setup();
-    await user.type(screen.getByRole('textbox', { name: 'New todo' }), 'Buy milk{Enter}');
+    await user.type(field, 'Buy milk{Enter}');
     await waitFor(() => expect(attempts).toBe(1));
     // Let the failed call settle before asserting nothing changed.
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -201,7 +189,7 @@ describe('AddForm validation', () => {
   }
 
   function fieldStatus() {
-    return screen.getByRole('status');
+    return addFormStatus();
   }
 
   it.each([
@@ -222,7 +210,7 @@ describe('AddForm validation', () => {
       await user.click(addButton);
     }
 
-    expect(screen.getByText('Enter a description.')).toBeTruthy();
+    expect(screen.getByText('Enter a description.', NOT_STATUS)).toBeTruthy();
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(describedByText(field)).toBe('Enter a description. 0/200 Press Enter to add.');
     expect(document.activeElement).toBe(field);
@@ -257,7 +245,7 @@ describe('AddForm validation', () => {
     await waitFor(() => expect(fieldStatus().textContent).toBe('Enter a description.'));
     await user.keyboard('a');
 
-    expect(screen.queryByText('Enter a description.')).toBeNull();
+    expect(screen.queryByText('Enter a description.', NOT_STATUS)).toBeNull();
     expect(field.hasAttribute('aria-invalid')).toBe(false);
     expect(describedByText(field)).toBe('1/200 Press Enter to add.');
     expect(fieldStatus().textContent).toBe('');
@@ -358,7 +346,7 @@ describe('AddForm validation', () => {
     await expectRespoken(() => user.keyboard('{End}{Enter}'));
     expect(fieldStatus().textContent).toBe('over the character limit');
     expect(document.activeElement).toBe(field);
-    expect(screen.queryByText('Enter a description.')).toBeNull();
+    expect(screen.queryByText('Enter a description.', NOT_STATUS)).toBeNull();
     expect(received).toEqual([]);
 
     fireEvent.change(field, { target: { value: '😀'.repeat(200) } });
@@ -388,7 +376,7 @@ describe('AddForm validation', () => {
     fireEvent(field, event);
 
     expect(event.defaultPrevented).toBe(true);
-    await waitFor(() => expect(screen.getByText('Enter a description.')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Enter a description.', NOT_STATUS)).toBeTruthy());
     expect(received).toEqual([]);
   });
 });

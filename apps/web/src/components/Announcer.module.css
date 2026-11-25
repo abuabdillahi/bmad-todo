@@ -1,0 +1,195 @@
+/*
+ * The Announcer (DESIGN.md Components › Announcer, EXPERIENCE.md Component
+ * Patterns › Announcer). The region is always mounted and fixed at the bottom
+ * of the viewport; empty, it has no chrome and takes no pointer events.
+ * Nothing here ever hides the live element.
+ */
+.region {
+  position: fixed;
+  right: var(--announcer-inset-inline);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--announcer-bottom));
+  left: var(--announcer-inset-inline);
+  z-index: var(--announcer-z-index);
+  max-width: var(--announcer-max-width);
+  margin-inline: auto;
+  pointer-events: none;
+}
+
+.shown {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'text'
+    'dismiss';
+  align-items: start;
+  column-gap: var(--announcer-gap);
+  row-gap: var(--space-2);
+  padding: var(--announcer-padding-block) var(--announcer-padding-inline-end) var(--announcer-padding-block)
+    var(--announcer-padding-inline-start);
+  border: var(--announcer-border-width) solid var(--announcer-border-color);
+  border-radius: var(--announcer-radius);
+  background: var(--announcer-background);
+  color: var(--announcer-foreground);
+  box-shadow: var(--announcer-shadow);
+  pointer-events: auto;
+}
+
+.failure {
+  grid-template-columns: var(--announcer-icon-size) minmax(0, 1fr);
+  grid-template-areas:
+    'icon text'
+    '. dismiss';
+}
+
+.status {
+  border-color: var(--announcer-status-border-color);
+  background: var(--announcer-status-background);
+  color: var(--announcer-status-foreground);
+}
+
+.icon {
+  display: inline-flex;
+  grid-area: icon;
+  align-items: center;
+  justify-content: center;
+  width: var(--announcer-icon-size);
+  height: var(--announcer-icon-size);
+  margin-top: var(--announcer-icon-nudge);
+  border-radius: 50%;
+  background: var(--announcer-icon-background);
+  color: var(--announcer-icon-foreground);
+  font-size: var(--announcer-icon-glyph-size);
+  font-weight: var(--announcer-icon-glyph-weight);
+  line-height: 1;
+}
+
+.message {
+  margin: 0;
+  font-size: var(--font-announcer-size);
+  font-weight: var(--font-announcer-weight);
+  line-height: var(--font-announcer-line-height);
+  overflow-wrap: anywhere;
+}
+
+.shown .message {
+  display: block;
+  grid-area: text;
+}
+
+/* Lines the first line of text up with the icon; the status variant has no icon. */
+.failure .message {
+  padding-top: var(--announcer-message-padding-top);
+}
+
+.dismiss {
+  display: inline-flex;
+  grid-area: dismiss;
+  align-items: center;
+  justify-content: center;
+  justify-self: end;
+  min-height: var(--dismiss-button-min-height);
+  padding: 0 var(--dismiss-button-padding-inline);
+  border: var(--dismiss-button-border-width) solid var(--dismiss-button-border-color);
+  border-radius: var(--dismiss-button-radius);
+  background: var(--dismiss-button-background);
+  color: var(--dismiss-button-foreground);
+  font-size: var(--font-button-size);
+  font-weight: var(--font-button-weight);
+}
+
+.status .dismiss {
+  border-color: var(--dismiss-button-status-border-color);
+  background: var(--dismiss-button-status-background);
+  color: var(--dismiss-button-status-foreground);
+}
+
+@media (hover: hover) {
+  button.dismiss:hover {
+    background: var(--dismiss-button-background-hover);
+  }
+
+  .status button.dismiss:hover {
+    background: var(--dismiss-button-status-background-hover);
+  }
+}
+
+button.dismiss:active {
+  background: var(--dismiss-button-background-pressed);
+}
+
+.status button.dismiss:active {
+  background: var(--dismiss-button-status-background-pressed);
+}
+
+/* The fading copy after Dismiss: decorative, never a target. */
+.leaving {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Runs only when the chrome appears: a replaced message keeps the class, so it doesn't re-enter. */
+  .shown {
+    animation: announcer-in var(--motion-duration-fast) var(--motion-ease-out);
+  }
+
+  .leaving {
+    animation: announcer-out var(--motion-duration-fast) var(--motion-ease-out) forwards;
+  }
+
+  button.dismiss {
+    transition:
+      background-color var(--motion-duration-press) var(--motion-ease-out),
+      transform var(--motion-duration-press) var(--motion-ease-out);
+  }
+
+  button.dismiss:active {
+    transform: scale(var(--motion-press-scale));
+  }
+}
+
+@keyframes announcer-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--motion-enter-offset)));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes announcer-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/* spacing.breakpoint-wide (768px), repeated literally: CSS can't read custom properties in @media. */
+@media (min-width: 768px) {
+  .shown {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'text dismiss';
+  }
+
+  .failure {
+    grid-template-columns: var(--announcer-icon-size) minmax(0, 1fr) auto;
+    grid-template-areas: 'icon text dismiss';
+  }
+
+  /* 12px column gap plus 4px: the 16px text-to-Dismiss gap. */
+  .dismiss {
+    margin-inline-start: var(--space-1);
+  }
+}
+
+@media (forced-colors: active) {
+  .shown {
+    border-color: CanvasText;
+    box-shadow: none;
+  }
+}
