@@ -72,6 +72,15 @@ function selection(field: Locator): Promise<[number, number]> {
   return field.evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.selectionEnd] as [number, number]);
 }
 
+/** How many lines the field's text takes: its content height over its line height. */
+function lineCount(field: Locator): Promise<number> {
+  return field.evaluate((el: HTMLTextAreaElement) => {
+    const style = getComputedStyle(el);
+    const content = el.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    return Math.round(content / parseFloat(style.lineHeight));
+  });
+}
+
 /** A focus refetch: TanStack refetches the list when the tab becomes visible again. */
 async function regainFocus(page: Page) {
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange', { bubbles: true })));
@@ -240,7 +249,8 @@ test('E4 K3 dropping two lines into the edit field joins them, leaves the caret 
   browserName,
 }, testInfo) => {
   test.skip(browserName !== 'chromium', 'CDP drag input is Chromium only');
-  const description = uniqueDescription('E4 drop', testInfo.project.name);
+  // Long enough to wrap in every project, so a drop aimed at the first line would land mid-text.
+  const description = `${uniqueDescription('E4 drop', testInfo.project.name)} with a note long enough to wrap onto more than one line of the field at phone and desktop widths`;
   const dropped = `${description} oat milk`;
   await createTodo(request, description);
   const patches = recordPatches(page);
@@ -250,6 +260,7 @@ test('E4 K3 dropping two lines into the edit field joins them, leaves the caret 
   const field = editField(page);
   await expect(field).toBeFocused();
   await expect(field).toHaveValue(description);
+  expect(await lineCount(field)).toBeGreaterThanOrEqual(2);
   // It opens with all its text selected: the caret goes to the end, where the drop lands.
   await page.keyboard.press('End');
   expect(await selection(field)).toEqual([description.length, description.length]);
