@@ -16,7 +16,7 @@ The API's routes (the full contract, errors included, is `packages/contract/open
 | `DELETE /api/todos/{id}` | Deletes a todo (`204`, or a `404` problem for an unknown id) |
 | `GET /api/health` | `200 {"status":"ok"}` when storage is reachable, otherwise a `503` problem |
 
-Errors are RFC 9457 problems (`application/problem+json`).
+Errors are RFC 9457 problems (`application/problem+json`): among others a `400` for an invalid body, a `404` for an unknown id on `PATCH` and `DELETE`, a `409` when a create reuses an id with different text, and a `503` when storage is unavailable. `openapi.json` lists every status per route.
 
 Everything runs in Docker Compose: one `compose.yml` with three profiles, `dev`, `test` and `prod`. Production runs on a Hetzner host behind a Cloudflare Tunnel and is deployed by GitHub Actions.
 
@@ -99,10 +99,10 @@ Run these against a running `todo-test`. They are for local stacks only, and the
 - `pnpm perf:first-load`: first load and the add action, profiled in Chromium (Playwright and CDP), over 5 cold-cache runs on a list seeded to 50.
 - `pnpm perf:actions`: add, edit, complete, reactivate and delete, each timed from its input event to the change in the DOM and to the painted frame after it, over 5 runs at desktop 1280×720 and on Pixel 7 (viewport and touch; the CPU is not throttled). It fails if any run takes 100 ms or more to the painted frame (C4).
 - `pnpm perf:api`: one-user API timing, at least 100 sequential requests to each of `GET /api/health`, `GET /api/todos`, `POST /api/todos`, `PATCH /api/todos/{id}` (timed for a `completed` change and for a description change) and `DELETE /api/todos/{id}` (each delete removes a todo it created for it). It prints p50, p95, p99 and max, and fails if any p95 is 300 ms or more (C4).
-- `pnpm perf:lighthouse`: seeds the list to at least 10 todos with at least 3 done, then runs Lighthouse (accessibility, best practices, performance) on mobile and desktop, in light and dark. Reports go to `coverage/lighthouse/`. It fails on any accessibility audit failure.
-- `pnpm a11y:pass`: the keyboard-only and accessibility-tree pass of every core action (EXPERIENCE Flow 2 and its failure path). After each key it prints the focused element's role, name, description and states, every live-region message, and the card's aria snapshot. It fails if focus drops to `<body>` or an expected focus target or message does not appear. It does not replace a person's check with a real screen reader.
+- `pnpm perf:lighthouse`: seeds the list to at least 10 todos with at least 3 done (they stay in the list), then runs Lighthouse (accessibility, best practices, performance) on mobile and desktop, in light and dark. Reports go to `coverage/lighthouse/`. It fails on any accessibility audit failure.
+- `pnpm a11y:pass`: the keyboard-only and accessibility-tree pass of every core action (EXPERIENCE Flow 2 and its failure path). After each navigation or action key (typed text, the paste and the trim's Backspaces are read once per batch) it prints the focused element's role, name, description and states, every live-region message, and the card's aria snapshot, and it reads back what the server stored. It fails if focus drops to `<body>`, an expected focus target or message does not appear, an unexpected or repeated message appears, or the server does not hold what the keys saved. It does not replace a person's check with a real screen reader.
 
-Start a fresh stack, install Chromium, then run them in this order: `perf:first-load` (it seeds the list to 50), `perf:actions`, `perf:api`, `perf:lighthouse`, `a11y:pass`. Then `down -v`. The dated reports in [`docs/quality/`](docs/quality/) record the results and every finding.
+Start a fresh stack, install Chromium, then run them in this order: `perf:first-load` (it seeds the list to 50), `perf:actions`, `perf:api`, `perf:lighthouse`, `a11y:pass`. Then `down -v`. The dated reports in [`docs/quality/`](docs/quality/) record the results and every finding. The integration test `apps/api/test/integration/measurement-guards.test.ts` (in `pnpm test`) checks that each script refuses a non-local host.
 
 ## Logs and health
 

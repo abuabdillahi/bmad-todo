@@ -9,10 +9,10 @@ route: full
 route_source: auto
 risk: medium
 review: thorough
-review_source: auto
+review_source: pinned
 lenses_ran: [blind-hunter, edge-case-hunter, verification-gap, intent-alignment]
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/docs/quality/2026-11-25-epic-todo-foundation-coverage.md'
   - '{project-root}/docs/quality/2026-11-25-epic-todo-foundation-performance.md'
@@ -145,6 +145,40 @@ deferred: []
   - `[false]` `[reject]` (intent-alignment) The measured commit may not be the final code while entries 15–17 build in parallel. — Entries 15–17 change only `.github/workflows/ci.yml` and README's Deploy section; no app source.
   - `[low]` `[patch]` (intent-alignment) PATCH's description path is not timed. — Same as the blind-hunter PATCH row; patched there.
 
+### 2026-11-25 — Review pass (follow-up)
+- verdicts: 28 findings — high 0, medium 0, low 26, false 2, maybe-false 0 (intent-alignment divergences triaged as findings; 4 carried from the first pass)
+- also run (coordinator's request, the first pass's named risk): forced failures on todo-test under the lock. `a11y:pass` and `perf:actions` with the `api` stopped: exit 1 with the real error first (`POST /api/todos answered 503`; `GET /api/todos answered 503`), the clean-up failure printed as a warning, nothing left behind. `a11y:pass` with Flow 2's todo deleted elsewhere just after the add: exit 1 at step 3 naming the step ("expected focus on … got checkbox "Pay rent …""), the "was deleted elsewhere" message recorded, the anchor and every stamped todo deleted (list empty after). `perf:actions` with a seeded todo deleted before its turn: exit 1 (a 30 s click timeout, which named no action: patched, below), clean-up complete. `perf:actions` with the toggle target deleted right before its complete: exit 1 "complete, desktop, run 2: PATCH … answered 404", clean-up complete. Then both scripts passed on the success path.
+- findings:
+  - `[low]` `[patch]` (blind-hunter) Chromium joins the field's description as "0/200 Press Enter to add." while EXPERIENCE writes "0/200, Press Enter to add."; the report says Flow 2 happened "as written" with no finding. — Patched (report): A4 now covers how Chromium joins every description's parts, deferred to the person's check (A3); the Flow 2 line points to A4.
+  - `[low]` `[patch]` (blind-hunter) `perf-api.mjs` and `first-load.mjs` refusal messages still omit `[::1]`; `lighthouse.mjs` words it differently. — Patched: one message in all five scripts; the guard test now matches it.
+  - `[low]` `[reject]` (blind-hunter) `lighthouse.mjs` never deletes the todos it seeds. — The default target, todo-test, is thrown away with `down -v`; the README now says the seeded todos stay. Deleting them is more than a direct correction for a case no one meets on a throwaway stack.
+  - `[low]` `[patch]` (blind-hunter) The guard test sits in the `profile` project: skipped when todo-test fails to start, never in `pnpm test`. — Patched: moved to `apps/api/test/integration/measurement-guards.test.ts` (in `pnpm test` and `test:all`); a mutation check (guard disabled in `lighthouse.mjs`) failed it.
+  - `[low]` `[patch]` (blind-hunter) The README and `vitest.config.ts` comments do not mention the guard test. — Patched: README Measurements names the test; with the move, the profile project comment is accurate again.
+  - `[low]` `[patch]` (blind-hunter) The guard test uses `https://example.com`, a real host, and its title claims "before any request". — Patched: `https://refuse.invalid` (never resolves); title "refuses a non-local host and exits 1".
+  - `[low]` `[patch]` (blind-hunter) The performance report's header omits the new test; the plan names four guards. — Patched (report header). The plan's wording is rejected: the fix edits this plan.
+  - `[low]` `[patch]` (blind-hunter) The accessibility report says `perf:api` "runs first". — Patched: "runs before it".
+  - `[low]` `[patch]` (blind-hunter) "include the press itself" overstates: Playwright's press has no hold. — Patched (report): says so, and that C4's action starts at the `click`.
+  - `[low]` `[patch]` (blind-hunter) README and the script header claim a check after every key; typing, the paste and the Backspaces are read per batch; the transcript says "Meta+V". — Patched: both say "after each navigation or action key"; transcript "(ControlOrMeta+V, Meta on this Mac)".
+  - `[low]` `[patch]` (blind-hunter) The README routes table lists some error statuses, implying others (409, PATCH 404/400) cannot happen. — Patched: the line after the table names them and points to `openapi.json`.
+  - `[low]` `[patch]` (blind-hunter) Stale "the PATCH target" comment in `perf-api.mjs`. — Patched.
+  - `[low]` `[patch]` (blind-hunter) An over-long, unwrapped header line in `actions.mjs`. — Patched (rewrapped with the request-failure rule).
+  - `[low]` `[patch]` (edge-case-hunter) `key()` dereferences a null accessibility node when focus is not on `<body>`. — Patched: fails the step with its own message.
+  - `[low]` `[patch]` (edge-case-hunter) `afterPaste`/`afterTrim` may be null. — Patched: same.
+  - `[low]` `[patch]` (edge-case-hunter) `actions.mjs` counts any failed request, including assets and the app's own aborted list fetch, as an API failure. — Patched: only `/api` requests, and not `net::ERR_ABORTED`.
+  - `[low]` `[reject]` (edge-case-hunter) An empty or malformed `BASE_URL` throws a TypeError instead of a message. — Still exits non-zero, loudly; a guard adds code for a typo no one runs into.
+  - `[false]` `[reject]` (edge-case-hunter) The top card may lack `data-todo-id`. — `TodoCard.tsx` always renders `data-todo-id={todo.id}`.
+  - `[low]` `[patch]` (edge-case-hunter, claim) The guard test does not observe "no request". — Same root cause as the example.com row; patched there.
+  - `[low]` `[patch]` (edge-case-hunter, claim) The header says API failures while `requestfailed` counts every request. — Same root cause as the requestfailed row; patched there.
+  - `[low]` `[patch]` (verification-gap, other) Older scripts' refusal messages omit `[::1]`. — Same as the blind-hunter row; patched there.
+  - `[low]` `[reject]` carried (intent-alignment) The Verify thresholds are manual script exits, not gates in `test:all`/CI. — Carried from the first pass (by design, AD-20).
+  - `[low]` `[patch]` (intent-alignment) Complete, reactivate and delete are timed by pointer only; delete's "shows" is the Leaving-copy flip. — Patched (report and script header): keyboard activation runs the same handlers and is walked untimed by `a11y:pass`; delete's timed change is the first frame of the leave motion. Phone CPU carried as P10.
+  - `[low]` `[patch]` carried (intent-alignment) Lighthouse audits the loaded page only. — Carried: the report already says so and points to axe.
+  - `[low]` `[patch]` carried (intent-alignment) The tree pass covers Flow 2 only. — Carried: the report already states the scope and the covering tests.
+  - `[false]` `[reject]` (intent-alignment) A2 is marked fixed though no screen reader was driven. — The ticket's Notes substitute the agent's tree pass for R14's manual pass; the speech part is A3, accepted, with the pending line.
+  - `[low]` `[patch]` (intent-alignment) The accessibility report's run order is wrong. — Same as the blind-hunter row; patched there.
+  - `[low]` `[patch]` (intent-alignment) The performance header omits the new test. — Same as the blind-hunter row; patched there.
+- added from the forced-failure run: `perf:actions` failures in an action's input step (a vanished row's 30 s click timeout) named no action, profile or run. — `[low]` `[patch]`: the input step's error is prefixed with the label.
+
 ## Design Notes
 
 Gate on every run's input→next frame (not the median): the ticket says every action shows within 100 ms. Medians are reported too. The scripts stay outside `pnpm test:all` and CI, like epic 1's: they need a quiet machine and are epic-close tools (AD-20).
@@ -185,3 +219,17 @@ Status: built.
 **Verification.** `pnpm typecheck` exit 0; `pnpm test` exit 0 (561); on a fresh todo-test under the lock, `perf:first-load`, `perf:actions`, `perf:api`, `perf:lighthouse` and `a11y:pass` each exit 0; each refuses `BASE_URL=https://example.com` with exit 1 (now also the profile test, 5 passing); `pnpm test:all` exit 0 on the final tree; `docker compose ls` empty after each run, lock released (taken 4 times).
 
 **Residual risks.** No phone-hardware CPU was measured (P10). Lighthouse sees only the loaded list; other states rest on axe. No real screen reader was driven (A3); the user's check is a pending line in the accessibility report. Lighthouse's `bf-cache` failure is a host memory-pressure reason (P7).
+
+### Follow-up review pass (2026-11-25)
+
+**Summary.** A follow-up thorough review (blind-hunter, edge-case-hunter, verification-gap, intent-alignment) of the built change, plus forced failures of the risk the first pass named. 28 findings: high 0, medium 0, low 26, false 2. Patched 23 (all low), rejected 5 (Lighthouse's seeded todos stay on a throwaway stack; a malformed `BASE_URL` already fails loudly; the manual-gates divergence, carried; `data-todo-id` always present, false; A2's fixed status follows the ticket's Notes, false). Deferred 0.
+
+**Files changed in this pass.** `e2e/perf/actions.mjs` (only `/api` non-abort failures count; an input-step error names its action, profile and run; header rewrapped, keyboard-activation note), `e2e/a11y/keyboard-pass.mjs` (null accessibility nodes fail their step; header narrowed to navigation and action keys), `scripts/perf-api.mjs`, `e2e/perf/first-load.mjs`, `e2e/perf/lighthouse.mjs` (one refusal message naming `[::1]`; stale comment), the guard test moved to `apps/api/test/integration/measurement-guards.test.ts` with an `.invalid` host, `README.md` (error statuses, guard test, per-batch reading, seeded todos stay), the three reports (A4 widened to description joining, run order, press note, delete's timed change, header).
+
+**Forced failures (the first pass's named risk), on todo-test under the lock.** Both scripts with the `api` stopped; `a11y:pass` with Flow 2's todo deleted elsewhere after the add; `perf:actions` with a seeded todo deleted before its turn, and with the toggle target deleted right before its complete. Every run exited 1 with the real failure first (the step or `action, profile, run` named; a clean-up failure only as a warning) and left no todo of its own behind. Both then passed on the success path.
+
+**Follow-up review recommended:** false (a follow-up pass that patched no high).
+
+**Verification.** `pnpm typecheck` exit 0; `pnpm test` exit 0 (566, including the 5 guard tests; a guard disabled in `lighthouse.mjs` failed its test); the forced-failure and success runs above; `pnpm test:all` exit 0 (unit 270, component 169, integration 127, contract 16, e2e 117, profile 20, contract-unavailable 10; axe 117 tests, 156 scans; coverage unchanged). Lock taken twice in this pass (the forced-failure and success runs; `pnpm test:all`), 6 in all; released each time with todo-test down. The reports' measured numbers are unchanged: no fix in this pass touched what or how the scripts time.
+
+**Residual risks.** As before: no phone-hardware CPU (P10), Lighthouse sees only the loaded list, no real screen reader (A3).

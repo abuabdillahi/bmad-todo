@@ -3,8 +3,10 @@
 // accessibility-tree pass of every core action, against a local stack.
 //
 // Chromium at desktop 1280x720, light, reduced motion. Every input is a key
-// (`page.keyboard`), never a click. After each key it prints what a screen
-// reader is given: the focused element's role, name, description and states
+// (`page.keyboard`), never a click. After each navigation or action key (Tab,
+// Shift+Tab, Enter, Space, Escape) it prints what a screen reader is given;
+// typed text, the paste and the 30 Backspaces of the trim are read once, after
+// the batch. What it prints: the focused element's role, name, description and states
 // from Chromium's accessibility tree (CDP `Accessibility.getPartialAXTree`),
 // and every change of text in a live region (`role="status"` or `aria-live`),
 // recorded by a MutationObserver from before the app's first script runs. At
@@ -190,6 +192,7 @@ async function key(keys, expect = {}) {
   out(`  ${keys.padEnd(11)} → focus: ${onBody ? '<body>' : describe(ax)}`);
   for (const { region, text } of live) out(`  ${''.padEnd(11)}   live, ${region}: ${text === '' ? '(emptied)' : `"${text}"`}`);
   if (onBody) failPass(`focus dropped to <body> after ${keys}`);
+  if (ax === null) failPass(`no accessibility node for the focused element after ${keys}`);
   if (expect.role && ax.role !== expect.role) failPass(`expected focus on a ${expect.role}, got ${describe(ax)}`);
   if (expect.name !== undefined && ax.name !== expect.name) failPass(`expected focus on "${expect.name}", got ${describe(ax)}`);
   for (const part of expect.description ?? []) {
@@ -390,6 +393,7 @@ try {
   await page.evaluate((text) => navigator.clipboard.writeText(text), long);
   const pasted = await input('pasted 230 characters (ControlOrMeta+V)', () => page.keyboard.press('ControlOrMeta+V'));
   const afterPaste = await focused();
+  if (afterPaste === null) failPass('no accessibility node for the focused element after the paste');
   out(`  focus: ${describe(afterPaste)}`);
   const fieldValue = await page.evaluate(() => document.activeElement.value);
   if ([...fieldValue].length !== 230) failPass(`the paste did not land: the field holds ${[...fieldValue].length} characters`);
@@ -408,6 +412,7 @@ try {
   for (let i = 0; i < 30; i++) await page.keyboard.press('Backspace');
   const trimmed = await input('Backspace ×30 (230 → 200 characters)', () => settle());
   const afterTrim = await focused();
+  if (afterTrim === null) failPass('no accessibility node for the focused element after the trim');
   out(`  focus: ${describe(afterTrim)}`);
   if (afterTrim.states.invalid === 'true') failPass('the field is still aria-invalid at 200 characters');
   if (trimmed.some((e) => e.region === 'Field status (edit)' && e.text !== '')) failPass('the trim was spoken; it should clear silently');

@@ -36,7 +36,7 @@ function intEnv(name, fallback, min) {
 const baseUrl = new URL(process.env.BASE_URL ?? 'http://127.0.0.1:8081');
 // Refuse before any request: this script POSTs, and production data is real.
 if (!LOCAL_HOSTS.has(baseUrl.hostname)) {
-  fail(`refusing ${baseUrl.origin}: only 127.0.0.1 or localhost (todo-test, todo-dev) may be measured`);
+  fail(`refusing ${baseUrl.origin}: only 127.0.0.1, localhost or [::1] (todo-test, todo-dev) may be measured`);
 }
 const n = intEnv('PERF_N', 200, 100);
 const warmup = intEnv('PERF_WARMUP', 20, 0);
@@ -75,7 +75,7 @@ function percentile(sorted, p) {
 
 // Seed the list so GET /api/todos returns a realistic one. The size used is
 // measured and printed. Every timed DELETE removes a todo this script created
-// for it, so the list ends the run with the seeds, the POSTs and the PATCH target.
+// for it, so the list ends the run with the seeds, the POSTs and the two PATCH targets.
 const { text: before } = await timed('GET /api/todos', 'GET', '/api/todos');
 for (let i = JSON.parse(before).length; i < seed; i++) {
   await timed('POST /api/todos (seed)', 'POST', '/api/todos', createBody(`seed ${i}`));

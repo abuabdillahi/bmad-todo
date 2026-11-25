@@ -38,7 +38,7 @@ function fail(message) {
 
 const baseUrl = new URL(process.env.BASE_URL ?? 'http://127.0.0.1:8081');
 if (!LOCAL_HOSTS.has(baseUrl.hostname)) {
-  fail(`refusing ${baseUrl.origin}: run it against todo-test or todo-dev only`);
+  fail(`refusing ${baseUrl.origin}: only 127.0.0.1, localhost or [::1] (todo-test, todo-dev) may be measured`);
 }
 const chromePath = process.env.CHROME_PATH ?? chromium.executablePath();
 const outDir = fileURLToPath(new URL('../../coverage/lighthouse/', import.meta.url));

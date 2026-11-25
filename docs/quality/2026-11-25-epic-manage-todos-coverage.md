@@ -2,13 +2,13 @@
 
 - **Date:** 2026-11-25
 - **Epic:** epic-manage-todos (R18). This is the whole app's coverage at the close of its second and last epic.
-- **Commit measured:** `32c3365` plus story 2.9's changes. Those touch only the measurement scripts (`scripts/perf-api.mjs`, `e2e/perf/*.mjs`, `e2e/a11y/keyboard-pass.mjs`), one new profile test of their host guard (`apps/api/test/profile/measurement-guards.profile.test.ts`), `package.json` scripts, the README and these reports. No source under `apps/*/src` or `packages/*/src` changed, so the line and branch numbers are those of `32c3365`.
+- **Commit measured:** `32c3365` plus story 2.9's changes. Those touch only the measurement scripts (`scripts/perf-api.mjs`, `e2e/perf/*.mjs`, `e2e/a11y/keyboard-pass.mjs`), one new integration test of their host guard (`apps/api/test/integration/measurement-guards.test.ts`), `package.json` scripts, the README and these reports. No source under `apps/*/src` or `packages/*/src` changed, so the line and branch numbers are those of `32c3365`.
 - **Tools:** Node 26.13.1, pnpm 12.23.0, Vitest 5.1.1 with `@vitest/coverage-v8` 5.1.1, Playwright 1.65.1 (Chromium 159.0.8154.6), Docker 29.9.3 with Compose v5.7.1
 - **Reproduce:** `pnpm test:all`. It writes `coverage/{unit,component,integration}/` (`coverage-summary.json`, `lcov.info`, HTML), `coverage/scenarios.md` and `coverage/e2e-report.json`. Nothing here gates the build on a percentage.
 
 ## Result
 
-`pnpm test:all` exited 0, every step passed: unit 270 tests, component 169, integration 122, contract 16, e2e 117 (39 tests in 10 specs × desktop, phone, desktop-dark), axe coverage (117 passed tests scanned, 0 without a scan), profile 25, contract-unavailable 10, scenario coverage. `pnpm typecheck` and `pnpm test` (561 tests) also exited 0 on the same tree.
+`pnpm test:all` exited 0, every step passed: unit 270 tests, component 169, integration 127, contract 16, e2e 117 (39 tests in 10 specs × desktop, phone, desktop-dark), axe coverage (117 passed tests scanned, 0 without a scan), profile 20, contract-unavailable 10, scenario coverage. `pnpm typecheck` and `pnpm test` (566 tests) also exited 0 on the same tree.
 
 ### Line and branch coverage per project
 
@@ -64,7 +64,7 @@ The whole test strategy catalogue against `coverage/scenarios.md`. Every scenari
 | E7 | phone and desktop widths | 24 | e2e (desktop, phone, desktop-dark) |
 | E8 | keyboard and axe in light and dark | 78 | e2e (all three projects) |
 
-37 tests carry no scenario id: 19 unit tests of `loadConfig`, 4 integration tests of the API's startup exit on invalid config, 1 integration test that keeps the submitted text out of the unavailable error and its cause, 8 profile tests of the compose project guard (a command with no `-p` is refused, and each `-p` uses exactly its project), and 5 profile tests that each measurement script refuses a non-local host. They prove R15, R16, R20, the project-name rule and the scripts' local-only rule, which the catalogue gives no id. They are listed here, not counted as a gap. Epic 1's 3 untagged profile tests (headers, log format) now carry I12 and I13.
+37 tests carry no scenario id: 19 unit tests of `loadConfig`, 4 integration tests of the API's startup exit on invalid config, 1 integration test that keeps the submitted text out of the unavailable error and its cause, 5 integration tests that each measurement script refuses a non-local host, and 8 profile tests of the compose project guard (a command with no `-p` is refused, and each `-p` uses exactly its project). They prove R15, R16, R20, the project-name rule and the scripts' local-only rule, which the catalogue gives no id. They are listed here, not counted as a gap. Epic 1's 3 untagged profile tests (headers, log format) now carry I12 and I13.
 
 ## Gaps and findings
 

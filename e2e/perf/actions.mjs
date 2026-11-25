@@ -21,9 +21,14 @@
 //
 // Exits non-zero, naming the action, the profile and the run, when any run's
 // input → painted frame is 100 ms or more (C4), when a change never shows, or
-// when an API request it causes fails (any 4xx or 5xx, 404 included). Medians are printed too. Between actions it
-// waits until no request is in flight, so one action's settle-time refetch
-// never lands inside the next one's timing.
+// when an API request it causes fails: any /api answer of 4xx or 5xx (404
+// included), or an /api request that fails outright (an abort the app makes
+// itself, such as a cancelled list fetch, does not count). Medians are printed
+// too. Between actions it waits until no request is in flight, so one action's
+// settle-time refetch never lands inside the next one's timing.
+//
+// Keyboard activation (Space on the check, Enter on Confirm delete) runs the
+// same handlers as the click timed here; it is walked, untimed, by a11y:pass.
 //
 // It creates todos through the public API and the page, so it refuses any host
 // but a local one (todo-test by default), and at the end deletes only the
@@ -177,6 +182,8 @@ try {
     page.on('requestfinished', () => inflight--);
     page.on('requestfailed', (request) => {
       inflight--;
+      const aborted = request.failure()?.errorText === 'net::ERR_ABORTED';
+      if (!new URL(request.url()).pathname.startsWith('/api/') || aborted) return;
       apiFailures.push(`${request.method()} ${request.url()} failed (${request.failure()?.errorText})`);
     });
     page.on('response', (response) => {
@@ -199,7 +206,11 @@ try {
     async function measure(action, run, spec, input) {
       const label = `${action}, ${profile}, run ${run}`;
       await page.evaluate(arm, { action, ...spec });
-      await input();
+      try {
+        await input();
+      } catch (error) {
+        throw new Error(`${label}: the input failed: ${error.message.split('\n')[0]}`);
+      }
       try {
         await page.waitForFunction(() => window.__action.frame !== null, null, { timeout: 5_000 });
       } catch {
