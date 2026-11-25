@@ -102,6 +102,16 @@ deferred: []
   - `low` `patch` `web-dev`'s single-file mounts of `index.html` and `vite.config.ts` stay on the original inode, so an editor's atomic-rename save isn't seen — fixed: a comment above the mounts gives the `--force-recreate web-dev` command.
   - `low` `patch` `.env.example` said todo-dev defaults to `debug`, but the file sets `LOG_LEVEL=info` for anyone who copies it — fixed: the comment now says `debug` applies only when `LOG_LEVEL` is unset.
 
+### 2026-11-25 — Review pass (follow-up: `contract-unavailable` timeout)
+- verdicts: 6 findings — high 0, medium 1, low 5, false 0, maybe-false 0
+- findings:
+  - `medium` `patch` (orchestrator) `pnpm test:all` fails at `contract-unavailable`: `I9 get /api/todos` times out after 5 s — reproduced. With api stopped, web-test logged `upstream timed out (110) while connecting to upstream … 172.18.0.2:3000`. Each nginx worker caches `api`'s address for up to `valid=5s`, and a connect to the departed container's address gets no reply, so the request waits the full `proxy_connect_timeout 5s` before the 504 → 503 problem. The workers' caches are separate, so beforeAll's 503 on one worker does not clear another. The profile step's `restart api` shortly before `stop api` leaves fresh entries in that cache. A real user meets the same 5 s wait whenever the api container goes away (stop, or a recreate on deploy). The fix belongs in nginx, not in the test or the harness. A longer test timeout or a wait in the harness would hide a user-visible delay, and AD-4 fixes `valid=5s`. Fixed: `apps/web/nginx.conf` sets `proxy_connect_timeout 1s`, with a comment. A live api on the compose network accepts in well under 1 ms, and a stopped one refuses at once. Rerun: in the failing scenario every stale-address request answered 503 after 1 s, and the I9 checks are unchanged.
+  - `low` `patch` `scripts/test-all.mjs` doesn't pass `COMPOSE_PROJECT`/`COMPOSE_PROFILE`, so a shell that exports them points the profile step's `restart api` at another project — fixed: `env` pins them to `todo-test`/`test`.
+  - `low` `patch` `vite.config.ts` proxies the bare prefix `/api`, so `/apiary` or `/api-docs` reach the API in dev while nginx serves the SPA for them (AD-4) — fixed: the key is `/api/`, the same prefix as nginx's `location /api/`. `curl :5173/apiary` now returns the SPA HTML, and `/api/todos` still returns 200.
+  - `low` `reject` `web-dev`'s image `bmad-todo-web-dev` is a name outside AD-16's `bmad-todo-{api,web}` list. Real, but the plan chose it on purpose, the image is local-only and never pushed, and reusing `bmad-todo-web` would overwrite the runtime image's tag. Fixing it means amending the architecture, not correcting code.
+  - `low` `reject` `node --watch` writes plain-text restart lines among api-dev's JSON logs (AD-17). Real, but dev-only and already a recorded residual risk. Removing them would need a separate watcher or a log filter, which adds complexity for no gain.
+  - `low` `reject` The no-todo-text log check runs only at `info` (todo-test), not at api-dev's default `debug` (AD-19). Real as a coverage gap, but no code logs bodies at any level. Closing it would need a second stack, or a test-only level switch, which the plan's Never list forbids.
+
 ## Design Notes
 
 - `api-dev` extends `api` so it inherits the image, health check, restart and `data` volume; compose merges `volumes` from `extends` by target path, so the bind mounts land beside `data:/data`. The alias `api` lets Vite's proxy and the prod-like name match.
@@ -146,3 +156,27 @@ deferred: []
 - HMR relies on Docker Desktop forwarding file events through bind mounts. It was checked on this macOS machine only.
 - In todo-dev, the `node --watch` restart lines are plain text among the JSON logs.
 - The `web-dev` image tag `ghcr.io/abuabdillahi/bmad-todo-web-dev:local` is built locally and never pushed.
+
+### Follow-up pass (2026-11-25): `contract-unavailable` timeout
+
+**Summary:** `pnpm test:all` failed at `contract-unavailable` because, after `stop api`, an nginx worker still held the api container's cached address (`resolver … valid=5s`). Its connect got no reply and waited out `proxy_connect_timeout 5s`, which ran past the test's 5 s timeout. A user waits that same 5 s whenever the api container goes away. The fix is in nginx: `proxy_connect_timeout 1s`. The I9 checks, the test timeout and the harness steps are unchanged. AD-4's `valid=5s` is kept.
+
+**Files changed:**
+- `apps/web/nginx.conf` -- `proxy_connect_timeout 1s`, with a comment on the stale-address window
+- `scripts/test-all.mjs` -- pins `COMPOSE_PROJECT`/`COMPOSE_PROFILE` to `todo-test`/`test` for the profile step
+- `apps/web/vite.config.ts` -- the dev proxy key is now `/api/`, matching nginx's `location /api/`
+
+**Review findings:** 3 patches applied (medium 1: the nginx connect timeout; low 2: the compose env pinning and the Vite proxy prefix). None deferred. 3 rejected (low): the `web-dev` image name, the plain-text `node --watch` lines in dev, and the no-todo-text log check at `debug`. Each rejection's reason is in the triage log.
+
+**Follow-up review recommended:** false. This was a follow-up pass and it patched no `high` (patched: high 0, medium 1, low 2).
+
+**Verification:**
+- Reproduced before the fix: three runs of profile → `stop api` → `contract-unavailable`. web-test logged `upstream timed out (110) while connecting to upstream` about 5 s after the stop.
+- After the fix, the same three runs pass. In the third, beforeAll and all three I9 requests hit the stale address, and each answered 503 after 1 s.
+- `pnpm typecheck` passes.
+- `pnpm test:all` exits 0 with every step passing. `contract-unavailable` took 3.1 s. `coverage/scenarios.md` shows `I6 | pass | profile` and I9 passing under `contract-unavailable`.
+- Dev profile: `up -d --build --wait` came up healthy. `curl :5173/` returned the app HTML, `/api/todos` returned 200, and `/apiary` returned the SPA HTML. The stack was then torn down with `down -v`.
+
+**Residual risks:**
+- For up to 5 s after the api container goes away, a request still waits up to 1 s before the unavailable problem. The bound is now 1 s instead of 5.
+- If the api were so overloaded that it dropped SYNs, nginx would answer 503 after 1 s instead of waiting for a retransmit. With one replica and a single user, this is accepted.

@@ -11,6 +11,9 @@ const port = process.env.TEST_WEB_PORT ?? '8081';
 const env = {
   ...process.env,
   APP_ENV: 'test',
+  // The profile tests read these (stack.ts); pin them to the project this script starts.
+  COMPOSE_PROJECT: 'todo-test',
+  COMPOSE_PROFILE: 'test',
   TEST_WEB_PORT: port,
   E2E_BASE_URL: process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`,
 };
