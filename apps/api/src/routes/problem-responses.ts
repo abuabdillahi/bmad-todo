@@ -11,6 +11,7 @@ function problemResponse(description: string) {
 
 export const problemResponses = {
   400: problemResponse('The request is not valid (/problems/validation).'),
+  404: problemResponse('No todo has this id (/problems/not-found).'),
   409: problemResponse('The id already exists with a different description (/problems/conflict).'),
   500: problemResponse('An unexpected server error (/problems/internal).'),
   503: problemResponse('The service is unavailable, from the API or from nginx (/problems/unavailable).'),

@@ -44,6 +44,12 @@ describe('createTodoService', () => {
       create: () => {
         throw new Error('not used');
       },
+      update: () => {
+        throw new Error('not used');
+      },
+      remove: () => {
+        throw new Error('not used');
+      },
       ping: () => {},
     };
 

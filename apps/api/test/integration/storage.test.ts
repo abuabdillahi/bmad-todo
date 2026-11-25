@@ -3,8 +3,11 @@ import type { LightMyRequestResponse } from 'fastify';
 import { todos } from '../../src/db/schema.ts';
 import { UnavailableError } from '../../src/errors.ts';
 import { createTodoRepository } from '../../src/todos/repository.ts';
-import { expectDocumented } from '../openapi-schema.ts';
+import { expectDocumented, type Method } from '../openapi-schema.ts';
 import { startHarness, type Harness } from './harness.ts';
+
+/** The documented path template of a single todo. */
+const TODO_PATH = '/api/todos/{id}';
 
 /** One past the largest epoch ms a Date holds: `toTodo` throws a RangeError, not a storage error. */
 const INVALID_CREATED_AT = 8.64e15 + 1;
@@ -46,12 +49,18 @@ function insertUnmappableRow(id: string): void {
     .run();
 }
 
-function expectProblem(response: LightMyRequestResponse, method: 'get' | 'post', status: number, type: string): void {
+function expectProblem(
+  response: LightMyRequestResponse,
+  method: Method,
+  status: number,
+  type: string,
+  path = '/api/todos',
+): void {
   expect(response.statusCode).toBe(status);
   const body = response.json();
-  expectDocumented('/api/todos', method, status, response.headers['content-type'], body);
+  expectDocumented(path, method, status, response.headers['content-type'], body);
   expect(body).toEqual({ type, title: expect.any(String), status, detail: expect.any(String) });
-  expect(response.body).not.toMatch(/stack|sqlite|select |insert |\bat \//i);
+  expect(response.body).not.toMatch(/stack|sqlite|select |insert |update |delete |\bat \//i);
 }
 
 describe('storage failures on /api/todos', () => {
@@ -83,6 +92,48 @@ describe('storage failures on /api/todos', () => {
     const response = await post({ id, description: 'Unmappable' });
 
     expectProblem(response, 'post', 500, '/problems/internal');
+  });
+
+  it('I9 answers an update that storage refuses to write with 503 unavailable, and leaves the todo unchanged and listed', async () => {
+    const id = randomUUID();
+    const created = await post({ id, description: 'Call the plumber' });
+    expect(created.statusCode).toBe(201);
+    const before = harness.db.select().from(todos).all();
+    const description = 'Call the electrician';
+
+    const response = await withWritesRefused(() =>
+      harness.app.inject({ method: 'PATCH', url: `/api/todos/${id}`, payload: { description, completed: true } }),
+    );
+
+    expectProblem(response, 'patch', 503, '/problems/unavailable', TODO_PATH);
+    expect(response.body).not.toContain(description);
+    expect(harness.db.select().from(todos).all()).toEqual(before);
+    const list = await harness.app.inject({ method: 'GET', url: '/api/todos' });
+    expect(list.json()).toEqual([created.json()]);
+  });
+
+  it('I9 answers a delete that storage refuses to write with 503 unavailable, and leaves the todo stored and listed', async () => {
+    const id = randomUUID();
+    const created = await post({ id, description: 'Call the plumber' });
+    expect(created.statusCode).toBe(201);
+    const before = harness.db.select().from(todos).all();
+
+    const response = await withWritesRefused(() => harness.app.inject({ method: 'DELETE', url: `/api/todos/${id}` }));
+
+    expectProblem(response, 'delete', 503, '/problems/unavailable', TODO_PATH);
+    expect(response.body).not.toContain('Call the plumber');
+    expect(harness.db.select().from(todos).all()).toEqual(before);
+    const list = await harness.app.inject({ method: 'GET', url: '/api/todos' });
+    expect(list.json()).toEqual([created.json()]);
+  });
+
+  it('I9 answers an update that fails outside storage with a 500 internal problem', async () => {
+    const id = randomUUID();
+    insertUnmappableRow(id);
+
+    const response = await harness.app.inject({ method: 'PATCH', url: `/api/todos/${id}`, payload: { completed: true } });
+
+    expectProblem(response, 'patch', 500, '/problems/internal', TODO_PATH);
   });
 
   it('keeps the submitted text out of the unavailable error and its cause', async () => {

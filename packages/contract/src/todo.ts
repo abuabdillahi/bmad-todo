@@ -35,6 +35,19 @@ export const CreateTodoBody = Type.Object(
 );
 export type CreateTodoBody = Type.Static<typeof CreateTodoBody>;
 
+/**
+ * Body of `PATCH /api/todos/{id}`: at least one of the two fields (AD-6). The
+ * description is held to the same rule as on create, after trimming (AD-8).
+ */
+export const UpdateTodoBody = Type.Object(
+  {
+    description: Type.Optional(Description),
+    completed: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false, minProperties: 1 },
+);
+export type UpdateTodoBody = Type.Static<typeof UpdateTodoBody>;
+
 /** Response of `GET /api/todos`: newest first (AD-6). */
 export const TodoList = Type.Array(Todo);
 export type TodoList = Type.Static<typeof TodoList>;

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expectSecurityHeaders, SECURITY_HEADERS } from '../security-headers.ts';
-import { call } from './stack.ts';
+import { call, createTodo } from './stack.ts';
 
 /**
  * nginx sends a strict CSP and the standard security headers on every response
@@ -17,7 +17,7 @@ async function servedPage(): Promise<{ response: Response; html: string; asset: 
 }
 
 describe('profile: web-test security headers', () => {
-  it.each(['/', '/api/health'])('GET %s carries the AD-19 security headers', async (path) => {
+  it.each(['/', '/api/health'])('I12 GET %s carries the AD-19 security headers', async (path) => {
     const response = await call('GET', path);
     await response.arrayBuffer();
 
@@ -25,7 +25,7 @@ describe('profile: web-test security headers', () => {
     expectSecurityHeaders(response);
   });
 
-  it('I8 GET / is revalidated on every load (Cache-Control: no-cache)', async () => {
+  it('I12 GET / is revalidated on every load (Cache-Control: no-cache)', async () => {
     const { response } = await servedPage();
 
     expect(response.status).toBe(200);
@@ -33,7 +33,7 @@ describe('profile: web-test security headers', () => {
     expectSecurityHeaders(response);
   });
 
-  it("I8 a hashed asset index.html links to carries the AD-19 headers that / carries, and a year's cache", async () => {
+  it("I12 a hashed asset index.html links to carries the AD-19 headers that / carries, and a year's cache", async () => {
     const page = await servedPage();
     const response = await call('GET', page.asset);
     await response.arrayBuffer();
@@ -46,7 +46,7 @@ describe('profile: web-test security headers', () => {
     }
   });
 
-  it('I8 a missing asset under /assets/ is a 404 with the AD-19 headers, never index.html', async () => {
+  it('I12 a missing asset under /assets/ is a 404 with the AD-19 headers, never index.html', async () => {
     const { html } = await servedPage();
     const response = await call('GET', `/assets/missing-${randomUUID()}.js`);
     const body = await response.text();
@@ -55,5 +55,29 @@ describe('profile: web-test security headers', () => {
     expectSecurityHeaders(response);
     expect(body).not.toBe(html);
     expect(body).not.toContain('<div id="root">');
+  });
+
+  it('I12 a PATCH answered 200 through web-test carries the AD-19 security headers', async () => {
+    const todo = await createTodo(randomUUID(), `I12 headers patch ${Date.now()}`);
+
+    const response = await call('PATCH', `/api/todos/${todo.id}`, { completed: true });
+    await response.arrayBuffer();
+
+    expect(response.status).toBe(200);
+    expectSecurityHeaders(response);
+  });
+
+  it('I12 a DELETE answered 204, and a repeat answered 404, through web-test carry the AD-19 security headers', async () => {
+    const todo = await createTodo(randomUUID(), `I12 headers delete ${Date.now()}`);
+
+    const deleted = await call('DELETE', `/api/todos/${todo.id}`);
+    await deleted.arrayBuffer();
+    expect(deleted.status).toBe(204);
+    expectSecurityHeaders(deleted);
+
+    const missing = await call('DELETE', `/api/todos/${todo.id}`);
+    await missing.arrayBuffer();
+    expect(missing.status).toBe(404);
+    expectSecurityHeaders(missing);
   });
 });
