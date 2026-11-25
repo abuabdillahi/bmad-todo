@@ -71,7 +71,7 @@ test.describe('add form validation', () => {
 
     await page.keyboard.press('Enter');
     await expect(todoItem(page, description)).toHaveCount(1);
-    await expect(todoItem(page, description)).toHaveText(shown.trim());
+    await expect(todoItem(page, description).getByRole('checkbox')).toHaveAccessibleName(shown.trim());
     await expect(field).toHaveValue('');
   });
 
@@ -124,7 +124,7 @@ test.describe('add form validation', () => {
     await page.keyboard.insertText(description);
     await pressComposingEnter(cdp);
     await expect(todoItem(page, description)).toHaveCount(1);
-    await expect(todoItem(page, description)).toHaveText(description);
+    await expect(todoItem(page, description).getByRole('checkbox')).toHaveAccessibleName(description);
     await expect(field).toHaveValue('');
     await expect(field).toBeFocused();
     expect(await lineBreaks()).toEqual(['insertLineBreak true', 'insertLineBreak true']);
@@ -150,7 +150,7 @@ test.describe('add form validation', () => {
     await pressComposingEnter(cdp);
 
     expect((await created).ok()).toBe(true);
-    await expect(todoItem(page, description)).toHaveText(`${description} milk`);
+    await expect(todoItem(page, description).getByRole('checkbox')).toHaveAccessibleName(`${description} milk`);
     await expect(field).toHaveValue('');
     expect(creates).toHaveLength(1);
     expect(JSON.parse(creates[0]!).description).toBe(`${description} milk`);

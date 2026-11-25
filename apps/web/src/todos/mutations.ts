@@ -45,6 +45,15 @@ export interface MutationHelper {
    * the reason, or `deletedElsewhere` for `not-found`.
    */
   setCompleted(todo: Pick<Todo, 'id' | 'description'>, completed: boolean): Promise<MutationOutcome>;
+  /**
+   * Changes the todo's text at once (R13, R7), as a follow-up: behind a pending
+   * create it waits, and is dropped if that create fails. `description` is
+   * already prepared (AD-8), so the request and the cache carry the same
+   * value. A success announces nothing; a failure announces the `edit` lead
+   * plus the reason, or `deletedElsewhere` for `not-found`, quoting the text
+   * the todo shows once reverted (the pre-edit text, or a later queued edit).
+   */
+  editDescription(todo: Pick<Todo, 'id' | 'description'>, description: string): Promise<MutationOutcome>;
 }
 
 export interface MutationHelperDeps {
@@ -242,5 +251,19 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
     });
   }
 
-  return { run, addTodo, setCompleted };
+  function editDescription(todo: Pick<Todo, 'id' | 'description'>, description: string): Promise<MutationOutcome> {
+    const { id } = todo;
+    // Read after the revert: a later queued edit re-applied on the restored value is what the card shows.
+    const shown = () => readList().find((t) => t.id === id)?.description ?? todo.description;
+    return run({
+      id,
+      kind: 'follow-up',
+      apply: (prev) => (prev ? { ...prev, description } : null),
+      send: () => updateTodo(id, { description }),
+      failureText: (failure) =>
+        failure.kind === 'not-found' ? messages.deletedElsewhere(shown()) : messages.failureMessage('edit', failure, shown()),
+    });
+  }
+
+  return { run, addTodo, setCompleted, editDescription };
 }

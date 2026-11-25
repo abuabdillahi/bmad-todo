@@ -352,10 +352,14 @@ describe('AddForm: optimistic add', () => {
     return statuses[0]!;
   }
 
+  /** Each row's todo text: the span its Completion check's `aria-labelledby` names. */
   function items(list: HTMLElement): string[] {
     return within(list)
       .queryAllByRole('listitem')
-      .map((item) => item.textContent ?? '');
+      .map((item) => {
+        const check = within(item).getByRole('checkbox');
+        return document.getElementById(check.getAttribute('aria-labelledby')!)?.textContent ?? '';
+      });
   }
 
   /** A gate a handler waits on until the test opens it. */

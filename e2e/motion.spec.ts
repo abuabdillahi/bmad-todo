@@ -24,7 +24,11 @@ test('E1 an added card runs its enter animation and ends fully visible', async (
   await page.evaluate((text) => {
     const list = document.querySelector('ul[aria-label="Todos"]')!;
     const observer = new MutationObserver(() => {
-      const item = [...list.querySelectorAll('li')].find((li) => li.textContent === text);
+      // The row whose todo text (the span its check's aria-labelledby names) is exactly `text`.
+      const item = [...list.querySelectorAll('li')].find((li) => {
+        const labelId = li.querySelector('input[type="checkbox"]')?.getAttribute('aria-labelledby');
+        return labelId != null && document.getElementById(labelId)?.textContent === text;
+      });
       if (!item) return;
       observer.disconnect();
       (window as unknown as { mountedAnimations?: number }).mountedAnimations = item.getAnimations({ subtree: true }).length;
