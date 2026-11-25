@@ -153,13 +153,25 @@ references = [
 ]
 
 [[entry]]
+id = 14
+type = "bug"
+title = "The e2e drop tests can drop mid-text when a long description wraps"
+description = "Found when main run 45677224517 failed on the merge of 2.6: `dropText` in `e2e/helpers.ts` drops at the field's top-right corner, so when a random test description wraps onto a second line at phone width the drop lands at the wrap point, not at the end of the text, and the drop tests in `e2e/edit.spec.ts` and `e2e/validation.spec.ts` fail intermittently. The drop must land at the end of the text however the description wraps."
+verify = "Run the drop tests in all three Playwright projects with descriptions long enough to wrap at phone width: each drop lands at the end of the text, every time."
+covers = ["R13"]
+after = [12]
+hitl = false
+risk = "low"
+refine = true
+
+[[entry]]
 id = 7
 type = "story"
 title = "Refactor sweep"
 description = "Cleanup only, its scope set at its start from the plans and review findings this epic deferred; scope pushed out of another story becomes a new story. It does not wait on the hitl spike 13."
 verify = "pnpm test:all passes after the cleanup, and the story lists each deferred finding as fixed or moved to a named new story."
 covers = []
-after = [1, 2, 3, 4, 5, 6, 10, 11, 12]
+after = [1, 2, 3, 4, 5, 6, 10, 11, 12, 14]
 hitl = false
 risk = "low"
 
