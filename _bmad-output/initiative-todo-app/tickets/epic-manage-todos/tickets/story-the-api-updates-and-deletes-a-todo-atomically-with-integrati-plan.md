@@ -8,9 +8,9 @@ baseline_revision: 'e8b4cade8b38c6ae28d4f35302da7875af417d3d'
 route: full
 route_source: auto
 risk: medium
-review: quick
+review: thorough
 review_source: pinned
-lenses_ran: [quick]
+lenses_ran: [blind-hunter, edge-case-hunter, verification-gap, intent-alignment]
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -109,6 +109,37 @@ deferred: []
   - `[low]` `[patch]` In `storage.test.ts`, the `expectProblem` leak regex misses UPDATE and DELETE SQL, though it now checks PATCH and DELETE answers. — Fixed: the regex adds `update |delete `.
   - `[low]` `[patch]` In `logs.test.ts`, the `STORAGE_FAILURE_TEST_MS` comment names only the insert, and the create storage test keeps a stale #32 comment and a loose `>= 400` assertion. — Fixed: the comment covers any write, the stale comment is gone, and the create storage test asserts `toBe(503)`.
 
+### 2026-11-25 — Review pass (follow-up, thorough: blind-hunter, edge-case-hunter, verification-gap, intent-alignment)
+- verdicts: 27 findings — high 0, medium 1, low 18, false 8, maybe-false 0
+- findings:
+  - `[low]` `[patch]` (blind-hunter) The service's new `update`/`remove` existence rule has no unit test; the fake repository's methods only throw. — Added four unit tests in `service.test.ts` (I4 update pass-through, I4 update NotFoundError, I5 remove NotFoundError, I5 remove ok), with a `fakeRepository` helper.
+  - `[low]` `[patch]` (blind-hunter) The `TodoParams` comment says any string reaches the route, but an `:id` longer than Fastify's `maxParamLength` (100) goes to the not-found handler instead. — Real, though the outcome is the same 404 with the same detail, because the not-found handler throws `NotFoundError`. Fixed the comment.
+  - `[low]` `[reject]` (blind-hunter) The 500 storage test does not assert that the PATCH on an unmappable row was committed. — Real but rejected: asserting it would lock in the outcome that the first pass rejected as unreachable in normal use, and Implementation Notes already record it.
+  - `[low]` `[reject]` (blind-hunter) Nothing covers a DELETE of an unmappable, corrupted row. — Real gap, but only a corrupted row reaches it (the API alone sets `createdAt`), so nobody meets it in everyday use, and it adds a test for a state that does not arise.
+  - `[false]` `[reject]` (blind-hunter) `repository.update` with no changes yields "No values to set", answered 500. — No caller can reach it: the only caller is the PATCH route, whose schema requires `minProperties: 1`, so an empty change set never gets past validation.
+  - `[low]` `[reject]` (blind-hunter) The first pass says the malformed-encoding 400 is "Left for the closing security review", yet `deferred: []`. — The fix edits this build's plan. That finding is a carried reject that cannot be deferred again. It is noted in the run report for the caller.
+  - `[false]` `[reject]` (blind-hunter) The Plan Change Log is empty although the build departed from the plan (`send(null)`, helper changes). — By design, the Plan Change Log records only bad_plan loopbacks, and there were none. Implementation Notes records the deviations.
+  - `[false]` `[reject]` (blind-hunter) The frontmatter (`review: thorough`, four lenses, `status: in-review`) disagrees with the Auto Run Result. — That was the mid-pass state this follow-up pass writes on purpose. Finalize sets `status` and appends this pass's result.
+  - `[low]` `[reject]` (blind-hunter) The I/O matrix's Bad description row holds literal U+2028 and U+2029, which read as blanks. — Real, but the matrix is inside the read-only `<intent-contract>`, and the fix edits this build's plan.
+  - `[low]` `[patch]` (blind-hunter) The successful-update log test puts the marker only in the new description, so a log line echoing the old one would pass. — The todo is now created with a marker of its own, and neither marker may appear ("I13 a successful update leaves its old and new descriptions out of every log line").
+  - `[low]` `[patch]` (blind-hunter) The I12 header checks skip PATCH error answers through nginx. — The PATCH header test now covers 200, 400 (`{}`) and 404 (an unknown UUID) through web-test. It passed in `pnpm test:all`.
+  - `[low]` `[patch]` (blind-hunter) The documented `id` path parameter has no description. — Added a description to `TodoParams.id` and regenerated `openapi.json`. Only the two parameter descriptions changed.
+  - `[low]` `[patch]` (blind-hunter) "I4 changes only the todo it names" and "I4 lists an updated todo as stored" ignore the PATCH response. — Both now pass it through `expectUpdated` (status 200 plus the I9 documentation check).
+  - `[low]` `[reject]` (edge-case-hunter) A DELETE sent with `Content-Type: application/json` and an empty or malformed body gets Fastify's 400, which the DELETE contract does not document. — Real: Fastify parses DELETE bodies, and `FST_ERR_CTP_EMPTY_JSON_BODY` becomes a validation 400. But today's web client sets Content-Type only on calls with a body, and no client sends one. The fix is either to document a 400 against AD-6's DELETE row or to override body parsing, which is more than a direct correction. Noted for story 5's client.
+  - `[false]` `[reject]` (edge-case-hunter) `update` with changes `{}` emits an empty SET, mapped to 503. — Unreachable, as above: `minProperties: 1` stops it at validation, and the route is the only caller.
+  - `[low]` `[reject]` (edge-case-hunter) A PATCH on an unmappable row commits the UPDATE, then answers 500. — carried: same location and claim as the first pass's rejected row, and the code is unchanged.
+  - `[medium]` `[patch]` (verification-gap) The whitespace-only fixture `' \t\n '` fails the control-character pattern whether or not trimming runs first, so nothing proves the trim-before-schema order for PATCH or for POST's now-shared hook. — Added a spaces-only description (`'   '`) to the PATCH refusal tables (alone and beside `completed`) and to POST's I2 table. Added padded-200 success cases for PATCH (I4) and POST (I2) that store `'x'.repeat(200)`.
+  - `[low]` `[reject]` (intent-alignment) Most matrix rows are proven in-process, and only a subset through web-test. — This follows AD-20's layering: matrix behaviour in-process through `buildApp`, while the contract suite validates representative answers of each operation against openapi.json. Adding every row at the stack would be more than a direct correction for no user-visible gap.
+  - `[low]` `[reject]` (intent-alignment) "Row unchanged and still listed" on a storage refusal is proven only under `query_only`, not under the logs test's write lock. — `query_only` is the in-process failure injection AD-20 prescribes. The logs test exists to prove I13, not row state.
+  - `[low]` `[reject]` (intent-alignment) A PATCH on an unmappable row answers 500 after committing, which diverges from the outcome-level reading of "atomic". — carried: the first pass's rejected row, and the code is unchanged.
+  - `[low]` `[patch]` (intent-alignment) "One statement" and "existence from the write's result" are enforced by the code's shape, not by tests; the service rule has no unit test. — Grouped with the first blind-hunter row: the new service unit tests pin the existence rule against the repository's write result.
+  - `[false]` `[reject]` (intent-alignment) That every non-2xx answer goes through the one error handler is only inferred from the body shape. — No bad outcome: every problem answer in the new tests is validated against the closed `Problem` schema and media type, and the handler is the only producer of that shape (AD-9).
+  - `[false]` `[reject]` (intent-alignment) I13 does not cover a DELETE to an unknown id. — It cannot leak todo text: the request carries no body, and an unknown id has no stored description.
+  - `[low]` `[patch]` (intent-alignment) I12 does not cover the API's own PATCH 400 and 404 through nginx. — Grouped with the blind-hunter header row: the PATCH header test now covers 400 and 404.
+  - `[false]` `[reject]` (intent-alignment) The consumer surface (the web stories) is exercised only through the contract and HTTP. — Descriptive, with no defect: the intent's Never list excludes web changes.
+  - `[low]` `[reject]` (intent-alignment) PATCH unknown-id tests are tagged I4, whose text does not name not-found. — test-strategy has no update-not-found id, and I4 is the update scenario. Re-tagging would invent an id.
+  - `[false]` `[reject]` (intent-alignment) The precedence between errors (400 or 404, 404 or 503) is not pinned. — Descriptive. The matrix sets no order, and Fastify's fixed lifecycle (validation before the handler) decides it deterministically, so no outcome is wrong.
+
 ## Design Notes
 
 A non-UUID path id answers 404, not 400. AD-6 gives `DELETE` only `404`, and a string that is not stored is simply not found. The parameterised query makes any string safe. Ajv already validates `id` as a UUID on create, where the client mints it.
@@ -171,3 +202,31 @@ Nothing was deferred.
 - Matrix audit: every I/O row has a passing covering test, in `update-delete.test.ts` or, for the storage rows, `storage.test.ts`.
 
 **Residual risks:** The two rejected low findings above. `logs.test.ts` now takes about 17 s, because three tests wait out SQLite's 5 s busy timeout.
+
+### Follow-up review pass (thorough), 2026-11-25
+
+**Status:** built
+
+**Summary:** A follow-up pass with the thorough lens set: blind-hunter, edge-case-hunter, verification-gap and intent-alignment. It found nothing that changes the routes' behaviour. The patches tighten the tests and the contract's docs. App code changes only in the `TodoParams` comment and the `id` description.
+
+**Files changed this pass:**
+- `apps/api/src/todos/service.test.ts`: unit tests for the update and remove existence rule (I4, I5).
+- `apps/api/src/routes/todos.ts`: the `TodoParams` comment (`maxParamLength`), and a description on `id`.
+- `packages/contract/openapi.json`: regenerated with the `id` parameter descriptions.
+- `apps/api/test/integration/update-delete.test.ts`: a spaces-only refusal case, a padded-200 success case, and the two PATCH responses now checked.
+- `apps/api/test/integration/todos.test.ts`: a spaces-only refusal case and a padded-200 success case for POST.
+- `apps/api/test/integration/logs.test.ts`: the successful-update test also marks the old description.
+- `apps/api/test/profile/headers.profile.test.ts`: I12 also covers PATCH 400 and 404 through web-test.
+
+**Review findings:** 27 findings.
+- 8 entries patched: 1 medium (the trim-order verification gap) and 7 low, two of them grouped with intent-alignment rows.
+- 0 deferred.
+- 3 rows carried from the first pass as rejects, the unmappable-row 500 among them.
+- 18 rejected, each with its recorded reason in the triage log above. One worth flagging: a DELETE sent with a JSON Content-Type and an empty body gets an undocumented 400 from Fastify, so story 5's client must not set Content-Type on DELETE.
+
+**Follow-up review recommended:** false. This is a follow-up pass, and no high finding was patched. Patched this pass: high 0, medium 1, low 7.
+
+**Verification:**
+- `pnpm typecheck`: exit 0.
+- `pnpm test`: 344 tests passed.
+- `pnpm test:all`, under the todo-test stack lock: exit 0, with every step passed, teardown included. `coverage/scenarios.md` shows I2, I4, I5, I8, I9, I11, I12 and I13 all passing.

@@ -130,6 +130,16 @@ describe('PATCH /api/todos/{id} updates a todo', () => {
     expect(storedRows()).toEqual([{ ...row, description: 'New' }]);
   });
 
+  it('I4 trims a padded description of 200 code points before the length rule, and stores it', async () => {
+    const row = seed('Buy milk');
+    const description = 'x'.repeat(200);
+
+    const response = await patch(row.id, { description: `  ${description}  ` });
+
+    expect(expectUpdated(response)).toMatchObject({ id: row.id, description });
+    expect(storedRows()).toEqual([{ ...row, description }]);
+  });
+
   it('I4 stores both fields when a PATCH sends both', async () => {
     const row = seed('Buy milk');
 
@@ -143,14 +153,14 @@ describe('PATCH /api/todos/{id} updates a todo', () => {
     const target = seed('Buy milk');
     const other = seed('Call mum');
 
-    await patch(target.id, { completed: true });
+    expectUpdated(await patch(target.id, { completed: true }));
 
     expect(storedRows()).toEqual(expect.arrayContaining([{ ...target, completed: true }, other]));
   });
 
   it('I4 lists an updated todo as stored', async () => {
     const row = seed('Buy milk');
-    await patch(row.id, { description: 'Buy bread', completed: true });
+    expectUpdated(await patch(row.id, { description: 'Buy bread', completed: true }));
 
     expect(await listed()).toEqual([expect.objectContaining({ id: row.id, description: 'Buy bread', completed: true })]);
   });
@@ -160,6 +170,7 @@ describe('PATCH /api/todos/{id} refuses an invalid update', () => {
   const descriptions: { name: string; description: string }[] = [
     { name: 'an empty description', description: '' },
     { name: 'a whitespace-only description', description: ' \t\n ' },
+    { name: 'a spaces-only description', description: '   ' },
     { name: 'a description of 201 code points', description: 'x'.repeat(201) },
   ];
 

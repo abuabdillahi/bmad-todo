@@ -11,10 +11,19 @@ function todoResponse(description: string) {
 }
 
 /**
- * The `:id` of a single todo. Any string: one that is not stored, a non-UUID
- * included, is simply not found (404), and the query is parameterised.
+ * The `:id` of a single todo. Not held to the UUID format: an id that is not
+ * stored, a non-UUID included, is simply not found (404), and the query is
+ * parameterised. One longer than Fastify's `maxParamLength` (100) never reaches
+ * the route: the not-found handler answers it, also with a 404.
  */
-const TodoParams = Type.Object({ id: Type.String() }, { additionalProperties: false });
+const TodoParams = Type.Object(
+  {
+    id: Type.String({
+      description: 'The id the client minted when it created the todo. Any id that is not stored answers 404.',
+    }),
+  },
+  { additionalProperties: false },
+);
 
 /**
  * Trims a string `description` in the body before the schema runs, so the rule

@@ -170,14 +170,16 @@ describe('the API logs no todo text when a create is refused or fails', () => {
 });
 
 describe('the API logs no todo text when an update or delete succeeds, is refused or fails', () => {
-  it('I13 a successful update leaves its description out of every log line', async () => {
-    const id = await created('Buy milk');
-    const marker = randomUUID();
+  it('I13 a successful update leaves its old and new descriptions out of every log line', async () => {
+    const before = randomUUID();
+    const id = await created(`Buy milk ${before}`);
+    const after = randomUUID();
 
-    const { status } = await send('PATCH', `/api/todos/${id}`, { description: `Buy milk ${marker}`, completed: true });
+    const { status } = await send('PATCH', `/api/todos/${id}`, { description: `Buy bread ${after}`, completed: true });
 
     expect(status).toBe(200);
-    expectNoLineHolds(marker);
+    expectNoLineHolds(before);
+    expectNoLineHolds(after);
   });
 
   it('I13 an update refused for validation leaves its description out of every log line', async () => {

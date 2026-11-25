@@ -57,14 +57,21 @@ describe('profile: web-test security headers', () => {
     expect(body).not.toContain('<div id="root">');
   });
 
-  it('I12 a PATCH answered 200 through web-test carries the AD-19 security headers', async () => {
+  it('I12 a PATCH answered 200, 400 and 404 through web-test carries the AD-19 security headers', async () => {
     const todo = await createTodo(randomUUID(), `I12 headers patch ${Date.now()}`);
+    const answers: { path: string; body: unknown; status: number }[] = [
+      { path: `/api/todos/${todo.id}`, body: { completed: true }, status: 200 },
+      { path: `/api/todos/${todo.id}`, body: {}, status: 400 },
+      { path: `/api/todos/${randomUUID()}`, body: { completed: true }, status: 404 },
+    ];
 
-    const response = await call('PATCH', `/api/todos/${todo.id}`, { completed: true });
-    await response.arrayBuffer();
+    for (const { path, body, status } of answers) {
+      const response = await call('PATCH', path, body);
+      await response.arrayBuffer();
 
-    expect(response.status).toBe(200);
-    expectSecurityHeaders(response);
+      expect(response.status, `${status}`).toBe(status);
+      expectSecurityHeaders(response);
+    }
   });
 
   it('I12 a DELETE answered 204, and a repeat answered 404, through web-test carry the AD-19 security headers', async () => {

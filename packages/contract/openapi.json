@@ -672,7 +672,8 @@
             },
             "in": "path",
             "name": "id",
-            "required": true
+            "required": true,
+            "description": "The id the client minted when it created the todo. Any id that is not stored answers 404."
           }
         ],
         "responses": {
@@ -1045,7 +1046,8 @@
             },
             "in": "path",
             "name": "id",
-            "required": true
+            "required": true,
+            "description": "The id the client minted when it created the todo. Any id that is not stored answers 404."
           }
         ],
         "responses": {

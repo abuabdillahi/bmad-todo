@@ -86,6 +86,7 @@ describe('POST /api/todos refuses an invalid create', () => {
   const invalid: { name: string; payload: unknown; field?: string; headers?: Record<string, string> }[] = [
     { name: 'an empty description', payload: { id, description: '' }, field: 'description' },
     { name: 'a whitespace-only description', payload: { id, description: ' \t\n ' }, field: 'description' },
+    { name: 'a spaces-only description', payload: { id, description: '   ' }, field: 'description' },
     { name: 'a description of 201 code points', payload: { id, description: 'x'.repeat(201) }, field: 'description' },
     { name: 'a missing description', payload: { id }, field: 'description' },
     { name: 'a missing id', payload: { description: 'Buy milk' }, field: 'id' },
@@ -153,6 +154,18 @@ describe('POST /api/todos trims and replays', () => {
     expectDocumented('/api/todos', 'post', 201, response.headers['content-type'], response.json());
     expect(response.json()).toMatchObject({ id, description: 'Buy milk' });
     expect(storedRows()).toEqual([expect.objectContaining({ id, description: 'Buy milk' })]);
+  });
+
+  it('I2 trims a padded description of 200 code points before the length rule, and stores it', async () => {
+    const id = randomUUID();
+    const description = 'x'.repeat(200);
+
+    const response = await post({ id, description: `  ${description}  ` });
+
+    expect(response.statusCode).toBe(201);
+    expectDocumented('/api/todos', 'post', 201, response.headers['content-type'], response.json());
+    expect(response.json()).toMatchObject({ id, description });
+    expect(storedRows()).toEqual([expect.objectContaining({ id, description })]);
   });
 
   it('I10 answers a replay with the same trimmed description 200 and the stored todo, storing no duplicate', async () => {
