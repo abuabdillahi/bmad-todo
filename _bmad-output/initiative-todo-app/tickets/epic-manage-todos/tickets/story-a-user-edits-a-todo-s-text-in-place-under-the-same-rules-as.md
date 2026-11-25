@@ -9,7 +9,7 @@ hitl: false
 risk: high
 tracker_id: "45"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/45"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # A user edits a todo's text in place, under the same rules as the add field

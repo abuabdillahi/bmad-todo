@@ -28,3 +28,5 @@ Verify: pnpm test:all passes after the cleanup, and the story lists each deferre
 ## Notes
 
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): The sweep waits on every entry except spike 13 (#31, the user's hitl check on a real phone) and the closing stories 8 and 9, which come after it so their reports measure the swept code, as in epic 1.
+- From 2.4's review (PR #55), rejected there as cleanup: the rule that moves focus off a removed row exists in two copies (`TodoCard.tsx` and `TodoList.tsx`); fold them into one.
+- From 2.4's review (PR #55), rejected there as low: the "deleted elsewhere" announcement dedupe compares the todo's text only, not its id.
