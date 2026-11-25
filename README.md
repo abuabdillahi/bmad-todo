@@ -14,7 +14,7 @@ The design is in `_bmad-output/initiative-todo-app/architecture-todo-app/archite
 
 - **Node.js 26.13.1**, the version in `.nvmrc`. With nvm: `nvm install && nvm use`.
 - **pnpm 12.23.0**: `npm i -g pnpm@12.23.0`. Node 26 has no corepack.
-- **Docker with Compose v2** (`docker compose version`), with the daemon running.
+- **Docker Engine 25 or later and Docker Compose 2.24.4 or later** (`docker version`, `docker compose version`), with the daemon running. `compose.yml` needs them: the `profiles: !override` on `web-test` and `api-dev` needs Compose 2.24.4, and the health checks' `start_interval` needs Engine 25.
 - **Free local ports:** `127.0.0.1:5173` (dev) and `127.0.0.1:8081` (test). To move the test port, set `TEST_WEB_PORT`: `pnpm test:all` derives `E2E_BASE_URL` from it. The measurement scripts read `BASE_URL` instead (default `http://127.0.0.1:8081`).
 
 ## Install
@@ -92,7 +92,7 @@ Start a fresh stack, run `pnpm --filter @todo/e2e exec playwright install chromi
 
 ## Logs and health
 
-Every service logs to stdout through Docker's `json-file` driver, rotated at 3 × 10 MB. The API logs one JSON line (pino) per request, with a UUID `reqId`. Logs never contain todo text at `info` or below.
+Every service logs to stdout through Docker's `json-file` driver, rotated at 3 × 10 MB. The API logs JSON through pino. Each request writes two lines at `info`, with the same UUID `reqId`: `incoming request`, with the method, URL, host and client address, then `request completed`, with the status code and response time (`request errored`, at `error`, if sending the response fails). Neither holds the request or response body. A request that fails with a 503 or 500 also logs a third line with the same `reqId` and the error: `service unavailable` at `warn` or `unhandled error` at `error`. The `logs` profile test proves, at `LOG_LEVEL=info`, that a successful create and list leave no todo text in the `api` logs. Failed requests are not tested for it yet.
 
 ```sh
 docker compose -p todo-dev logs -f api-dev         # dev API (LOG_LEVEL debug)
@@ -110,10 +110,16 @@ Merge to `main` by pull request. Every push to `main` deploys. Work on a feature
 
 One workflow, `.github/workflows/ci.yml`, runs on every push:
 
-1. **`test`** installs, typechecks, checks that `packages/contract/openapi.json` is regenerated and committed, then builds both images tagged with the commit SHA and runs `pnpm test:all` against them. On `main` it saves those exact images.
-2. **`deploy`** runs on `main` only, after a green `test`, one deploy at a time. It pushes the tested images to GHCR as `ghcr.io/abuabdillahi/bmad-todo-{api,web}:<sha>`. It then connects to the host over SSH, copies `compose.yml`, and rewrites `~/todo/.env` (mode 600) from GitHub secrets with `IMAGE_TAG=<sha>`. It logs the host into GHCR only for the pull, runs `docker compose -p todo --profile prod up -d --wait`, and checks that `https://$PUBLIC_HOSTNAME/api/health` answers `{"status":"ok"}`. If a newer SHA is already live, it skips. No step after `test` builds an image.
+1. **`test`** installs, typechecks, checks that `packages/contract/openapi.json` is regenerated and committed, then builds both images tagged with the commit SHA and runs `pnpm test:all` against them. On `main` it saves those exact images as a workflow artifact, kept for one day.
+2. **`deploy`** runs on `main` only, after a green `test`, one deploy at a time. It downloads that artifact and pushes the tested images to GHCR as `ghcr.io/abuabdillahi/bmad-todo-{api,web}:<sha>`. It then connects to the host over SSH, copies `compose.yml`, and rewrites `~/todo/.env` (mode 600) from GitHub secrets with `IMAGE_TAG=<sha>`. It logs the host into GHCR only for the pull, runs `docker compose -p todo --profile prod up -d --wait`, and checks that `https://$PUBLIC_HOSTNAME/api/health` answers `{"status":"ok"}`. If a newer SHA is already live, it skips. No step after `test` builds an image.
 
 Never run `down -v` on production (project `todo`): it deletes the todos.
+
+**"Re-run failed jobs" on a failed deploy works for one day only.** It re-runs `deploy` as the same push, so it downloads the tested images from the run's artifact again. The artifact is kept for one day (`retention-days: 1`), so after that the re-run fails at "Download the tested images", unless a newer SHA is already live, in which case it skips. Do this instead:
+
+- First check what is live. If a newer commit on `main` has deployed since, it already holds the failed commit's change, so do nothing. A run by hand has no newer-SHA check and would roll production back.
+- If the failed run passed "Push the tested images to GHCR", that SHA's images are in GHCR even though it never deployed: deploy it by hand with the steps in [Roll back](#roll-back), setting `sha` to the failed commit.
+- Otherwise its images were never pushed: merge a new commit to `main` by pull request. Its own run tests, saves and deploys it.
 
 ### Required GitHub settings (names only, values never in the repo)
 
@@ -130,7 +136,7 @@ Also: Actions must be enabled, with workflow permissions that allow `packages: w
 
 ### One-time bootstrap (a person does this once)
 
-- **Hetzner host:** Docker with the compose plugin; a deploy user allowed to run `docker`, with the public half of `DEPLOY_SSH_KEY` in its `~/.ssh/authorized_keys`; no existing compose project named `todo`. The deploy creates `~/todo` itself. The host keeps no registry credential.
+- **Hetzner host:** Docker Engine 25 or later with the compose plugin 2.24.4 or later, since the deploy runs the same `compose.yml`; a deploy user allowed to run `docker`, with the public half of `DEPLOY_SSH_KEY` in its `~/.ssh/authorized_keys`; no existing compose project named `todo`. The deploy creates `~/todo` itself. The host keeps no registry credential.
 - **Cloudflare:** a token-run Cloudflare Tunnel that routes the public hostname to `http://web:8080`, the hostname's DNS record, and the tunnel token stored as the `TUNNEL_TOKEN` secret. Production publishes no ports: `cloudflared` is the only way in. Also turn on SSL/TLS › Edge Certificates › **Always Use HTTPS** for the zone, so plain-HTTP visits are redirected (security report S2).
 
 ## Roll back
@@ -139,7 +145,7 @@ Roll back by running the same deploy by hand with an earlier SHA:
 
 1. GitHub › Actions › **CI** › **Run workflow**, branch `main`.
 2. Set `sha` to an earlier commit on `main` that was deployed before, so its images are in GHCR.
-3. Run it. The workflow skips the test job, deploys that SHA's images with that SHA's `compose.yml`, and checks the public health endpoint.
+3. Run it. The workflow skips the test job and the one-day artifact, pulls that SHA's images from GHCR, deploys them with that SHA's `compose.yml`, and checks the public health endpoint. So a rollback by hand still works long after that SHA's test run.
 
 With the `gh` CLI: `gh workflow run ci.yml --ref main -f sha=<earlier-sha>`. The data volume is untouched. Migrations only add (AD-15), which keeps an older API compatible with the newer schema.
 
