@@ -371,6 +371,42 @@ describe('AddForm validation', () => {
     await waitFor(() => expect(screen.getByText('Enter a description.', NOT_STATUS)).toBeTruthy());
     expect(received).toEqual([]);
   });
+
+  it('K1 a dropped line break is cancelled and the text goes in cleaned at the drop caret, with the caret after it', async () => {
+    const received = acceptCreates();
+    const { field } = renderAddForm();
+    const textarea = field as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: 'Buy  milk' } });
+    textarea.setSelectionRange(4, 4);
+    const event = new InputEvent('beforeinput', { inputType: 'insertFromDrop', data: 'One\nTwo', bubbles: true, cancelable: true });
+    fireEvent(textarea, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(textarea.value).toBe('Buy One Two milk');
+    expect(textarea.selectionStart).toBe(11);
+    expect(textarea.selectionEnd).toBe(11);
+    expect(screen.getByText('16/200')).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(received).toEqual([]);
+  });
+
+  it('K1 a clean drop, or a drop with no text, is left to the browser', () => {
+    acceptCreates();
+    const { field } = renderAddForm();
+    const textarea = field as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: 'Buy milk' } });
+    textarea.setSelectionRange(4, 4);
+    const clean = new InputEvent('beforeinput', { inputType: 'insertFromDrop', data: 'oat', bubbles: true, cancelable: true });
+    fireEvent(textarea, clean);
+    const empty = new InputEvent('beforeinput', { inputType: 'insertFromDrop', data: null, bubbles: true, cancelable: true });
+    fireEvent(textarea, empty);
+
+    expect(clean.defaultPrevented).toBe(false);
+    expect(empty.defaultPrevented).toBe(false);
+    expect(textarea.value).toBe('Buy milk');
+  });
 });
 
 describe('AddForm: optimistic add', () => {

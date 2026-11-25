@@ -515,6 +515,26 @@ describe('EditForm', () => {
     expect(screen.queryByRole('textbox', { name: 'Edit description' })).toBeNull();
   });
 
+  it('K3 a dropped line break in the edit field is cancelled and the text goes in cleaned at the drop caret; nothing is saved', async () => {
+    const state = serve([milk]);
+    state.release.open();
+    const { user } = await renderLoaded(['Buy milk']);
+
+    await user.click(editButton('Buy milk'));
+    fireEvent.change(editField(), { target: { value: 'Buy  milk' } });
+    editField().setSelectionRange(4, 4);
+    const event = new InputEvent('beforeinput', { inputType: 'insertFromDrop', data: 'One\nTwo', bubbles: true, cancelable: true });
+    fireEvent(editField(), event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(editField().value).toBe('Buy One Two milk');
+    expect(editField().selectionStart).toBe(11);
+    expect(editField().selectionEnd).toBe(11);
+    expect(document.activeElement).toBe(editField());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(state.patches).toEqual([]);
+  });
+
   it('K3 a beforeinput line break with Shift held (keyCode 229) is cancelled and does not save; Enter then saves', async () => {
     const state = serve([milk]);
     state.release.open();

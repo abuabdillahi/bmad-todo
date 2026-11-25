@@ -174,15 +174,17 @@ export function useTextField({ hint, initial = '' }: TextFieldOptions): TextFiel
     // `status` is a fresh object each render; only the crossing matters here.
   }, [over]);
 
-  // Native listeners: React has no paste-with-cancel insert path that keeps the
-  // undo stack, and its onBeforeInput carries no `inputType`.
+  // Native listeners: React has no paste- or drop-with-cancel insert path that
+  // keeps the undo stack, and its onBeforeInput carries no `inputType`.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
-    function handlePaste(event: ClipboardEvent) {
-      const text = event.clipboardData?.getData('text/plain');
-      if (!text) return;
+    /**
+     * Unless `text` is already clean, cancels `event`'s native insert and puts
+     * the cleaned text in place of the selection instead.
+     */
+    function insertCleaned(event: Event, text: string) {
       const cleaned = replaceForbidden(text);
       if (cleaned === text) return;
       event.preventDefault();
@@ -193,6 +195,12 @@ export function useTextField({ hint, initial = '' }: TextFieldOptions): TextFiel
         el!.setRangeText(cleaned, el!.selectionStart, el!.selectionEnd, 'end');
         el!.dispatchEvent(new Event('input', { bubbles: true }));
       }
+    }
+
+    function handlePaste(event: ClipboardEvent) {
+      const text = event.clipboardData?.getData('text/plain');
+      if (!text) return;
+      insertCleaned(event, text);
     }
 
     // `beforeinput` carries no modifier state: Shift comes from the latest key event.
@@ -206,9 +214,17 @@ export function useTextField({ hint, initial = '' }: TextFieldOptions): TextFiel
       shiftHeld = false;
     }
 
-    // Keyboards that keep every word composing send Enter, and Shift+Enter, as a
-    // line break here. It is never inserted, and only Enter without Shift submits.
     function handleBeforeInput(event: InputEvent) {
+      // A drop from outside the field: the engine has already focused it and put the
+      // selection at the drop caret, so the cleaned text goes in there as one undo step.
+      // Chrome gives a textarea the text in `data` and no `dataTransfer`.
+      if (event.inputType === 'insertFromDrop') {
+        const text = event.data ?? event.dataTransfer?.getData('text/plain');
+        if (text) insertCleaned(event, text);
+        return;
+      }
+      // Keyboards that keep every word composing send Enter, and Shift+Enter, as a
+      // line break here. It is never inserted, and only Enter without Shift submits.
       if (event.inputType !== 'insertLineBreak' && event.inputType !== 'insertParagraph') return;
       event.preventDefault();
       if (shiftHeld) return;
