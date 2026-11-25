@@ -4,14 +4,24 @@ import type { FailureKind } from '../api/client.ts';
 /** The longest `{t}` in code points before it is cut (EXPERIENCE Voice and Tone). */
 const QUOTE_MAX_LENGTH = 40;
 
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
 /**
- * `{t}`: the todo text in curly double quotes. Over 40 code points it is cut at
- * 40, trailing whitespace is trimmed, and "…" goes inside the closing quote.
+ * `{t}`: the todo text in curly double quotes. Over 40 code points it is cut to
+ * at most 40, on a whole user-perceived character (grapheme cluster), so it may
+ * keep fewer than 40 but never more. Trailing whitespace is trimmed, and "…"
+ * goes inside the closing quote.
  */
 export function quote(text: string): string {
-  const points = [...text];
-  if (points.length <= QUOTE_MAX_LENGTH) return `“${text}”`;
-  return `“${points.slice(0, QUOTE_MAX_LENGTH).join('').trimEnd()}…”`;
+  if ([...text].length <= QUOTE_MAX_LENGTH) return `“${text}”`;
+  let kept = '';
+  let count = 0;
+  for (const { segment } of graphemes.segment(text)) {
+    count += [...segment].length;
+    if (count > QUOTE_MAX_LENGTH) break;
+    kept += segment;
+  }
+  return `“${kept.trimEnd()}…”`;
 }
 
 /** Actions whose failure lead names the todo. */

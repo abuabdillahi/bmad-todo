@@ -37,6 +37,44 @@ describe('messages', () => {
     expect(quote(`${'a'.repeat(37)}   tail`)).toBe(`“${'a'.repeat(37)}…”`);
   });
 
+  // Each character straddles the 40th code point, so a code-point cut would split it.
+  it.each([
+    ['a ZWJ family emoji', '👨‍👩‍👧', 39],
+    ['a ZWJ family emoji cut inside its joiners', '👨‍👩‍👧', 37],
+    ['a flag', '🇺🇳', 39],
+    ['an emoji with a skin-tone modifier', '👍🏽', 39],
+    ['a letter with a combining mark', 'é', 39],
+    ['a letter with two combining marks', 'é̂', 38],
+  ])('K7 cuts before %s rather than inside it', (_kind, character, before) => {
+    const head = 'a'.repeat(before);
+    expect(quote(`${head}${character}tail`)).toBe(`“${head}…”`);
+  });
+
+  it('K7 keeps a multi-code-point character whole when it ends at the 40th code point', () => {
+    const head = `${'a'.repeat(35)}👨‍👩‍👧`;
+    expect(quote(`${head}tail`)).toBe(`“${head}…”`);
+    expect(quote(`${'a'.repeat(38)}🇺🇳x`)).toBe(`“${'a'.repeat(38)}🇺🇳…”`);
+  });
+
+  it('K7 trims whitespace left before a character the cut drops', () => {
+    expect(quote(`${'a'.repeat(37)}  👍🏽 tail`)).toBe(`“${'a'.repeat(37)}…”`);
+  });
+
+  it('K7 leaves only the ellipsis when the first character alone is over 40 code points', () => {
+    expect(quote(`e${'́'.repeat(45)} tail`)).toBe('“…”');
+  });
+
+  it('K7 cuts on a whole character in every message that quotes a todo', () => {
+    const text = `${'a'.repeat(39)}👨‍👩‍👧 and more`;
+    const cut = `“${'a'.repeat(39)}…”`;
+    expect(messages.added(text)).toBe(`Added ${cut}.`);
+    expect(messages.deleted(text)).toBe(`Deleted ${cut}.`);
+    expect(messages.deletedElsewhere(text)).toBe(`${cut} was deleted elsewhere.`);
+    expect(messages.failureMessage('complete', { kind: 'network' }, text)).toBe(
+      `Couldn't mark ${cut} done, so it's still open. ${REASON.network}`,
+    );
+  });
+
   const leads: Record<TodoAction, string> = {
     add: 'Couldn\'t add “Buy milk”.',
     edit: 'Couldn\'t save your edit, so “Buy milk” is back as it was.',
