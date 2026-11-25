@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { CreateTodoBody, Todo, UpdateTodoBody } from '@todo/contract';
+import { dropOnto } from '../../test/drop.ts';
 import { server } from '../../test/msw.ts';
 import { renderApp } from '../../test/render.tsx';
 import { todosQueryKey } from '../todos/query.ts';
@@ -513,6 +514,25 @@ describe('EditForm', () => {
     expect(event.defaultPrevented).toBe(true);
     await waitFor(() => expect(state.patches).toEqual([{ id: milk.id, body: { description: 'Buy oat milk' } }]));
     expect(screen.queryByRole('textbox', { name: 'Edit description' })).toBeNull();
+  });
+
+  it('K3 a dropped line break in the edit field is cancelled and the text goes in cleaned at the drop point; nothing is saved', async () => {
+    const state = serve([milk]);
+    state.release.open();
+    const { user } = await renderLoaded(['Buy milk']);
+
+    await user.click(editButton('Buy milk'));
+    fireEvent.change(editField(), { target: { value: 'Buy  milk' } });
+    editField().setSelectionRange(0, 0);
+    const event = dropOnto(editField(), { data: 'One\nTwo', pointsAt: 4 });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(editField().value).toBe('Buy One Two milk');
+    expect(editField().selectionStart).toBe(11);
+    expect(editField().selectionEnd).toBe(11);
+    expect(document.activeElement).toBe(editField());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(state.patches).toEqual([]);
   });
 
   it('K3 a beforeinput line break with Shift held (keyCode 229) is cancelled and does not save; Enter then saves', async () => {

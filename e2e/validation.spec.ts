@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
 import {
   containing,
+  dropText,
   fieldStatus,
   focusAddField,
   MESSAGES,
@@ -92,6 +93,29 @@ test.describe('add form validation', () => {
 
     await page.keyboard.press('ControlOrMeta+Z');
     await expect(field).toHaveValue('Buy  milk');
+  });
+
+  test('E6 K1 dropping two lines joins them with spaces, leaves the caret after them, and one undo restores the field', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'CDP drag input is Chromium only');
+    const field = await focusAddField(page);
+    await page.keyboard.type('Buy ');
+    // The caret goes to the start, away from the drop point, and focus leaves the field:
+    // the drop itself focuses the field and moves the caret to where it lands.
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Tab');
+    await expect(field).not.toBeFocused();
+
+    const cdp = await page.context().newCDPSession(page);
+    await dropText(page, cdp, field, 'oat\nand\r\nmore');
+
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue('Buy oat and  more');
+    expect(await field.evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.selectionEnd])).toEqual([17, 17]);
+    await expect(page.getByText('17/200')).toBeVisible();
+    await expectNoAxeViolations(page, 'two-line drop joined');
+
+    await page.keyboard.press('ControlOrMeta+Z');
+    await expect(field).toHaveValue('Buy ');
   });
 
   test('E6 K1 a trusted Enter with keyCode 229 submits through beforeinput and inserts no newline', async ({ page, browserName }, testInfo) => {

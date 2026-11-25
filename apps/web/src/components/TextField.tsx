@@ -174,15 +174,17 @@ export function useTextField({ hint, initial = '' }: TextFieldOptions): TextFiel
     // `status` is a fresh object each render; only the crossing matters here.
   }, [over]);
 
-  // Native listeners: React has no paste-with-cancel insert path that keeps the
-  // undo stack, and its onBeforeInput carries no `inputType`.
+  // Native listeners: React has no paste- or drop-with-cancel insert path that
+  // keeps the undo stack, and its onBeforeInput carries no `inputType`.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
-    function handlePaste(event: ClipboardEvent) {
-      const text = event.clipboardData?.getData('text/plain');
-      if (!text) return;
+    /**
+     * Unless `text` is already clean, cancels `event`'s native insert and puts
+     * the cleaned text in place of the selection instead.
+     */
+    function insertCleaned(event: Event, text: string) {
       const cleaned = replaceForbidden(text);
       if (cleaned === text) return;
       event.preventDefault();
@@ -193,6 +195,12 @@ export function useTextField({ hint, initial = '' }: TextFieldOptions): TextFiel
         el!.setRangeText(cleaned, el!.selectionStart, el!.selectionEnd, 'end');
         el!.dispatchEvent(new Event('input', { bubbles: true }));
       }
+    }
+
+    function handlePaste(event: ClipboardEvent) {
+      const text = event.clipboardData?.getData('text/plain');
+      if (!text) return;
+      insertCleaned(event, text);
     }
 
     // `beforeinput` carries no modifier state: Shift comes from the latest key event.
@@ -206,9 +214,30 @@ export function useTextField({ hint, initial = '' }: TextFieldOptions): TextFiel
       shiftHeld = false;
     }
 
-    // Keyboards that keep every word composing send Enter, and Shift+Enter, as a
-    // line break here. It is never inserted, and only Enter without Shift submits.
+    // Where the latest drop on the field points, as an offset into its value, if the engine says.
+    let dropOffset: number | null = null;
+    function recordDrop(event: DragEvent) {
+      const at = typeof document.caretPositionFromPoint === 'function' ? document.caretPositionFromPoint(event.clientX, event.clientY) : null;
+      dropOffset = at?.offsetNode === el ? at.offset : null;
+    }
+
     function handleBeforeInput(event: InputEvent) {
+      // A drop carrying a forbidden character goes in cleaned, as one undo step, only when the
+      // field has focus and its selection already sits collapsed at the drop point: Chrome and
+      // Safari set both before this event, other engines may not. Otherwise the drop is left to
+      // the engine and cleaned on `input`. Chrome and Safari give a textarea the text in `data`
+      // and no `dataTransfer`.
+      if (event.inputType === 'insertFromDrop') {
+        const at = dropOffset;
+        dropOffset = null;
+        const text = event.data ?? event.dataTransfer?.getData('text/plain');
+        const atDropPoint = at !== null && el!.selectionStart === at && el!.selectionEnd === at;
+        // insertText writes into the focused element, so the field must already have focus.
+        if (text && atDropPoint && document.activeElement === el) insertCleaned(event, text);
+        return;
+      }
+      // Keyboards that keep every word composing send Enter, and Shift+Enter, as a
+      // line break here. It is never inserted, and only Enter without Shift submits.
       if (event.inputType !== 'insertLineBreak' && event.inputType !== 'insertParagraph') return;
       event.preventDefault();
       if (shiftHeld) return;
@@ -219,12 +248,14 @@ export function useTextField({ hint, initial = '' }: TextFieldOptions): TextFiel
     el.addEventListener('keydown', trackShift);
     el.addEventListener('keyup', trackShift);
     el.addEventListener('blur', forgetShift);
+    el.addEventListener('drop', recordDrop);
     el.addEventListener('beforeinput', handleBeforeInput);
     return () => {
       el.removeEventListener('paste', handlePaste);
       el.removeEventListener('keydown', trackShift);
       el.removeEventListener('keyup', trackShift);
       el.removeEventListener('blur', forgetShift);
+      el.removeEventListener('drop', recordDrop);
       el.removeEventListener('beforeinput', handleBeforeInput);
     };
   }, []);

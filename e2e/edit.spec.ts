@@ -4,6 +4,7 @@ import {
   announcement,
   completionCheck,
   createTodo,
+  dropText,
   editButton,
   editField,
   focusAddField,
@@ -231,6 +232,41 @@ test('E4 K3 a trusted Shift+Enter with keyCode 229 in the edit field neither sav
   await expect(completionCheck(page, edited)).toBeVisible();
   expect(await lineBreaks()).toEqual(['insertLineBreak true', 'insertLineBreak true']);
   expect(patches).toEqual([{ description: edited }]);
+});
+
+test('E4 K3 dropping two lines into the edit field joins them, leaves the caret after them, and one undo restores the field', async ({
+  page,
+  request,
+  browserName,
+}, testInfo) => {
+  test.skip(browserName !== 'chromium', 'CDP drag input is Chromium only');
+  const description = uniqueDescription('E4 drop', testInfo.project.name);
+  const dropped = `${description} oat milk`;
+  await createTodo(request, description);
+  const patches = recordPatches(page);
+
+  await tabToOnlyEdit(page, description);
+  await page.keyboard.press('Enter');
+  const field = editField(page);
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue(description);
+  // It opens with all its text selected: the caret goes to the end, where the drop lands.
+  await page.keyboard.press('End');
+  expect(await selection(field)).toEqual([description.length, description.length]);
+
+  const cdp = await page.context().newCDPSession(page);
+  await dropText(page, cdp, field, '\noat\tmilk');
+
+  await expect(field).toHaveValue(dropped);
+  expect(await selection(field)).toEqual([dropped.length, dropped.length]);
+  await expectNoAxeViolations(page, 'edit two-line drop joined');
+
+  await page.keyboard.press('ControlOrMeta+Z');
+  await expect(field).toHaveValue(description);
+  await expect(field).toBeFocused();
+  // Give a wrongly sent save time to go out before asserting none did.
+  await page.waitForTimeout(300);
+  expect(patches).toEqual([]);
 });
 
 for (const failure of [

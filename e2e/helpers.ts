@@ -73,6 +73,25 @@ export async function pressComposingEnter(cdp: CDPSession, { shift = false }: { 
   if (shift) await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', modifiers: 0, ...shiftKey });
 }
 
+/**
+ * Drops `text` into `field` through Chromium's real drag path, as a drag from another app
+ * does: CDP drag events raise a trusted `beforeinput` `insertFromDrop`. The point is inside
+ * the field near its right edge on the first line, past the end of a one-line value, so
+ * the drop caret is the end of the value.
+ */
+export async function dropText(page: Page, cdp: CDPSession, field: Locator, text: string): Promise<void> {
+  const box = await field.boundingBox();
+  if (!box) throw new Error('dropText: the field has no box');
+  const x = box.x + box.width - 8;
+  const y = box.y + 12;
+  const data = { items: [{ mimeType: 'text/plain', data: text }], dragOperationsMask: 1 };
+  for (const type of ['dragEnter', 'dragOver', 'drop'] as const) {
+    await cdp.send('Input.dispatchDragEvent', { type, x, y, data });
+  }
+  // Let the drop's input handlers and React's render settle before the caller asserts.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+}
+
 /** A description no other test or run uses: `<prefix> <project> <time>-<random>`. */
 export function uniqueDescription(prefix: string, project: string): string {
   return `${prefix} ${project} ${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
