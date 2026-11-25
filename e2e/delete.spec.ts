@@ -9,6 +9,7 @@ import {
   focusAddField,
   MESSAGES,
   resetList,
+  TODO_PATH,
   todoItem,
   todoList,
   UNAVAILABLE_BODY,
@@ -25,7 +26,6 @@ import {
 test.beforeEach(({ request }) => resetList(request));
 
 const isDelete = (route: Route) => route.request().method() === 'DELETE';
-const TODO_PATH = '**/api/todos/*';
 
 /** Counts the DELETE requests the page sends. */
 function countDeletes(page: Page): { readonly count: number } {

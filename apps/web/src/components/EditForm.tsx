@@ -1,6 +1,6 @@
 import { useLayoutEffect, type FormEvent, type KeyboardEvent } from 'react';
 import { messages } from '../todos/messages.ts';
-import { TextFieldBox, TextFieldNotes, useTextField } from './TextField.tsx';
+import { isComposingKey, TextFieldBox, TextFieldNotes, useTextField } from './TextField.tsx';
 import buttons from './CardButton.module.css';
 import styles from './EditForm.module.css';
 
@@ -39,7 +39,7 @@ export function EditForm({ initial, onSave, onCancel }: EditFormProps) {
   function handleKeyDown(event: KeyboardEvent<HTMLFormElement>) {
     if (event.key !== 'Escape') return;
     // Escape ends an IME composition first; it never cancels the edit then.
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (isComposingKey(event)) return;
     event.preventDefault();
     onCancel();
   }

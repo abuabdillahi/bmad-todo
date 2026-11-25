@@ -30,8 +30,20 @@ export interface MutationSpec {
   readonly successText?: string;
 }
 
+/** A follow-up's `not-found`, as the helper announced it: the todo's id and the failure text. */
+export interface NotFoundRecord {
+  readonly id: string;
+  readonly text: string;
+}
+
 export interface MutationHelper {
   run(spec: MutationSpec): Promise<MutationOutcome>;
+  /**
+   * The last follow-up answered `not-found`: its todo's id and the text it
+   * announced, recorded in the same step as the announce; null until one is.
+   * The list area reads it so it doesn't announce the same loss twice (AD-14).
+   */
+  lastNotFound(): NotFoundRecord | null;
   /**
    * Adds the todo on top of the cache at once (AD-7, AD-13), with a freshly
    * minted id, or with `id` when resubmitting a failed add's unchanged text, so
@@ -105,6 +117,7 @@ function failureInfo(error: unknown): FailureInfo {
  */
 export function createMutationHelper({ queryClient, store, announce, now = Date.now }: MutationHelperDeps): MutationHelper {
   const chains = new Map<string, Chain>();
+  let notFound: NotFoundRecord | null = null;
 
   function readList(): Todo[] {
     return queryClient.getQueryData<Todo[]>(todosQueryKey) ?? [];
@@ -193,7 +206,9 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
         revert(entry, chain);
         leave(entry, chain);
         store.recordRevert(spec.id, now());
-        announce('failure', spec.failureText(failure));
+        const text = spec.failureText(failure);
+        if (spec.kind === 'follow-up' && failure.kind === 'not-found') notFound = { id: spec.id, text };
+        announce('failure', text);
       });
       return { status: 'failed', failure };
     }
@@ -289,5 +304,5 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
     });
   }
 
-  return { run, addTodo, setCompleted, editDescription, deleteTodo };
+  return { run, lastNotFound: () => notFound, addTodo, setCompleted, editDescription, deleteTodo };
 }

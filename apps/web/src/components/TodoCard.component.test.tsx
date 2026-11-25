@@ -1,13 +1,12 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import type { Todo, UpdateTodoBody } from '@todo/contract';
+import type { Todo } from '@todo/contract';
 import { server } from '../../test/msw.ts';
 import { renderApp } from '../../test/render.tsx';
+import { card, check, gate, liveElement, problem, renderLoaded, row, serve, UNAVAILABLE } from '../../test/todos.tsx';
 import { useTodosContext, type TodosContextValue } from '../todos/TodosProvider.tsx';
 import { REVERT_FLAG_MS } from './TodoCard.tsx';
 import styles from './TodoCard.module.css';
-
-const UNAVAILABLE = "The server isn't available right now. Try again in a moment.";
 
 const milk: Todo = {
   id: 'a0000000-0000-4000-8000-000000000001',
@@ -28,78 +27,8 @@ const rent: Todo = {
   createdAt: '2026-11-23T10:00:00.000Z',
 };
 
-/** A gate a handler waits on until the test opens it. */
-function gate() {
-  let open: () => void = () => {};
-  const opened = new Promise<void>((resolve) => (open = resolve));
-  return { opened, open: () => open() };
-}
-
-const problem = (type: string, status: number) =>
-  HttpResponse.json({ type, title: 'x', status, detail: 'x' }, { status, headers: { 'Content-Type': 'application/problem+json' } });
-
-/**
- * A server holding `initial`: GET lists what it holds, and each PATCH waits for
- * `release`, then answers with `fail` if set, else applies the body (404 for an
- * id it doesn't hold).
- */
-function serve(initial: Todo[]) {
-  const state = {
-    todos: initial.map((todo) => ({ ...todo })),
-    lists: 0,
-    patches: [] as { id: string; body: UpdateTodoBody }[],
-    release: gate(),
-    fail: undefined as undefined | (() => Response),
-  };
-  server.use(
-    http.get('*/api/todos', () => {
-      state.lists += 1;
-      return HttpResponse.json(state.todos);
-    }),
-    http.patch('*/api/todos/:id', async ({ params, request }) => {
-      const id = String(params.id);
-      const body = (await request.json()) as UpdateTodoBody;
-      state.patches.push({ id, body });
-      await state.release.opened;
-      if (state.fail) return state.fail();
-      const at = state.todos.findIndex((todo) => todo.id === id);
-      if (at === -1) return problem('/problems/not-found', 404);
-      state.todos[at] = { ...state.todos[at]!, ...body };
-      return HttpResponse.json(state.todos[at]);
-    }),
-  );
-  return state;
-}
-
-/** The Announcer's live element: the status outside the add form. */
-function liveElement(): HTMLElement {
-  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null && !el.hasAttribute('data-loading-status'));
-  expect(statuses).toHaveLength(1);
-  return statuses[0]!;
-}
-
-function check(name: string): HTMLInputElement {
-  return screen.getByRole('checkbox', { name }) as HTMLInputElement;
-}
-
-function row(name: string): HTMLElement {
-  return check(name).closest('li')!;
-}
-
-/** The card element inside a row: `li` › body › card. */
-function card(name: string): HTMLElement {
-  return row(name).firstElementChild!.firstElementChild as HTMLElement;
-}
-
 function chip(name: string): HTMLElement | null {
   return within(row(name)).queryByText('Done');
-}
-
-async function renderLoaded(names: string[]) {
-  const app = renderApp();
-  await waitFor(() => expect(within(app.list).queryAllByRole('checkbox')).toHaveLength(names.length));
-  await waitFor(() => expect(app.queryClient.getQueryState(['todos'])?.fetchStatus).toBe('idle'));
-  return app;
 }
 
 describe('TodoCard', () => {

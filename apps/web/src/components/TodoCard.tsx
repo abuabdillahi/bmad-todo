@@ -2,7 +2,10 @@ import { useEffect, useId, useReducer, useRef, useState, type ChangeEvent, type 
 import { flushSync } from 'react-dom';
 import type { Todo } from '@todo/contract';
 import { useEditDescription, useRevertedAt, useSetCompleted } from '../todos/hooks.ts';
+import type { AnnouncerFocusTargets } from './Announcer.tsx';
 import { EditForm } from './EditForm.tsx';
+import { useTapOrigin } from './tap-origin.ts';
+import { isComposingKey } from './TextField.tsx';
 import buttons from './CardButton.module.css';
 import styles from './TodoCard.module.css';
 
@@ -36,23 +39,6 @@ function useRevertFlag(revertedAt: number | undefined): boolean {
   }, [revertedAt, flagged]);
 
   return flagged;
-}
-
-/** The Completion check of the row `item`, if there is one. */
-function checkOf(item: Element | null): HTMLInputElement | null {
-  return item?.querySelector<HTMLInputElement>('input[type="checkbox"]') ?? null;
-}
-
-/** The nearest row after (`next`) or before `item` that isn't a Leaving copy: focus targets skip those. */
-function operableSibling(item: Element, next: boolean): Element | null {
-  let sibling = next ? item.nextElementSibling : item.previousElementSibling;
-  while (sibling?.hasAttribute('data-leaving')) sibling = next ? sibling.nextElementSibling : sibling.previousElementSibling;
-  return sibling;
-}
-
-/** The add field: the textarea its visible label names "New todo". */
-function addField(): HTMLTextAreaElement | null {
-  return [...document.querySelectorAll('textarea')].find((el) => el.labels?.[0]?.textContent?.trim() === 'New todo') ?? null;
 }
 
 /** What the list area gives each card for edit mode: it owns which row edits, and the drafts. */
@@ -96,6 +82,22 @@ const NOT_CONFIRMING: CardConfirm = {
   remove: () => {},
 };
 
+/** What the list area gives each card to move focus off its row: it owns the rows' order. */
+export interface CardFocus {
+  /**
+   * The Completion check of the operable row after this one, else of the one
+   * before it, else null (the row is the only one). Leaving copies are skipped.
+   */
+  readonly nextCheck: () => HTMLInputElement | null;
+  /** The add field and the Page heading. */
+  readonly targets: AnnouncerFocusTargets;
+}
+
+const NO_FOCUS: CardFocus = {
+  nextCheck: () => null,
+  targets: { addField: { current: null }, heading: { current: null } },
+};
+
 export interface TodoCardProps {
   todo: Todo;
   /** Play the enter motion when this card mounts (read once, at mount). */
@@ -104,6 +106,8 @@ export interface TodoCardProps {
   edit?: CardEditing;
   /** The Delete confirm, owned by the list area. */
   confirm?: CardConfirm;
+  /** Where focus goes off this row, owned by the list area. */
+  focus?: CardFocus;
   /** A Leaving copy: inert and hidden from assistive tech, playing the leave motion only. */
   leaving?: boolean;
 }
@@ -117,7 +121,14 @@ export interface TodoCardProps {
  * through the helper (AD-13), as a save does. The text renders only through
  * React's escaping (AD-19).
  */
-export function TodoCard({ todo, enter = false, edit = NOT_EDITING, confirm = NOT_CONFIRMING, leaving = false }: TodoCardProps) {
+export function TodoCard({
+  todo,
+  enter = false,
+  edit = NOT_EDITING,
+  confirm = NOT_CONFIRMING,
+  focus = NO_FOCUS,
+  leaving = false,
+}: TodoCardProps) {
   const [entering] = useState(enter && !leaving);
   const textId = useId();
   const promptId = useId();
@@ -125,8 +136,8 @@ export function TodoCard({ todo, enter = false, edit = NOT_EDITING, confirm = NO
   const editButtonRef = useRef<HTMLButtonElement>(null);
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
-  // The last pointerdown's type on this card, so a tapped Confirm delete on the last row sends focus to the heading.
-  const lastPointerType = useRef<string | null>(null);
+  // A tapped Confirm delete on the last row sends focus to the heading.
+  const tapOrigin = useTapOrigin();
   // Counts this card's changed saves, so only the latest one keeps a failed draft.
   const latestSave = useRef(0);
   const setCompleted = useSetCompleted();
@@ -152,7 +163,7 @@ export function TodoCard({ todo, enter = false, edit = NOT_EDITING, confirm = NO
   function moveFocusOffRow() {
     const item = itemRef.current;
     if (!item?.contains(document.activeElement)) return;
-    const target = checkOf(operableSibling(item, true)) ?? checkOf(operableSibling(item, false)) ?? item.closest('ul');
+    const target = focus.nextCheck() ?? item.closest('ul');
     target?.focus();
   }
 
@@ -191,7 +202,7 @@ export function TodoCard({ todo, enter = false, edit = NOT_EDITING, confirm = NO
   function handleConfirmKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'Escape') return;
     // Escape ends an IME composition first; it never cancels the confirm then.
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (isComposingKey(event)) return;
     event.preventDefault();
     closeConfirm();
   }
@@ -203,13 +214,11 @@ export function TodoCard({ todo, enter = false, edit = NOT_EDITING, confirm = NO
    * closed. Only then does the row turn into its inert Leaving copy.
    */
   function confirmDelete(event: MouseEvent<HTMLButtonElement>) {
-    const item = itemRef.current;
-    const touch = (lastPointerType.current === 'touch' || lastPointerType.current === 'pen') && event.detail !== 0;
-    lastPointerType.current = null;
-    const check = item ? (checkOf(operableSibling(item, true)) ?? checkOf(operableSibling(item, false))) : null;
+    const touch = tapOrigin.tapped(event);
+    const check = focus.nextCheck();
     if (check) check.focus();
-    else if (touch) document.querySelector<HTMLHeadingElement>('main h1')?.focus({ preventScroll: true });
-    else addField()?.focus();
+    else if (touch) focus.targets.heading.current?.focus({ preventScroll: true });
+    else focus.targets.addField.current?.focus();
     flushSync(() => confirm.remove());
   }
 
@@ -247,7 +256,7 @@ export function TodoCard({ todo, enter = false, edit = NOT_EDITING, confirm = NO
       aria-hidden={leaving ? 'true' : undefined}
     >
       <div className={styles.body}>
-        <div className={cardClass} onPointerDown={(event) => (lastPointerType.current = event.pointerType)}>
+        <div className={cardClass} onPointerDown={tapOrigin.onPointerDown}>
           <div className={styles.main}>
             <span className={styles.check}>
               {/* In edit mode the text element is gone, so the check is named by the saved text directly. */}

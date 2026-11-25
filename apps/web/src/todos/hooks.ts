@@ -88,19 +88,21 @@ export function useDeleteTodo(): (todo: Pick<Todo, 'id' | 'description'>) => Pro
 
 /**
  * The list area's one announcement (AD-14): “{t}” was deleted elsewhere, kind
- * `failure`, when a refetch removes the row in edit mode. Skipped while that
- * exact failure message is already showing (a `not-found` the helper announced).
+ * `failure`, when a refetch removes the row in edit mode. Skipped only while the
+ * helper's message for this same todo's `not-found` is still showing (its last
+ * `not-found` record has this id, and that failure text shows): another todo
+ * with the same text is still announced.
  */
-export function useAnnounceDeletedElsewhere(): (description: string) => void {
-  const { announcer } = useTodosContext();
+export function useAnnounceDeletedElsewhere(): (todo: Pick<Todo, 'id' | 'description'>) => void {
+  const { announcer, mutations } = useTodosContext();
   return useCallback(
-    (description: string) => {
-      const text = messages.deletedElsewhere(description);
+    ({ id, description }: Pick<Todo, 'id' | 'description'>) => {
+      const notFound = mutations.lastNotFound();
       const showing = announcer.getSnapshot().message;
-      if (showing?.kind === 'failure' && showing.text === text) return;
-      announcer.announce('failure', text);
+      if (notFound?.id === id && showing?.kind === 'failure' && showing.text === notFound.text) return;
+      announcer.announce('failure', messages.deletedElsewhere(description));
     },
-    [announcer],
+    [announcer, mutations],
   );
 }
 

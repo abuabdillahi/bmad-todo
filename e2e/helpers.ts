@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { expect, type APIRequestContext, type CDPSession, type Locator, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type CDPSession, type Locator, type Page, type Route } from '@playwright/test';
 
 /**
- * Locators, test data, list setup and expected copy shared by the e2e specs.
- * Every spec empties the list through the public API before each test
- * (`resetList`, AD-20), and sets up todos through it (`createTodo`); a test
- * still gives its todos unique descriptions and asserts only on its own.
+ * Locators, request routes and waits, test data, list setup and expected copy
+ * shared by the e2e specs. Every spec empties the list through the public API
+ * before each test (`resetList`, AD-20), and sets up todos through it
+ * (`createTodo`); a test still gives its todos unique descriptions and asserts
+ * only on its own.
  */
 
 /** A todo as the API returns it (AD-6). */
@@ -34,6 +35,28 @@ export async function resetList(request: APIRequestContext): Promise<void> {
   const after = await request.get('/api/todos');
   expect(after.status()).toBe(200);
   expect(await after.json()).toEqual([]);
+}
+
+/** The route pattern of one todo's requests (PATCH, DELETE), for `page.route`. */
+export const TODO_PATH = '**/api/todos/*';
+
+/** A PATCH to one todo. */
+export const isPatch = (route: Route) => route.request().method() === 'PATCH';
+
+/** Waits for the next answered PATCH, then for the settle-time refetch that follows it. */
+export function patchAndRefetch(page: Page) {
+  return page
+    .waitForResponse((response) => response.request().method() === 'PATCH')
+    .then((patch) =>
+      page
+        .waitForResponse((response) => response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/todos')
+        .then(() => patch),
+    );
+}
+
+/** A focus refetch: TanStack Query refetches the list on `visibilitychange` while the page is visible. */
+export async function regainFocus(page: Page) {
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange', { bubbles: true })));
 }
 
 /** Creates a todo through the public API with a fresh id, then completes it when `completed`. */

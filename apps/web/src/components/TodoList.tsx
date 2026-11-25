@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent } from 'react';
 import { flushSync } from 'react-dom';
 import type { Todo } from '@todo/contract';
 import {
@@ -13,7 +13,8 @@ import { messages } from '../todos/messages.ts';
 import type { AnnouncerFocusTargets } from './Announcer.tsx';
 import { isLive, mergeRows, withoutLeft, type LeavingEntry } from './leaving-rows.ts';
 import { createLoadingStatus } from './loading-status.ts';
-import { TodoCard, type CardConfirm, type CardEditing } from './TodoCard.tsx';
+import { useTapOrigin } from './tap-origin.ts';
+import { TodoCard, type CardConfirm, type CardEditing, type CardFocus } from './TodoCard.tsx';
 import styles from './TodoList.module.css';
 
 /** How long a Leaving row stays rendered: `--motion-duration-base`, mirrored. */
@@ -43,6 +44,28 @@ type Focused = { readonly kind: 'row'; readonly id: string } | { readonly kind: 
 function sameFocused(a: Focused, b: Focused): boolean {
   if (a === null || b === null) return a === b;
   return a.kind === b.kind && (a.kind !== 'row' || a.id === (b as { id: string }).id);
+}
+
+/**
+ * The one rule for focus off a removed row (EXPERIENCE Focus management): the
+ * Completion check of the operable row now at `id`'s place among `ids`, else of
+ * the one before it, else null. `before` is the order `id` held its place in;
+ * its place is the number of rows before it there that are still in `ids`.
+ * `ids` are the operable rows, in order, as `list` renders them.
+ */
+function checkAtPlaceOf(
+  list: HTMLUListElement | null,
+  id: string,
+  before: readonly string[],
+  ids: readonly string[],
+): HTMLInputElement | null {
+  const kept = new Set(ids);
+  const at = before.slice(0, Math.max(0, before.indexOf(id))).filter((other) => kept.has(other)).length;
+  const targetId = ids.length === 0 ? undefined : ids[Math.min(at, ids.length - 1)];
+  const row = [...(list?.children ?? [])].find(
+    (item) => item.getAttribute('data-todo-id') === targetId && !item.hasAttribute('data-leaving'),
+  );
+  return row?.querySelector<HTMLInputElement>('input[type="checkbox"]') ?? null;
 }
 
 /** Three skeleton cards while loading (DESIGN Components › Skeleton card). */
@@ -229,6 +252,7 @@ export function TodoList({ focusTargets }: { focusTargets: AnnouncerFocusTargets
   // Todo list's to that target; the Empty panel's (replaced by rows) to the Todo
   // list; the List error panel's (replaced by a refetch) to the Todo list, else the
   // Empty panel. Runs every commit, before the announce and the Loading status below.
+  // `previousIds` is the last commit's operable rows, in the order they render.
   const previousIds = useRef<string[]>([]);
   useLayoutEffect(() => {
     movedToList.current = false;
@@ -249,13 +273,7 @@ export function TodoList({ focusTargets }: { focusTargets: AnnouncerFocusTargets
     let target: HTMLElement | null;
     if (tracked.kind === 'row') {
       // Its place among the rows that survived: those before it in the previous commit.
-      const kept = new Set(ids);
-      const at = before.slice(0, Math.max(0, before.indexOf(tracked.id))).filter((id) => kept.has(id)).length;
-      const targetId = ids.length === 0 ? undefined : ids[Math.min(at, ids.length - 1)];
-      const row = [...(listRef.current?.children ?? [])].find(
-        (item) => item.getAttribute('data-todo-id') === targetId && !item.hasAttribute('data-leaving'),
-      );
-      target = row?.querySelector<HTMLInputElement>('input[type="checkbox"]') ?? fallbackTarget();
+      target = checkAtPlaceOf(listRef.current, tracked.id, before, ids) ?? fallbackTarget();
     } else if (tracked.kind === 'list') {
       target = fallbackTarget();
     } else {
@@ -263,6 +281,21 @@ export function TodoList({ focusTargets }: { focusTargets: AnnouncerFocusTargets
     }
     if (target) moveFocusTo(target);
   });
+
+  /**
+   * A card moves focus off its own row by the same rule, before the row goes: the
+   * rows as they render now, without it. Read when a handler runs or a call settles,
+   * when `previousIds` holds the rows the DOM shows.
+   */
+  function focusFor(id: string): CardFocus {
+    return {
+      nextCheck: () => {
+        const before = previousIds.current;
+        return checkAtPlaceOf(listRef.current, id, before, before.filter((other) => other !== id));
+      },
+      targets: focusTargets,
+    };
+  }
 
   // A row in edit mode that a refetch removed (EXPERIENCE State Patterns): the form
   // closes with its draft, and the loss is announced, unless a helper revert removed
@@ -285,7 +318,7 @@ export function TodoList({ focusTargets }: { focusTargets: AnnouncerFocusTargets
     watched.current = null;
     setOpen((current) => (current?.id === editingId && current.mode === 'edit' ? null : current));
     drafts.current.delete(editingId);
-    if (last?.id === editingId && last.revertedAt === reverted) announceDeletedElsewhere(last.description);
+    if (last?.id === editingId && last.revertedAt === reverted) announceDeletedElsewhere({ id: last.id, description: last.description });
     // Only a change to the list or the editing row is a removal to judge.
   }, [todos, editingId]);
 
@@ -314,16 +347,10 @@ export function TodoList({ focusTargets }: { focusTargets: AnnouncerFocusTargets
 
   // Try again (EXPERIENCE Hand-off order): focus moves to the add field first, or to the
   // heading after a touch so the phone keyboard stays closed; then the panel goes.
-  const lastPointerType = useRef<string | null>(null);
-
-  function handleTryAgainPointerDown(event: PointerEvent<HTMLButtonElement>) {
-    lastPointerType.current = event.pointerType;
-  }
+  const tryAgainTap = useTapOrigin();
 
   function handleTryAgain(event: MouseEvent<HTMLButtonElement>) {
-    const touch = (lastPointerType.current === 'touch' || lastPointerType.current === 'pen') && event.detail !== 0;
-    lastPointerType.current = null;
-    if (touch) focusTargets.heading.current?.focus({ preventScroll: true });
+    if (tryAgainTap.tapped(event)) focusTargets.heading.current?.focus({ preventScroll: true });
     else focusTargets.addField.current?.focus();
     flushSync(retry);
   }
@@ -337,7 +364,14 @@ export function TodoList({ focusTargets }: { focusTargets: AnnouncerFocusTargets
             row.leaving ? (
               <TodoCard key={row.key} todo={row.todo} leaving />
             ) : (
-              <TodoCard key={row.key} todo={row.todo} enter={enter} edit={editingFor(row.todo.id)} confirm={confirmFor(row.todo, index)} />
+              <TodoCard
+                key={row.key}
+                todo={row.todo}
+                enter={enter}
+                edit={editingFor(row.todo.id)}
+                confirm={confirmFor(row.todo, index)}
+                focus={focusFor(row.todo.id)}
+              />
             ),
           )}
         </ul>
@@ -358,7 +392,7 @@ export function TodoList({ focusTargets }: { focusTargets: AnnouncerFocusTargets
           <button
             type="button"
             className={styles.tryAgain}
-            onPointerDown={handleTryAgainPointerDown}
+            onPointerDown={tryAgainTap.onPointerDown}
             onClick={handleTryAgain}
           >
             {messages.tryAgain}

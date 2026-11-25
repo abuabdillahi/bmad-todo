@@ -3,6 +3,7 @@ import type { LightMyRequestResponse } from 'fastify';
 import { todos } from '../../src/db/schema.ts';
 import { expectDocumented, expectDocumentedNoContent } from '../openapi-schema.ts';
 import { startHarness, type Harness } from './harness.ts';
+import { expectNothingLeaked, expectValidationProblem } from './todo-checks.ts';
 
 /** The documented path template of a single todo (I9). */
 const TODO_PATH = '/api/todos/{id}';
@@ -65,31 +66,12 @@ function expectUpdated(response: LightMyRequestResponse) {
   return body;
 }
 
-/** A validation problem, documented for PATCH (I9), naming `field` when given. */
-function expectValidationProblem(response: LightMyRequestResponse, field?: string): void {
-  expect(response.statusCode).toBe(400);
-  const body = response.json();
-  expectDocumented(TODO_PATH, 'patch', 400, response.headers['content-type'], body);
-  expect(body).toMatchObject({ type: '/problems/validation', title: expect.any(String), status: 400 });
-  if (field === undefined) {
-    expect(body.errors ?? []).toEqual([]);
-  } else {
-    expect(body.errors).toEqual([{ field, message: expect.any(String) }]);
-  }
-}
-
 /** A not-found problem, documented for the method (I9). */
 function expectNotFound(response: LightMyRequestResponse, method: 'patch' | 'delete'): void {
   expect(response.statusCode).toBe(404);
   const body = response.json();
   expectDocumented(TODO_PATH, method, 404, response.headers['content-type'], body);
   expect(body).toEqual({ type: '/problems/not-found', title: expect.any(String), status: 404, detail: expect.any(String) });
-}
-
-/** No problem body carries the submitted text, a stack or SQL (AD-9). */
-function expectNothingLeaked(response: LightMyRequestResponse, ...texts: string[]): void {
-  for (const text of texts) expect(response.body).not.toContain(text);
-  expect(response.body).not.toMatch(/stack|sqlite|select |update |delete |\bat \//i);
 }
 
 describe('PATCH /api/todos/{id} updates a todo', () => {
@@ -179,7 +161,7 @@ describe('PATCH /api/todos/{id} refuses an invalid update', () => {
 
     const response = await patch(row.id, { description });
 
-    expectValidationProblem(response, 'description');
+    expectValidationProblem(response, TODO_PATH, 'patch', 'description');
     expectNothingLeaked(response, 'Buy milk');
     expect(storedRows()).toEqual([row]);
   });
@@ -189,7 +171,7 @@ describe('PATCH /api/todos/{id} refuses an invalid update', () => {
 
     const response = await patch(row.id, { completed: true, description });
 
-    expectValidationProblem(response, 'description');
+    expectValidationProblem(response, TODO_PATH, 'patch', 'description');
     expect(storedRows()).toEqual([row]);
   });
 
@@ -208,7 +190,7 @@ describe('PATCH /api/todos/{id} refuses an invalid update', () => {
 
     const response = await patch(row.id, payload, headers);
 
-    expectValidationProblem(response);
+    expectValidationProblem(response, TODO_PATH, 'patch');
     expect(storedRows()).toEqual([row]);
   });
 
@@ -228,7 +210,7 @@ describe('PATCH /api/todos/{id} refuses an invalid update', () => {
 
     const response = await patch(row.id, payload);
 
-    expectValidationProblem(response, field);
+    expectValidationProblem(response, TODO_PATH, 'patch', field);
     expect(storedRows()).toEqual([row]);
   });
 
@@ -250,7 +232,7 @@ describe('PATCH /api/todos/{id} refuses an invalid update', () => {
 
     const response = await patch(row.id, { completed: true, description: `  ${description}  ` });
 
-    expectValidationProblem(response, 'description');
+    expectValidationProblem(response, TODO_PATH, 'patch', 'description');
     expectNothingLeaked(response, 'Buy', 'bread');
     expect(storedRows()).toEqual([row]);
   });

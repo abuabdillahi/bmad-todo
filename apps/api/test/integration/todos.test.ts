@@ -3,6 +3,7 @@ import type { LightMyRequestResponse } from 'fastify';
 import { todos } from '../../src/db/schema.ts';
 import { expectDocumented } from '../openapi-schema.ts';
 import { startHarness, type Harness } from './harness.ts';
+import { expectNothingLeaked, expectValidationProblem } from './todo-checks.ts';
 
 const ISO_MS_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -61,25 +62,6 @@ function storedRows() {
   return harness.db.select().from(todos).all();
 }
 
-/** A validation problem, documented for POST /api/todos (I9), naming `field` when given. */
-function expectValidationProblem(response: LightMyRequestResponse, field?: string): void {
-  expect(response.statusCode).toBe(400);
-  const body = response.json();
-  expectDocumented('/api/todos', 'post', 400, response.headers['content-type'], body);
-  expect(body).toMatchObject({ type: '/problems/validation', title: expect.any(String), status: 400 });
-  if (field === undefined) {
-    expect(body.errors ?? []).toEqual([]);
-  } else {
-    expect(body.errors).toEqual([{ field, message: expect.any(String) }]);
-  }
-}
-
-/** No problem body carries the submitted text, a stack or SQL (AD-9). */
-function expectNothingLeaked(response: LightMyRequestResponse, ...texts: string[]): void {
-  for (const text of texts) expect(response.body).not.toContain(text);
-  expect(response.body).not.toMatch(/stack|sqlite|select |insert |\bat \//i);
-}
-
 describe('POST /api/todos refuses an invalid create', () => {
   const id = 'c0000000-0000-4000-8000-000000000001';
 
@@ -104,7 +86,7 @@ describe('POST /api/todos refuses an invalid create', () => {
   it.each(invalid)('I2 refuses $name with a validation problem and stores nothing', async ({ payload, field, headers }) => {
     const response = await post(payload, headers);
 
-    expectValidationProblem(response, field);
+    expectValidationProblem(response, '/api/todos', 'post', field);
     expectNothingLeaked(response, 'Buy milk');
     expect(storedRows()).toEqual([]);
   });
@@ -120,7 +102,7 @@ describe('POST /api/todos refuses an invalid create', () => {
   it.each(strict)('I11 refuses $name instead of coercing or stripping it, and stores nothing', async ({ payload, field }) => {
     const response = await post(payload);
 
-    expectValidationProblem(response, field);
+    expectValidationProblem(response, '/api/todos', 'post', field);
     expect(storedRows()).toEqual([]);
   });
 
@@ -138,7 +120,7 @@ describe('POST /api/todos refuses an invalid create', () => {
   it.each(controls)('I11 refuses a trimmed description still holding $name, never normalising it', async ({ description }) => {
     const response = await post({ id, description: `  ${description}  ` });
 
-    expectValidationProblem(response, 'description');
+    expectValidationProblem(response, '/api/todos', 'post', 'description');
     expectNothingLeaked(response, 'Buy', 'milk');
     expect(storedRows()).toEqual([]);
   });

@@ -19,6 +19,15 @@ import styles from './TextField.module.css';
 const CROSSING_CLEAR_MS = 5000;
 
 /**
+ * A key press that belongs to an open IME composition (`isComposing`, or
+ * keyCode 229 from engines and keyboards that compose every word): Enter and
+ * Escape act on the composition then, never on the form.
+ */
+export function isComposingKey(event: KeyboardEvent<Element>): boolean {
+  return event.nativeEvent.isComposing || event.keyCode === 229;
+}
+
+/**
  * Grows the textarea with its content where CSS `field-sizing: content` is
  * unsupported (DESIGN.md Components › Text field).
  */
@@ -316,7 +325,7 @@ export function useTextField({ hint, initial = '' }: TextFieldOptions): TextFiel
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== 'Enter') return;
     // Enter never inserts a newline, and doesn't submit while an IME composition is open.
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (isComposingKey(event)) return;
     event.preventDefault();
     if (event.shiftKey) return;
     event.currentTarget.form?.requestSubmit();
