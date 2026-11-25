@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "8"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/8"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # Failures are classified, and the announcer reports a failed refresh
