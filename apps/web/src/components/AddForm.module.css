@@ -34,6 +34,21 @@
   outline-offset: var(--focus-ring-offset);
 }
 
+/* Invalid: the edge turns danger and thickens inward, so the focus ring keeps its gap. */
+.fieldInvalid {
+  border-color: var(--text-field-border-color-invalid);
+  box-shadow: inset 0 0 0 calc(var(--text-field-border-width-invalid) - var(--text-field-border-width))
+    var(--text-field-border-color-invalid);
+}
+
+/* Box-shadows disappear under forced colours, so the edge becomes a real border. */
+@media (forced-colors: active) {
+  .fieldInvalid {
+    border-width: var(--text-field-border-width-invalid);
+    box-shadow: none;
+  }
+}
+
 .textarea {
   display: block;
   width: 100%;
@@ -72,6 +87,56 @@
   font-weight: var(--font-counter-weight);
   line-height: var(--font-counter-line-height);
   font-variant-numeric: tabular-nums;
+}
+
+.counterOver {
+  color: var(--character-counter-foreground-over);
+  font-size: var(--font-counter-over-size);
+  font-weight: var(--font-counter-over-weight);
+  line-height: var(--font-counter-over-line-height);
+}
+
+.counterIcon {
+  flex: none;
+  width: var(--character-counter-icon-size);
+  height: var(--character-counter-icon-size);
+}
+
+.counterIconTriangle {
+  fill: var(--character-counter-foreground-over);
+}
+
+.counterIconMark {
+  fill: none;
+  stroke: var(--character-counter-icon-glyph);
+  stroke-width: var(--character-counter-icon-stroke);
+  stroke-linecap: round;
+}
+
+.inlineError {
+  display: flex;
+  align-items: center;
+  gap: var(--inline-error-gap);
+  margin: var(--inline-error-margin-top) 0 0;
+  color: var(--inline-error-foreground);
+  font-size: var(--font-inline-error-size);
+  font-weight: var(--font-inline-error-weight);
+  line-height: var(--font-inline-error-line-height);
+}
+
+.inlineErrorIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--inline-error-icon-size);
+  height: var(--inline-error-icon-size);
+  border-radius: 50%;
+  background: var(--inline-error-icon-background);
+  color: var(--inline-error-icon-foreground);
+  font-size: var(--inline-error-icon-glyph-size);
+  font-weight: var(--inline-error-icon-glyph-weight);
+  line-height: 1;
 }
 
 .add {

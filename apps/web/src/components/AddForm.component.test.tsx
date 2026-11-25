@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { CreateTodoBody, Todo } from '@todo/contract';
@@ -83,16 +83,6 @@ describe('AddForm', () => {
     expect(received[0]!.id).not.toBe(received[1]!.id);
   });
 
-  it('K1 sends nothing for a blank submit', async () => {
-    const received = acceptCreates();
-    const { user, field } = renderAddForm();
-
-    await user.type(field, '   {Enter}');
-
-    expect(received).toEqual([]);
-    expect(field).toHaveProperty('value', '   ');
-  });
-
   it('K1 keeps the text and shows no message when the add fails', async () => {
     let attempts = 0;
     server.use(
@@ -111,7 +101,7 @@ describe('AddForm', () => {
     expect(field).toHaveProperty('value', 'Buy milk');
     expect(screen.getByText('8/200')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('');
   });
 
   it('K1 leaves the list unchanged when the add fails', async () => {
@@ -194,5 +184,211 @@ describe('AddForm', () => {
     await waitFor(() => expect(field).toHaveProperty('value', ''));
     expect(received).toEqual([{ id: expect.stringMatching(UUID), description: 'Walk the dog' }]);
     expect(document.activeElement).toBe(field);
+  });
+});
+
+describe('AddForm validation', () => {
+  /** The field's description text, leaving out aria-hidden icons as assistive tech does. */
+  function describedByText(field: HTMLElement): string {
+    return (field.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => {
+        const copy = document.getElementById(id)?.cloneNode(true) as HTMLElement | undefined;
+        copy?.querySelectorAll('[aria-hidden="true"]').forEach((hidden) => hidden.remove());
+        return copy?.textContent;
+      })
+      .join(' ');
+  }
+
+  function fieldStatus() {
+    return screen.getByRole('status');
+  }
+
+  it.each([
+    { kind: 'an empty', text: '', via: 'Enter' },
+    { kind: 'a whitespace', text: '   ', via: 'Enter' },
+    { kind: 'an empty', text: '', via: 'Add' },
+    { kind: 'a whitespace', text: '\t \n', via: 'Add' },
+  ])('K1 refuses $kind submit by $via inline and sends nothing', async ({ text, via }) => {
+    const received = acceptCreates();
+    const { user, field, addButton } = renderAddForm();
+
+    expect(fieldStatus().textContent).toBe('');
+    if (text) fireEvent.change(field, { target: { value: text } });
+    if (via === 'Enter') {
+      await user.click(field);
+      await user.keyboard('{Enter}');
+    } else {
+      await user.click(addButton);
+    }
+
+    expect(screen.getByText('Enter a description.')).toBeTruthy();
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(describedByText(field)).toBe('Enter a description. 0/200 Press Enter to add.');
+    expect(document.activeElement).toBe(field);
+    await waitFor(() => expect(fieldStatus().textContent).toBe('Enter a description.'));
+    expect(received).toEqual([]);
+  });
+
+  it('K1 a second blank submit clears the Field status and sets it again', async () => {
+    acceptCreates();
+    const { user, field } = renderAddForm();
+
+    await user.click(field);
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(fieldStatus().textContent).toBe('Enter a description.'));
+
+    const seen: string[] = [];
+    const observer = new MutationObserver(() => seen.push(fieldStatus().textContent ?? ''));
+    observer.observe(fieldStatus(), { childList: true, characterData: true, subtree: true });
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(seen.at(-1)).toBe('Enter a description.'));
+    observer.disconnect();
+
+    expect(seen).toContain('');
+  });
+
+  it('K1 typing after an empty submit clears the error silently', async () => {
+    acceptCreates();
+    const { user, field } = renderAddForm();
+
+    await user.click(field);
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(fieldStatus().textContent).toBe('Enter a description.'));
+    await user.keyboard('a');
+
+    expect(screen.queryByText('Enter a description.')).toBeNull();
+    expect(field.hasAttribute('aria-invalid')).toBe(false);
+    expect(describedByText(field)).toBe('1/200 Press Enter to add.');
+    expect(fieldStatus().textContent).toBe('');
+  });
+
+  it('K1 pasting two lines shows them joined by a space', async () => {
+    acceptCreates();
+    const { user, field } = renderAddForm();
+
+    await user.click(field);
+    await user.paste('One\nTwo');
+
+    expect(field).toHaveProperty('value', 'One Two');
+    expect(screen.getByText('7/200')).toBeTruthy();
+  });
+
+  it('K1 a mid-text paste replaces each character one for one and leaves the caret after it', async () => {
+    acceptCreates();
+    const { user, field } = renderAddForm();
+    const textarea = field as HTMLTextAreaElement;
+
+    await user.type(textarea, 'Buy  milk');
+    textarea.setSelectionRange(4, 4);
+    await user.paste('oat\r\n');
+
+    expect(textarea.value).toBe('Buy oat   milk');
+    expect(textarea.selectionStart).toBe(9);
+    expect(textarea.selectionEnd).toBe(9);
+  });
+
+  it('K1 a tab or line break arriving on input becomes a space, keeping the selection', async () => {
+    acceptCreates();
+    const { field } = renderAddForm();
+    const textarea = field as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: 'Buy\tmilk\nnow', selectionStart: 4, selectionEnd: 4 } });
+
+    expect(textarea.value).toBe('Buy milk now');
+    expect(textarea.selectionStart).toBe(4);
+    expect(screen.getByText('12/200')).toBeTruthy();
+  });
+
+  it('K1 never rewrites the value while an IME composition is open, and cleans it when it ends', () => {
+    acceptCreates();
+    const { field } = renderAddForm();
+    const textarea = field as HTMLTextAreaElement;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+
+    fireEvent.compositionStart(textarea);
+    setValue.call(textarea, 'Buy\tmilk');
+    fireEvent(textarea, new InputEvent('input', { bubbles: true, isComposing: true }));
+    expect(textarea.value).toBe('Buy\tmilk');
+
+    fireEvent.compositionEnd(textarea);
+    expect(textarea.value).toBe('Buy milk');
+    expect(screen.getByText('8/200')).toBeTruthy();
+  });
+
+  it('K1 sends the cleaned, trimmed value', async () => {
+    const received = acceptCreates();
+    const { user, field } = renderAddForm();
+
+    fireEvent.change(field, { target: { value: '\t Buy milk \n' } });
+    await user.click(field);
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(received).toHaveLength(1));
+    expect(received[0]!.description).toBe('Buy milk');
+  });
+
+  it('K1 over the limit shows the over state, speaks once and sends nothing by Add or Enter', async () => {
+    const received = acceptCreates();
+    const { user, field, addButton } = renderAddForm();
+
+    fireEvent.change(field, { target: { value: '😀'.repeat(200) } });
+    expect(screen.getByText('200/200')).toBeTruthy();
+    expect(field.hasAttribute('aria-invalid')).toBe(false);
+    expect(fieldStatus().textContent).toBe('');
+
+    fireEvent.change(field, { target: { value: '😀'.repeat(201) } });
+    expect(describedByText(field)).toBe('201/200, over the character limit Press Enter to add.');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(fieldStatus().textContent).toBe('over the character limit');
+
+    // Each blocked submit clears the status and sets it again, so it is spoken again.
+    async function expectRespoken(blockedSubmit: () => Promise<void>) {
+      const seen: string[] = [];
+      const observer = new MutationObserver(() => seen.push(fieldStatus().textContent ?? ''));
+      observer.observe(fieldStatus(), { childList: true, characterData: true, subtree: true });
+      await blockedSubmit();
+      await waitFor(() => expect(seen.at(-1)).toBe('over the character limit'));
+      observer.disconnect();
+      expect(seen).toContain('');
+    }
+
+    await expectRespoken(() => user.click(addButton));
+    await user.click(field);
+    await expectRespoken(() => user.keyboard('{End}{Enter}'));
+    expect(fieldStatus().textContent).toBe('over the character limit');
+    expect(document.activeElement).toBe(field);
+    expect(screen.queryByText('Enter a description.')).toBeNull();
+    expect(received).toEqual([]);
+
+    fireEvent.change(field, { target: { value: '😀'.repeat(200) } });
+    expect(describedByText(field)).toBe('200/200 Press Enter to add.');
+    expect(field.hasAttribute('aria-invalid')).toBe(false);
+    expect(fieldStatus().textContent).toBe('');
+  });
+
+  it('K1 a beforeinput line break is cancelled and submits the form', async () => {
+    const received = acceptCreates();
+    const { field } = renderAddForm();
+
+    fireEvent.change(field, { target: { value: 'Buy milk' } });
+    const event = new InputEvent('beforeinput', { inputType: 'insertLineBreak', bubbles: true, cancelable: true });
+    fireEvent(field, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(received).toHaveLength(1));
+    expect(received[0]!.description).toBe('Buy milk');
+  });
+
+  it('K1 a beforeinput paragraph on an empty field is cancelled and refused inline', async () => {
+    const received = acceptCreates();
+    const { field } = renderAddForm();
+
+    const event = new InputEvent('beforeinput', { inputType: 'insertParagraph', bubbles: true, cancelable: true });
+    fireEvent(field, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(screen.getByText('Enter a description.')).toBeTruthy());
+    expect(received).toEqual([]);
   });
 });
