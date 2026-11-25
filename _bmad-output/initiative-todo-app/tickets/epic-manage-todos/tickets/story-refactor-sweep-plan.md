@@ -8,14 +8,21 @@ baseline_revision: '4c478eb339504e4e1d4c13b7b720790d500e5381'
 route: full
 route_source: auto
 risk: medium
-review: quick
+review: thorough
 review_source: pinned
-lenses_ran: [quick]
+lenses_ran: [blind-hunter, edge-case-hunter, verification-gap, intent-alignment]
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
 warnings: [oversized]
-deferred: []
+deferred:
+  - summary: >-
+      More copied e2e blocks remain: the "hold the PATCH" route setup and the 503 / no-response failure matrix.
+    evidence: |-
+      The "hold the PATCH" setup (`let hold…; const held = new Promise<Route>…; page.route(TODO_PATH, (route) => (isPatch(route) ? hold(route) : route.continue()))`) appears in both e2e/complete.spec.ts:69-71 and e2e/edit.spec.ts:92-94. The failure matrix ('a 503 from the API' fulfilled with UNAVAILABLE_BODY, and 'no response' aborted) is copied in add-failure, complete, edit, delete and list-states. This is pre-existing duplication outside the sweep's named scope. Sharing it needs new parameterised helpers in e2e/helpers.ts.
+    location: >-
+      e2e/complete.spec.ts:69, e2e/edit.spec.ts:92
+    severity: low
 ---
 
 <intent-contract>
@@ -118,6 +125,31 @@ deferred: []
   - `[low]` `[reject]` The new same-text K3 test does not prove that the helper announced A, or that B's message came after it. — The behaviour this item changes is pinned down: the list's `announce` runs exactly once, with B's message. The implementer confirmed the test fails under the old text-only dedupe. The helper's A message is covered by the existing U4 and K3 tests. Asserting the order needs a second spy on the helper's own announce reference, which is more than a direct correction, for a gap no user would meet.
   - `[false]` `[reject]` The branch's upstream is `origin/main`, so a push could go to `main`. — Refuted: `push.default` is unset (`simple`), and the reviewer notes that a bare `git push` refuses when the branch names differ. The run pushes with `git push -u origin story-2-7-refactor-sweep`, which also resets the upstream. This is not in the diff.
 
+### 2026-11-25 — Review pass (follow-up, thorough: blind-hunter, edge-case-hunter, verification-gap, intent-alignment)
+- verdicts: 21 findings — high 0, medium 1, low 16, false 4, maybe-false 0
+- findings:
+  - `[false]` `[reject]` (blind-hunter) `checkAtPlaceOf` maps an id missing from `before` to place 0, so a card could send focus to the top row. — Refuted: a card calls `nextCheck()` only while it is mounted and live. A commit that drops its row, or turns it into a Leaving copy (a new key), unmounts that card instance, so `itemRef.current` is null and `moveFocusOffRow` returns first. `confirmDelete` runs from a click on a rendered live row, which is in the last committed `previousIds`. The refetch path is the baseline code, unchanged.
+  - `[low]` `[reject]` (blind-hunter) The optional `focus` prop (default `NO_FOCUS`) would hide a live card rendered without it. — There is one call site, which passes it. The prop follows the existing `edit`/`confirm` defaults pattern. Turning the props into a union keyed on `leaving` is more than a direct correction, for a developer slip nobody has made.
+  - `[low]` `[reject]` (blind-hunter) The plan's third Verification command (`--stat`) can't show that hunks only move helpers, and its pathspec leaves out the new helper modules. — Real, but the fix edits this build's plan. The hunks were read in full at step 3 and in both review passes.
+  - `[low]` `[reject]` (blind-hunter) The plan record contradicts itself: stale `storedRows(db)` lines, and an Auto Run Result naming only the quick review. — The fix edits this build's plan. The Caller note corrects the `storedRows` lines, and this pass's Auto Run Result supersedes the quick-pass summary.
+  - `[low]` `[reject]` (blind-hunter) The superset `serve` makes TodoCard tests hang on a stray POST or DELETE instead of failing. — No TodoCard test sends either. Before, a stray request had no handler and fell through to a network error that the app absorbs, so it did not fail loudly either. A hang at least surfaces as a timeout. Test harness only.
+  - `[low]` `[patch]` (blind-hunter) `e2e/offline.spec.ts` still inlines the `visibilitychange` dispatch that is now `regainFocus`. — Fixed: the spec calls `regainFocus(page)` from `helpers.ts`.
+  - `[low]` `[defer]` (blind-hunter) More copied e2e blocks remain: the "hold the PATCH" route setup (complete, edit) and the 503 / no-response failure matrix (add-failure, complete, edit, delete, list-states). — Pre-existing duplication this sweep's scope did not name. Sharing it means new parameterised helpers across five specs, more than a direct correction. Deferred.
+  - `[low]` `[patch]` (blind-hunter) The shared `renderLoaded` repeats `settled()`'s wait, and `Probe` components are still hand-written in AddForm, Announcer and one TodoCard test. — Fixed the first: `renderLoaded` calls `settled(app.queryClient)`. The AddForm and Announcer Probes are epic-1 code, and the single TodoCard one reads the context at a different moment; all are left as they are.
+  - `[low]` `[reject]` (blind-hunter) No direct unit tests for `checkAtPlaceOf`, `useTapOrigin` and `isComposingKey`, or for the dedupe's other branches. — The extracted pieces are pinned through every caller's component and e2e tests (TodoCard K6, EditForm K3, DeleteConfirm K6, ListStates K5, the tap and IME tests). The dedupe branch that matters is the verification-gap row below, patched there.
+  - `[false]` `[reject]` (blind-hunter) The Announcer's tap check lacks `detail !== 0`, so a drag-off touch then Enter would send focus to the heading. — Refuted: Dismiss has `onKeyDown={() => (lastPointerType.current = null)}`, so a keyboard activation clears the touch note before the click. This is epic-1 code, not changed here.
+  - `[low]` `[reject]` (blind-hunter) The merged leak regex is stricter than each file's old one, and `expectValidationProblem`'s `path` is a plain string. — Stricter only adds refusals, and all pass. A mistyped path fails at once inside `expectDocumented`. Typing it to the documented paths is more than a direct correction.
+  - `[low]` `[reject]` (edge-case-hunter) The shared `serve` holds a stray POST or DELETE in TodoCard tests on a gate nothing opens. — Same root cause as the blind-hunter `serve` row; rejected there.
+  - `[low]` `[reject]` (edge-case-hunter, claim) The id check also skips the same todo when the helper's call-time text differs from the row's watched text, where the old text check announced. — Real, but it needs the row's text to change through a refetch between the toggle being sent and its 404. The intent's matrix row "Same todo: one message" endorses one message per todo. Contrived, so not worth more than this note.
+  - `[low]` `[reject]` (edge-case-hunter, claim) The ticked task says `storedRows` is shared, but it stays local. — carried: same as the quick pass's `storedRows` row; the code there still reads as that row describes.
+  - `[medium]` `[patch]` (verification-gap) Nothing pins the "message still showing" half of the id-keyed dedupe. Simplifying it to `notFound?.id === id` would pass every test and silence a reachable loss (404 in edit mode, the refetch fails, Dismiss, a later refetch removes the row). — Fixed: a new EditForm K3 test covers that case. It fails with the simplified check and passes with the current one.
+  - `[low]` `[reject]` (intent-alignment a) A second dedupe change: the same todo, with its text changed between the helper's 404 and the removal, is now skipped. — Same root cause as the edge-case claim row; rejected there.
+  - `[low]` `[reject]` (intent-alignment b) The same-text K3 test does not observe the helper's A message or the order. — carried: same as the quick pass's K3-ordering row; the test still reads as that row describes.
+  - `[low]` `[reject]` (intent-alignment c) The equivalence between the list's `previousIds` and the DOM's operable rows is argued, not pinned in isolation. — No reachable moment where they differ was found: both reflect the last TodoList commit, which renders every row change. Every focus outcome test passes in jsdom and in three browser projects.
+  - `[low]` `[reject]` (intent-alignment d) The API helper call sites gained `path` and `method` arguments, against "assertions stay as written". — The plan's own task prescribes that signature. Matchers and expected values are unchanged. Undoing it would mean editing the plan.
+  - `[false]` `[reject]` (intent-alignment e) The test harness changed: the superset `serve`, and the Probe and announcer spy in TodoCard tests. — No bad outcome: these are the moved helpers, with every assertion untouched and every test passing.
+  - `[false]` `[reject]` (intent-alignment f) `execute`'s settle step body was edited, and `MutationHelper` gained `lastNotFound()`. — No bad outcome: the edit is the record the intent's Approach asks for. The order of revert, leave, `recordRevert` and announce, and the `announce` signature, are kept, as Never requires.
+
 ## Design Notes
 
 The two copies already compute the same target. With `before` holding `id` at place `p` and `ids` = `before` without `id`, the place is `p`, so the target is the row after it, else (when `id` was last) the row before it. That is the card's `operableSibling(next) ?? operableSibling(previous)`. `previousIds` is the last committed list of operable ids (`todos` without Leaving ids), which is the same set and order as the DOM's rows without `data-leaving`. It is current whenever a handler or a settled promise reads it.
@@ -175,3 +207,24 @@ Status: built.
 **Residual risks.**
 - The API leak check is now stricter than either file's old regex. It passes today.
 - The focus rule now reads the list's last committed operable ids rather than DOM siblings. The two are equal by construction (Design Notes), and every focus test passed in jsdom and in three browser projects.
+
+### Follow-up review pass (thorough), 2026-11-25
+
+Status: built. This pass reran the review with the thorough lens set: blind-hunter, edge-case-hunter, verification-gap and intent-alignment.
+
+**Findings.** 21 in total: high 0, medium 1, low 16, false 4.
+- **3 patched:**
+  - `e2e/offline.spec.ts` calls the shared `regainFocus`.
+  - The shared `renderLoaded` calls `settled()`.
+  - A new EditForm K3 test pins the "message still showing" half of the id-keyed dedupe. It fails with the check cut down to `notFound?.id === id`, and passes as built.
+- **1 deferred:** more copied e2e blocks, the "hold the PATCH" route setup and the 503 / no-response failure matrix. They are pre-existing and outside the named scope; the frontmatter `deferred` entry has the details.
+- **17 rejected:** each reason is in the triage log. Two of them are carried from the quick pass: `storedRows` and the K3 ordering.
+
+**Follow-up review recommended:** false. This is a follow-up pass and no high was patched (patched: medium 1, low 2).
+
+**Files changed in this pass:** `e2e/offline.spec.ts`, `apps/web/test/todos.tsx`, `apps/web/src/components/EditForm.component.test.tsx`.
+
+**Verification.**
+- `pnpm typecheck` exited 0.
+- `pnpm test` exited 0: 557 tests.
+- `pnpm test:all` exited 0 under `/tmp/todo-test-stack.lock`, with every step passing. That includes e2e, 117 passed in desktop, phone and desktop-dark. todo-test was torn down.

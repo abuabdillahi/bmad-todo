@@ -169,7 +169,7 @@ export async function renderLoaded(names: string[]) {
   }
   const app = renderApp({ children: <Probe /> });
   await waitFor(() => expect(within(app.list).queryAllByRole('checkbox')).toHaveLength(names.length));
-  await waitFor(() => expect(app.queryClient.getQueryState(todosQueryKey)?.fetchStatus).toBe('idle'));
+  await settled(app.queryClient);
   // Calls the list area makes; the helper holds its own reference, so its announcements are not counted.
   const listAnnounce = vi.spyOn(context!.announcer, 'announce');
   // A refetch, then the macrotask on which TanStack notifies its observers.

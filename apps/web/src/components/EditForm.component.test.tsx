@@ -506,6 +506,31 @@ describe('EditForm', () => {
     expect(listAnnounce).not.toHaveBeenCalled();
   });
 
+  it('K3 a toggle answered 404 in edit mode whose message was dismissed: a later refetch removing the row is announced', async () => {
+    const state = serve([milk, rent]);
+    const { user, listAnnounce, refetch } = await renderLoaded(['Buy milk', 'Pay rent']);
+    // The PATCH answers 404 while the todo stays listed, so the settle-time refetch keeps the row.
+    state.fail = () => problem('/problems/not-found', 404);
+    const lists = state.lists;
+
+    await user.click(editButton('Buy milk'));
+    await user.click(check('Buy milk'));
+    state.release.open();
+
+    await waitFor(() => expect(liveElement().textContent).toBe('“Buy milk” was deleted elsewhere.'));
+    await waitFor(() => expect(state.lists).toBe(lists + 1));
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => expect(liveElement().textContent).toBe(''));
+    expect(screen.getByRole('textbox', { name: 'Edit description' })).toBeTruthy();
+
+    state.todos = state.todos.filter((todo) => todo.id !== milk.id);
+    await refetch();
+
+    expect(screen.queryByRole('checkbox', { name: 'Buy milk' })).toBeNull();
+    expect(listAnnounce).toHaveBeenCalledExactlyOnceWith('failure', '“Buy milk” was deleted elsewhere.');
+    await waitFor(() => expect(liveElement().textContent).toBe('“Buy milk” was deleted elsewhere.'));
+  });
+
   it('K3 a toggle answered 404 on one todo still lets the list announce another todo with the same text that a refetch removes in edit mode', async () => {
     const twin: Todo = { ...milk, id: 'a0000000-0000-4000-8000-000000000004' };
     const state = serve([milk, twin, rent]);

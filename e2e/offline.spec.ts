@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { announcement, MESSAGES, resetList, todoItem, uniqueDescription } from './helpers.ts';
+import { announcement, MESSAGES, regainFocus, resetList, todoItem, uniqueDescription } from './helpers.ts';
 
 /**
  * Offline (E6, AD-20): with the browser offline, a focus refetch and an add
@@ -35,7 +35,7 @@ test('E6 offline, a focus refetch and an add fail at once with the network reaso
   await context.setOffline(true);
   try {
     // A focus refetch fails at once with the network refresh message.
-    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange', { bubbles: true })));
+    await regainFocus(page);
     await expect(announcement(page, MESSAGES.refresh)).toHaveText(`${MESSAGES.refresh} ${MESSAGES.network}`, {
       timeout: 2000,
     });
