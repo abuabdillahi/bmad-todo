@@ -10,7 +10,7 @@ hitl: true
 risk: medium
 tracker_id: "31"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/31"
-tracker_status: in-progress
+tracker_status: done
 parent: epic-manage-todos
 ---
 
@@ -49,4 +49,5 @@ The add field's Enter handling for composing keyboards was proven only with synt
 - Decision: 2026-11-25, user: This untested risk moves to the backlog at epic-todo-foundation's closure (retrospective A6).
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): The order set on 2026-11-24 (this spike before the edit-field story) is reversed: the edit field (story 4) is built without waiting, and this spike moves into epic-manage-todos as entry 13 (`tickets.py move`), its one open hitl item, run by the user on a real phone against production after story 4 and story 11 ship. Any defect it finds becomes a new bug. No story, and not the epic's closing stories, waits on it.
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): Refined: devices, cases, the time box and where the answer goes are set in Approach.
-- Result: 2026-11-25, user, on an Android phone against production: in the add field, the keyboard's Enter key submits the todo (works as specified; no newline inserted). Keyboard, composing or committed word, phone model, Android and Chrome versions, the edit field and Shift+Enter cases not yet reported.
+- Result: 2026-11-25, user, against production on a Samsung SM-A166P/DS, Android 16, Chrome 158.0.8127.92, with Samsung Keyboard: every case in Approach was run and works. Add field: Enter while a word is composing submits; Enter after a committed word submits; typing straight after an add keeps the new text; Shift+Enter inserts no line break and submits nothing. Edit field: the same Enter and Shift+Enter cases work. No case failed, so no bug was opened. Gboard was not reported.
+- Decision: 2026-11-25, user (result reported by the user, recorded by po): The text-field rules hold on a real Android keyboard (Samsung Keyboard on Android 16, Chrome 158) in both the add and the edit field. The two deferred medium findings (Enter with `enterkeyhint="done"` inserting a newline; clearing after an add rewriting an open composition) are not reproduced there and are closed. Gboard was not tested; reopen with a new bug only if a Gboard user reports a failure.
