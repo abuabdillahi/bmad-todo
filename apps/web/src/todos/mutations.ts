@@ -1,0 +1,219 @@
+import type { QueryClient } from '@tanstack/react-query';
+import type { Todo } from '@todo/contract';
+import { createTodo, RequestFailure } from '../api/client.ts';
+import type { Announcer } from './announcer.ts';
+import { messages, type FailureInfo } from './messages.ts';
+import { todosQueryKey } from './query.ts';
+import type { TodosStore } from './store.ts';
+
+/** A call's outcome (AD-13). The promise that carries it never rejects. */
+export type MutationOutcome =
+  | { readonly status: 'ok' }
+  | { readonly status: 'failed'; readonly failure: FailureInfo }
+  | { readonly status: 'dropped' };
+
+/** An add's outcome, with the id the client minted for it (AD-7). */
+export type AddOutcome = MutationOutcome & { readonly id: string };
+
+/** One optimistic change to one todo (AD-13). */
+export interface MutationSpec {
+  readonly id: string;
+  /** A create starts the todo's chain; a follow-up waits for it, and is dropped if it failed. */
+  readonly kind: 'create' | 'follow-up';
+  /** The todo's new value from its current one; null removes it. */
+  readonly apply: (prev: Todo | undefined) => Todo | null;
+  /** Where a todo that isn't in the cache yet goes. Only the top is supported. */
+  readonly position?: 'top';
+  /** Sends the request. A rejection is the call's failure. */
+  readonly send: () => Promise<unknown>;
+  /** The failure message, announced with kind `failure`. */
+  readonly failureText: (failure: FailureInfo) => string;
+  /** The status message, announced on server confirmation. */
+  readonly successText?: string;
+}
+
+export interface MutationHelper {
+  run(spec: MutationSpec): Promise<MutationOutcome>;
+  /** Mints the id and adds the todo on top of the cache at once (AD-7, AD-13). */
+  addTodo(description: string): Promise<AddOutcome>;
+}
+
+export interface MutationHelperDeps {
+  queryClient: QueryClient;
+  store: TodosStore;
+  announce: Announcer['announce'];
+  now?: () => number;
+}
+
+/** One call on a todo, kept until it settles so a revert can rebuild the todo. */
+interface Entry {
+  readonly spec: MutationSpec;
+  /** Its change is in the cache. */
+  applied: boolean;
+  /** The todo's value this call's change was applied on. */
+  base: Todo | undefined;
+  /** Where that value sat in the list, or -1 if it wasn't there. */
+  index: number;
+}
+
+interface Chain {
+  /** Settles when the todo's latest queued call has settled. */
+  tail: Promise<unknown>;
+  /** Calls queued on this id and not yet settled, in order. */
+  pending: Entry[];
+  /** The todo's create failed: its follow-ups are dropped. */
+  createFailed: boolean;
+}
+
+function failureInfo(error: unknown): FailureInfo {
+  if (error instanceof RequestFailure) return { kind: error.kind, namesDescription: error.namesDescription };
+  return { kind: 'generic' };
+}
+
+/**
+ * The one optimistic-mutation helper (AD-13). Each call cancels in-flight
+ * `['todos']` fetches, then changes its one todo in the cache at once. Calls on
+ * the same id are sent in order. On failure only that todo is put back, its
+ * revert time recorded and the failure announced; a failed create drops its
+ * queued follow-ups. The settle-time refetch runs once no call is pending.
+ */
+export function createMutationHelper({ queryClient, store, announce, now = Date.now }: MutationHelperDeps): MutationHelper {
+  const chains = new Map<string, Chain>();
+
+  function readList(): Todo[] {
+    return queryClient.getQueryData<Todo[]>(todosQueryKey) ?? [];
+  }
+
+  /** Writes one todo's value into the cache: in place, at `index`, or on top; undefined removes it. */
+  function writeTodo(id: string, value: Todo | undefined, index: number): void {
+    queryClient.setQueryData<Todo[]>(todosQueryKey, (current = []) => {
+      const at = current.findIndex((todo) => todo.id === id);
+      if (value === undefined) return at === -1 ? current : current.filter((todo) => todo.id !== id);
+      if (at !== -1) return current.map((todo, i) => (i === at ? value : todo));
+      if (index === -1) return [value, ...current];
+      const to = Math.min(index, current.length);
+      return [...current.slice(0, to), value, ...current.slice(to)];
+    });
+  }
+
+  /** Applies the call's change on the todo's current value, and keeps that value as its base. */
+  function applyToCache(entry: Entry): void {
+    const list = readList();
+    const index = list.findIndex((todo) => todo.id === entry.spec.id);
+    const base = index === -1 ? undefined : list[index];
+    const next = entry.spec.apply(base);
+    entry.base = base;
+    entry.index = index;
+    entry.applied = true;
+    writeTodo(entry.spec.id, next ?? undefined, -1);
+  }
+
+  /**
+   * Puts back only this call's change (AD-13): rebuilds the todo from the
+   * failed call's base by re-applying every later pending call on it, in order,
+   * and moves their bases back so a later failure never restores a refused
+   * value. A failed create removes the todo; its follow-ups are dropped.
+   */
+  function revert(entry: Entry, chain: Chain): void {
+    const at = chain.pending.indexOf(entry);
+    const later = entry.spec.kind === 'create' ? [] : chain.pending.slice(at + 1).filter((e) => e.applied);
+    if (!entry.applied) return;
+    let value = entry.base;
+    for (const next of later) {
+      next.base = value;
+      next.index = entry.index;
+      try {
+        value = next.spec.apply(value) ?? undefined;
+      } catch {
+        // A broken apply leaves the value as it was; that call fails on its own.
+      }
+    }
+    writeTodo(entry.spec.id, value, entry.index);
+  }
+
+  function leave(entry: Entry, chain: Chain): void {
+    const at = chain.pending.indexOf(entry);
+    if (at !== -1) chain.pending.splice(at, 1);
+  }
+
+  /** Leaves the pending count first; the settle-time refetch runs once it reaches 0. */
+  function settle(afterLeaving: () => void): void {
+    store.mutationSettled();
+    const idle = store.getSnapshot().pendingCount === 0;
+    afterLeaving();
+    if (idle) void queryClient.invalidateQueries({ queryKey: todosQueryKey });
+  }
+
+  async function execute(entry: Entry, chain: Chain, applied: Promise<void>): Promise<MutationOutcome> {
+    const { spec } = entry;
+    if (spec.kind === 'follow-up' && chain.createFailed) {
+      leave(entry, chain);
+      settle(() => {});
+      return { status: 'dropped' };
+    }
+    try {
+      await applied;
+      await spec.send();
+    } catch (error) {
+      const failure = failureInfo(error);
+      if (spec.kind === 'create') chain.createFailed = true;
+      settle(() => {
+        revert(entry, chain);
+        leave(entry, chain);
+        store.recordRevert(spec.id, now());
+        announce('failure', spec.failureText(failure));
+      });
+      return { status: 'failed', failure };
+    }
+    leave(entry, chain);
+    settle(() => {
+      if (spec.successText !== undefined) announce('status', spec.successText);
+    });
+    return { status: 'ok' };
+  }
+
+  function run(spec: MutationSpec): Promise<MutationOutcome> {
+    store.mutationStarted();
+
+    let chain = chains.get(spec.id);
+    if (!chain) {
+      chain = { tail: Promise.resolve(), pending: [], createFailed: false };
+      chains.set(spec.id, chain);
+    }
+    const own = chain;
+    const entry: Entry = { spec, applied: false, base: undefined, index: -1 };
+    own.pending.push(entry);
+
+    // Cancel first, so the cancelled fetch can't put back what this writes.
+    const applied = queryClient.cancelQueries({ queryKey: todosQueryKey }).then(() => applyToCache(entry));
+    // A rejected apply is reported through the send step, never as an unhandled rejection.
+    applied.catch(() => {});
+
+    const outcome = own.tail
+      .then(() => execute(entry, own, applied))
+      .catch((): MutationOutcome => {
+        leave(entry, own);
+        return { status: 'failed', failure: { kind: 'generic' } };
+      });
+    own.tail = outcome;
+    return outcome.finally(() => {
+      if (own.pending.length === 0 && chains.get(spec.id) === own) chains.delete(spec.id);
+    });
+  }
+
+  function addTodo(description: string): Promise<AddOutcome> {
+    const id = crypto.randomUUID();
+    const todo: Todo = { id, description, completed: false, createdAt: new Date().toISOString() };
+    return run({
+      id,
+      kind: 'create',
+      apply: () => todo,
+      position: 'top',
+      send: () => createTodo({ id, description }),
+      failureText: (failure) => messages.failureMessage('add', failure, description),
+      successText: messages.added(description),
+    }).then((outcome) => ({ ...outcome, id }));
+  }
+
+  return { run, addTodo };
+}

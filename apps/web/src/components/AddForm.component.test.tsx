@@ -1,8 +1,11 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { CreateTodoBody, Todo } from '@todo/contract';
 import { server } from '../../test/msw.ts';
 import { renderApp } from '../../test/render.tsx';
+import { useTodosStore } from '../todos/hooks.ts';
+import type { TodosSnapshot } from '../todos/store.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -82,58 +85,6 @@ describe('AddForm', () => {
     await waitFor(() => expect(received).toHaveLength(2));
 
     expect(received[0]!.id).not.toBe(received[1]!.id);
-  });
-
-  it('K1 keeps the text and shows no message when the add fails', async () => {
-    let attempts = 0;
-    server.use(
-      http.post('*/api/todos', () => {
-        attempts += 1;
-        return HttpResponse.json({ message: 'boom' }, { status: 500 });
-      }),
-    );
-    const { user, field } = renderAddForm();
-
-    await user.type(field, 'Buy milk{Enter}');
-
-    await waitFor(() => expect(attempts).toBe(1));
-    // Let the failed call settle before asserting nothing changed.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(field).toHaveProperty('value', 'Buy milk');
-    expect(screen.getByText('8/200')).toBeTruthy();
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(addFormStatus().textContent).toBe('');
-  });
-
-  it('K1 leaves the list unchanged when the add fails', async () => {
-    const existing: Todo = {
-      id: 'a0000000-0000-4000-8000-000000000001',
-      description: 'Already here',
-      completed: false,
-      createdAt: '2026-11-23T10:00:00.000Z',
-    };
-    let lists = 0;
-    let attempts = 0;
-    server.use(
-      http.get('*/api/todos', () => {
-        lists += 1;
-        return HttpResponse.json([existing]);
-      }),
-      http.post('*/api/todos', () => {
-        attempts += 1;
-        return HttpResponse.json({ message: 'boom' }, { status: 500 });
-      }),
-    );
-    const { user, field, list } = renderApp();
-    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
-
-    await user.type(field, 'Buy milk{Enter}');
-    await waitFor(() => expect(attempts).toBe(1));
-    // Let the failed call settle before asserting nothing changed.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    expect(within(list).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Already here']);
-    expect(lists).toBe(1);
   });
 
   it('K1 Enter never inserts a newline, Shift+Enter included', async () => {
@@ -378,5 +329,320 @@ describe('AddForm validation', () => {
     expect(event.defaultPrevented).toBe(true);
     await waitFor(() => expect(screen.getByText('Enter a description.', NOT_STATUS)).toBeTruthy());
     expect(received).toEqual([]);
+  });
+});
+
+describe('AddForm: optimistic add', () => {
+  const existing: Todo = {
+    id: 'a0000000-0000-4000-8000-000000000001',
+    description: 'Already here',
+    completed: false,
+    createdAt: '2026-11-23T10:00:00.000Z',
+  };
+  const UNAVAILABLE = "The server isn't available right now. Try again in a moment.";
+
+  afterEach(() => {
+    focusManager.setFocused(undefined);
+  });
+
+  /** The Announcer's live element: the status outside the add form. */
+  function liveElement(): HTMLElement {
+    const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null);
+    expect(statuses).toHaveLength(1);
+    return statuses[0]!;
+  }
+
+  function items(list: HTMLElement): string[] {
+    return within(list)
+      .queryAllByRole('listitem')
+      .map((item) => item.textContent ?? '');
+  }
+
+  /** A gate a handler waits on until the test opens it. */
+  function gate() {
+    let open: () => void = () => {};
+    const opened = new Promise<void>((resolve) => (open = resolve));
+    return { opened, open: () => open() };
+  }
+
+  const unavailable = () =>
+    HttpResponse.json(
+      { type: '/problems/unavailable', title: 'Service unavailable', status: 503, detail: 'x' },
+      { status: 503, headers: { 'Content-Type': 'application/problem+json' } },
+    );
+
+  /**
+   * Serves [existing] plus whatever `landed` holds, counting GETs, and answers
+   * each POST with `answer` once `release` opens.
+   */
+  function serve(answer: (body: CreateTodoBody) => Response) {
+    const state = { lists: 0, landed: [] as Todo[], bodies: [] as CreateTodoBody[], release: gate() };
+    server.use(
+      http.get('*/api/todos', () => {
+        state.lists += 1;
+        return HttpResponse.json([...state.landed, existing]);
+      }),
+      http.post('*/api/todos', async ({ request }) => {
+        const body = (await request.json()) as CreateTodoBody;
+        state.bodies.push(body);
+        await state.release.opened;
+        return answer(body);
+      }),
+    );
+    return state;
+  }
+
+  async function renderLoaded() {
+    const app = renderApp();
+    await waitFor(() => expect(items(app.list)).toEqual(['Already here']));
+    await waitFor(() => expect(app.queryClient.getQueryState(['todos'])?.fetchStatus).toBe('idle'));
+    return app;
+  }
+
+  const created = (body: CreateTodoBody) =>
+    HttpResponse.json({ ...body, completed: false, createdAt: '2026-11-25T10:00:00.000Z' }, { status: 201 });
+
+  it('K1 the card is on top before the server answers, the field clears with focus in it, and Added follows', async () => {
+    const state = serve((body) => {
+      state.landed = [{ ...body, completed: false, createdAt: '2026-11-25T10:00:00.000Z' }];
+      return created(body);
+    });
+    const { user, field, list } = await renderLoaded();
+
+    await user.type(field, 'Buy milk{Enter}');
+
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    expect(state.bodies).toHaveLength(1);
+    expect(field.value).toBe('');
+    expect(screen.getByText('0/200')).toBeTruthy();
+    expect(document.activeElement).toBe(field);
+    expect(liveElement().textContent).toBe('');
+
+    state.release.open();
+    await waitFor(() => expect(liveElement().textContent).toBe('Added “Buy milk”.'));
+    await waitFor(() => expect(state.lists).toBe(2));
+    expect(items(list)).toEqual(['Buy milk', 'Already here']);
+  });
+
+  it('K1 a failed add removes its card, keeps the earlier todo, announces the reason and restores the text with the caret at the end', async () => {
+    const state = serve(unavailable);
+    const { user, field, list } = await renderLoaded();
+
+    await user.type(field, 'Buy milk{Enter}');
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    expect(field.value).toBe('');
+
+    state.release.open();
+    await waitFor(() => expect(liveElement().textContent).toBe(`Couldn't add “Buy milk”. ${UNAVAILABLE}`));
+    expect(items(list)).toEqual(['Already here']);
+    await waitFor(() => expect(field.value).toBe('Buy milk'));
+    expect(document.activeElement).toBe(field);
+    expect(field.selectionStart).toBe(8);
+    expect(field.selectionEnd).toBe(8);
+    expect(screen.getByText('8/200')).toBeTruthy();
+    expect(addFormStatus().textContent).toBe('');
+    // The settle-time refetch follows a failure too.
+    await waitFor(() => expect(state.lists).toBe(2));
+    expect(items(list)).toEqual(['Already here']);
+  });
+
+  it('K1 a failed add never overwrites newer typing', async () => {
+    const state = serve(unavailable);
+    const { user, field, list } = await renderLoaded();
+
+    await user.type(field, 'Buy milk{Enter}');
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    await user.keyboard('Call mum');
+
+    state.release.open();
+    await waitFor(() => expect(liveElement().textContent).toBe(`Couldn't add “Buy milk”. ${UNAVAILABLE}`));
+    await waitFor(() => expect(state.lists).toBe(2));
+    expect(field.value).toBe('Call mum');
+    expect(items(list)).toEqual(['Already here']);
+  });
+
+  it('K1 a failed add restored after an empty submit clears the empty error and the Field status', async () => {
+    const state = serve(unavailable);
+    const { user, field, list } = await renderLoaded();
+
+    await user.type(field, 'Buy milk{Enter}');
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(addFormStatus().textContent).toBe('Enter a description.'));
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+
+    state.release.open();
+    await waitFor(() => expect(field.value).toBe('Buy milk'));
+    expect(screen.queryByText('Enter a description.', NOT_STATUS)).toBeNull();
+    expect(field.hasAttribute('aria-invalid')).toBe(false);
+    expect(field.getAttribute('aria-describedby')!.split(' ')).toHaveLength(2);
+    expect(addFormStatus().textContent).toBe('');
+  });
+
+  it('K1 a failed add that landed after all clears its exactly restored text, without moving focus or speaking', async () => {
+    const state = serve(unavailable);
+    const { user, field, list, addButton, queryClient } = await renderLoaded();
+
+    await user.type(field, 'Buy milk{Enter}');
+    state.release.open();
+    await waitFor(() => expect(field.value).toBe('Buy milk'));
+    await waitFor(() => expect(state.lists).toBe(2));
+    await waitFor(() => expect(queryClient.getQueryState(['todos'])?.fetchStatus).toBe('idle'));
+    const message = liveElement().textContent;
+
+    addButton.focus();
+    state.landed = [{ ...state.bodies[0]!, completed: false, createdAt: '2026-11-25T10:00:00.000Z' }];
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    await waitFor(() => expect(field.value).toBe(''));
+    expect(screen.getByText('0/200')).toBeTruthy();
+    expect(document.activeElement).toBe(addButton);
+    expect(liveElement().textContent).toBe(message);
+    expect(addFormStatus().textContent).toBe('');
+  });
+
+  it('K1 a failed add that landed after all leaves changed text alone', async () => {
+    const state = serve(unavailable);
+    const { user, field, list, queryClient } = await renderLoaded();
+
+    await user.type(field, 'Buy milk{Enter}');
+    state.release.open();
+    await waitFor(() => expect(field.value).toBe('Buy milk'));
+    await waitFor(() => expect(state.lists).toBe(2));
+    await waitFor(() => expect(queryClient.getQueryState(['todos'])?.fetchStatus).toBe('idle'));
+    await user.keyboard(' now');
+
+    state.landed = [{ ...state.bodies[0]!, completed: false, createdAt: '2026-11-25T10:00:00.000Z' }];
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    expect(field.value).toBe('Buy milk now');
+  });
+
+  it('K1 two adds, the first failing: only its card goes', async () => {
+    const firstAnswer = gate();
+    const saved: Todo[] = [existing];
+    server.use(
+      http.get('*/api/todos', () => HttpResponse.json(saved)),
+      http.post('*/api/todos', async ({ request }) => {
+        const body = (await request.json()) as CreateTodoBody;
+        if (body.description !== 'First') {
+          saved.unshift({ ...body, completed: false, createdAt: '2026-11-25T10:00:00.000Z' });
+          return created(body);
+        }
+        await firstAnswer.opened;
+        return unavailable();
+      }),
+    );
+    const { user, field, list } = await renderLoaded();
+
+    await user.type(field, 'First{Enter}');
+    await user.type(field, 'Second{Enter}');
+    await waitFor(() => expect(liveElement().textContent).toBe('Added “Second”.'));
+    expect(items(list)).toEqual(['Second', 'First', 'Already here']);
+
+    firstAnswer.open();
+    await waitFor(() => expect(liveElement().textContent).toBe(`Couldn't add “First”. ${UNAVAILABLE}`));
+    expect(items(list)).toEqual(['Second', 'Already here']);
+    await waitFor(() => expect(field.value).toBe('First'));
+  });
+
+  it('K1 an add during Loading renders above, cancels the first fetch and keeps the list loading', async () => {
+    let lists = 0;
+    let firstAborted = false;
+    const release = gate();
+    server.use(
+      http.get('*/api/todos', async ({ request }) => {
+        lists += 1;
+        if (lists === 1) {
+          request.signal.addEventListener('abort', () => (firstAborted = true));
+          await new Promise(() => {});
+        }
+        return HttpResponse.json([existing]);
+      }),
+      http.post('*/api/todos', async ({ request }) => {
+        const body = (await request.json()) as CreateTodoBody;
+        await release.opened;
+        return created(body);
+      }),
+    );
+    let snapshot: TodosSnapshot | undefined;
+    function Probe() {
+      snapshot = useTodosStore();
+      return null;
+    }
+    const { user, field, list, queryClient } = renderApp({ children: <Probe /> });
+    await waitFor(() => expect(lists).toBe(1));
+    const before = snapshot;
+
+    await user.type(field, 'Buy milk{Enter}');
+
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk']));
+    await waitFor(() => expect(firstAborted).toBe(true));
+    expect(queryClient.getQueryState(['todos'])?.fetchStatus).toBe('idle');
+    const recorded = ({ loaded, lastFetchFailure, retryRequested }: TodosSnapshot) => ({ loaded, lastFetchFailure, retryRequested });
+    expect(recorded(snapshot!)).toEqual(recorded(before!));
+    expect(snapshot).toMatchObject({ loaded: false, lastFetchFailure: null, pendingCount: 1 });
+    expect(liveElement().textContent).toBe('');
+
+    release.open();
+    await waitFor(() => expect(liveElement().textContent).toBe('Added “Buy milk”.'));
+    await waitFor(() => expect(snapshot).toMatchObject({ loaded: true }));
+    expect(lists).toBe(2);
+    expect(items(list)).toEqual(['Already here']);
+  });
+
+  it('K1 an add during Error renders above while the list stays in error', async () => {
+    const release = gate();
+    server.use(
+      http.get('*/api/todos', () => unavailable()),
+      http.post('*/api/todos', async ({ request }) => {
+        const body = (await request.json()) as CreateTodoBody;
+        await release.opened;
+        return created(body);
+      }),
+    );
+    let snapshot: TodosSnapshot | undefined;
+    function Probe() {
+      snapshot = useTodosStore();
+      return null;
+    }
+    const { user, field, list } = renderApp({ children: <Probe /> });
+    await waitFor(() => expect(snapshot).toMatchObject({ lastFetchFailure: 'unavailable' }));
+
+    await user.type(field, 'Buy milk{Enter}');
+
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk']));
+    expect(snapshot).toMatchObject({ loaded: false, lastFetchFailure: 'unavailable', retryRequested: false, pendingCount: 1 });
+    release.open();
+    await waitFor(() => expect(liveElement().textContent).toBe('Added “Buy milk”.'));
+  });
+
+  it('K1 an add failing before the first load removes its card and leaves the list in error, never empty', async () => {
+    server.use(
+      http.get('*/api/todos', () => unavailable()),
+      http.post('*/api/todos', () => HttpResponse.error()),
+    );
+    let snapshot: TodosSnapshot | undefined;
+    function Probe() {
+      snapshot = useTodosStore();
+      return null;
+    }
+    const { user, field, list } = renderApp({ children: <Probe /> });
+    await waitFor(() => expect(snapshot).toMatchObject({ lastFetchFailure: 'unavailable' }));
+
+    await user.type(field, 'Buy milk{Enter}');
+
+    await waitFor(() => expect(liveElement().textContent).toBe("Couldn't add “Buy milk”. Check your connection and try again."));
+    await waitFor(() => expect(field.value).toBe('Buy milk'));
+    expect(items(list)).toEqual([]);
+    expect(snapshot).toMatchObject({ loaded: false, lastFetchFailure: 'unavailable' });
   });
 });

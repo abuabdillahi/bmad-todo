@@ -34,9 +34,17 @@ async function addTodo(page: Page, description: string) {
   await page.keyboard.press('Tab');
   await expect(field).toBeFocused();
   await page.keyboard.type(description);
+  // The settle-time refetch follows the create's answer; wait for it, so a later route doesn't catch it.
+  const refetched = page
+    .waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/todos')
+    .then(() =>
+      page.waitForResponse((response) => response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/todos'),
+    );
   await page.keyboard.press('Enter');
   await expect(todoItem(page, description)).toHaveCount(1);
   await expect(field).toHaveValue('');
+  await expect(page.getByRole('status').filter({ hasText: 'Added' })).toHaveText(`Added “${description}”.`);
+  await refetched;
   return field;
 }
 

@@ -1,5 +1,73 @@
 .item {
-  display: block;
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+/* The height opens through the grid row; the body may be shorter than its card meanwhile. */
+.body {
+  min-height: 0;
+}
+
+/*
+ * The space between cards lives inside the row that opens (a grid item keeps
+ * its child's margin), so a new card's gap grows with it and the cards below
+ * shift down smoothly. None after the last card.
+ */
+.item:not(:last-child) .card {
+  margin-block-end: var(--todo-list-gap);
+}
+
+/*
+ * Add (EXPERIENCE Motion): the height opens, the card fades in and slides from
+ * the enter offset to 0. CSS only, played once on mount; the DOM and focus
+ * change at once.
+ */
+.enter {
+  animation: todo-card-open var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.enter .body {
+  /* Clip only while the row opens, so cards below never cover the new card and the resting shadow is never cut. */
+  animation: todo-card-clip var(--motion-duration-base) linear;
+}
+
+.enter .card {
+  animation: todo-card-in var(--motion-duration-base) var(--motion-ease-out);
+}
+
+@keyframes todo-card-open {
+  from {
+    grid-template-rows: 0fr;
+  }
+  to {
+    grid-template-rows: 1fr;
+  }
+}
+
+@keyframes todo-card-clip {
+  from,
+  to {
+    overflow: clip;
+  }
+}
+
+@keyframes todo-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--motion-enter-offset));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter,
+  .enter .body,
+  .enter .card {
+    animation: none;
+  }
 }
 
 .card {

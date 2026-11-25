@@ -1,0 +1,41 @@
+import { expect, test } from '@playwright/test';
+
+/**
+ * The one motion-on spec (AD-20): no axe here, because scans would land
+ * mid-transition. An added card plays its enter motion and ends fully visible.
+ */
+test.use({ reducedMotion: 'no-preference' });
+
+test('E1 an added card runs its enter animation and ends fully visible', async ({ page }, testInfo) => {
+  const description = `E1 motion ${testInfo.project.name} ${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  await page.goto('/');
+  const field = page.getByRole('textbox', { name: 'New todo' });
+  await expect(page.getByText('0/200')).toBeVisible();
+  await field.focus();
+  await page.keyboard.type(description);
+
+  // Records the animations on the card as it mounts, before they can finish. The
+  // observer is installed (awaited) before Enter, so the mount can't slip past it.
+  await page.evaluate((text) => {
+    const list = document.querySelector('ul[aria-label="Todos"]')!;
+    const observer = new MutationObserver(() => {
+      const item = [...list.querySelectorAll('li')].find((li) => li.textContent === text);
+      if (!item) return;
+      observer.disconnect();
+      (window as unknown as { mountedAnimations?: number }).mountedAnimations = item.getAnimations({ subtree: true }).length;
+    });
+    observer.observe(list, { childList: true, subtree: true });
+  }, description);
+  await page.keyboard.press('Enter');
+
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { mountedAnimations?: number }).mountedAnimations ?? -1))
+    .toBeGreaterThan(0);
+  const item = page.getByRole('list', { name: 'Todos' }).getByRole('listitem').filter({ hasText: description });
+  await expect(item).toBeVisible();
+  await expect
+    .poll(() => item.evaluate((li) => li.getAnimations({ subtree: true }).filter((a) => a.playState === 'running').length))
+    .toBe(0);
+  expect(await item.evaluate((li) => getComputedStyle(li.firstElementChild!.firstElementChild!).opacity)).toBe('1');
+  await expect(page.getByRole('status').filter({ hasText: 'Added' })).toBeVisible();
+});

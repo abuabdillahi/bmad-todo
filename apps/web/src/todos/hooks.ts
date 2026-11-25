@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useSyncExternalStore } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import type { Todo } from '@todo/contract';
-import { createTodo } from '../api/client.ts';
 import type { Announcer, AnnouncerSnapshot } from './announcer.ts';
+import type { AddOutcome } from './mutations.ts';
 import { todosQueryKey } from './query.ts';
 import { selectListState, type ListState, type TodosSnapshot } from './store.ts';
 import { useTodosContext } from './TodosProvider.tsx';
@@ -47,29 +47,31 @@ export function useAnnouncement(): AnnouncerSnapshot {
   return useSyncExternalStore(announcer.subscribe, announcer.getSnapshot);
 }
 
-export type AddOutcome = 'ok' | 'failed';
+export type { AddOutcome };
 
 /**
- * Adds a todo and waits for the server: mints the id (AD-7), sends it, and on
- * `201` refetches the list. Resolves with the outcome and never rejects.
- * Story 6 moves this onto the optimistic-mutation helper (AD-13).
+ * Adds a todo through the optimistic-mutation helper (AD-13): the card goes on
+ * top at once, and the promise resolves with the outcome and the minted id. It
+ * never rejects.
  */
 export function useAddTodo(): (description: string) => Promise<AddOutcome> {
-  const queryClient = useQueryClient();
-  const { mutateAsync } = useMutation({
-    mutationFn: (description: string) => createTodo({ id: crypto.randomUUID(), description }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: todosQueryKey }),
-  });
+  return useTodosContext().mutations.addTodo;
+}
 
-  return useCallback(
-    async (description: string) => {
-      try {
-        await mutateAsync(description);
-        return 'ok';
-      } catch {
-        return 'failed';
-      }
-    },
-    [mutateAsync],
-  );
+/** The list area reports the ids it renders, each time they change (Add landed after all). */
+export function useReportRenderedIds(todos: readonly Todo[]): void {
+  const { landed } = useTodosContext();
+  useEffect(() => {
+    landed.report(todos.map((todo) => todo.id));
+  }, [landed, todos]);
+}
+
+/** Calls `listener` with the ids the list area renders, each time they change. */
+export function useLandedAfterAll(listener: (ids: ReadonlySet<string>) => void): void {
+  const { landed } = useTodosContext();
+  const latest = useRef(listener);
+  useLayoutEffect(() => {
+    latest.current = listener;
+  });
+  useEffect(() => landed.subscribe((ids) => latest.current(ids)), [landed]);
 }
