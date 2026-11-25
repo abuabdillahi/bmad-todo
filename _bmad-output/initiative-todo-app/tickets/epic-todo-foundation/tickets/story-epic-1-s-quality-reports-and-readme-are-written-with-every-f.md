@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "12"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/12"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # Epic 1's quality reports and README are written, with every finding settled
