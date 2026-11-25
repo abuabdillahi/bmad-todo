@@ -67,7 +67,8 @@ export function Announcer({ focusTargets }: { focusTargets: AnnouncerFocusTarget
 
   useBlockSize(regionRef, message !== null);
 
-  // The fading copy goes when its fade ends, or at once when a new message shows.
+  // The fading copy goes when its fade ends, or at once when a new message shows
+  // (it is not rendered beside a message, so the two never paint together).
   useEffect(() => {
     if (leaving === null) return;
     if (message !== null) {
@@ -114,7 +115,7 @@ export function Announcer({ focusTargets }: { focusTargets: AnnouncerFocusTarget
           </button>
         )}
       </div>
-      {leaving !== null && (
+      {leaving !== null && message === null && (
         <div className={`${styles.region} ${styles.shown} ${styles.leaving} ${variantClass(leaving)}`} aria-hidden="true">
           {leaving.kind !== 'status' && <Icon />}
           <span className={styles.message}>{leaving.text}</span>

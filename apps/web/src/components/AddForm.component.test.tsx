@@ -21,6 +21,14 @@ function addFormStatus() {
   return within(screen.getByRole('textbox', { name: 'New todo' }).closest('form')!).getByRole('status');
 }
 
+/**
+ * Text queries that skip the live regions (the hidden Field status, and the
+ * Announcer's live element). A blocked submit shows the Inline error at once
+ * and puts the same words in the Field status one animation frame later, so an
+ * unscoped text query matches both once that frame has run.
+ */
+const NOT_STATUS = { ignore: '[role="status"], script, style' };
+
 /** Answers POST /api/todos with 201 and records each request body. */
 function acceptCreates(): CreateTodoBody[] {
   const received: CreateTodoBody[] = [];
@@ -202,7 +210,7 @@ describe('AddForm validation', () => {
       await user.click(addButton);
     }
 
-    expect(screen.getByText('Enter a description.')).toBeTruthy();
+    expect(screen.getByText('Enter a description.', NOT_STATUS)).toBeTruthy();
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(describedByText(field)).toBe('Enter a description. 0/200 Press Enter to add.');
     expect(document.activeElement).toBe(field);
@@ -237,7 +245,7 @@ describe('AddForm validation', () => {
     await waitFor(() => expect(fieldStatus().textContent).toBe('Enter a description.'));
     await user.keyboard('a');
 
-    expect(screen.queryByText('Enter a description.')).toBeNull();
+    expect(screen.queryByText('Enter a description.', NOT_STATUS)).toBeNull();
     expect(field.hasAttribute('aria-invalid')).toBe(false);
     expect(describedByText(field)).toBe('1/200 Press Enter to add.');
     expect(fieldStatus().textContent).toBe('');
@@ -338,7 +346,7 @@ describe('AddForm validation', () => {
     await expectRespoken(() => user.keyboard('{End}{Enter}'));
     expect(fieldStatus().textContent).toBe('over the character limit');
     expect(document.activeElement).toBe(field);
-    expect(screen.queryByText('Enter a description.')).toBeNull();
+    expect(screen.queryByText('Enter a description.', NOT_STATUS)).toBeNull();
     expect(received).toEqual([]);
 
     fireEvent.change(field, { target: { value: '😀'.repeat(200) } });
@@ -368,7 +376,7 @@ describe('AddForm validation', () => {
     fireEvent(field, event);
 
     expect(event.defaultPrevented).toBe(true);
-    await waitFor(() => expect(screen.getByText('Enter a description.')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Enter a description.', NOT_STATUS)).toBeTruthy());
     expect(received).toEqual([]);
   });
 });

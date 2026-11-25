@@ -108,6 +108,14 @@ deferred: []
   - `false` `reject` `messages.reason` has its own `conflict` key, though EXPERIENCE says conflict "has no key of its own and maps to the generic reason". The value is the generic string, so every message that maps `conflict` is the generic reason (proven by `messages.test.ts` for every action and for refresh). No caller can get a different wording.
   - `false` `reject` `--announcer-block-size` is not reset when the Announcer unmounts. The Announcer is app-level and never unmounts in the app. In tests, each mount's layout effect runs with `shown` false and sets `0px` before any assertion, so a leaked value never reaches a test. The jsdom 150 ms fade fallback is harmless: the tests assert the live element and focus, not the ghost copy's lifetime.
 
+### 2026-11-25 — Review pass (follow-up, CI component strict-mode fix)
+- context: CI run 45535291517 failed `K1 refuses an empty submit by Add inline and sends nothing` in the component step. The blocked submit shows the Inline error at once and sets the hidden Field status (same words) one animation frame later (`sayAgain`). On a slower runner the frame had run before the bare `screen.getByText('Enter a description.')`, so it matched both elements. The app is correct per AD-14, so only the test changed. The four K1 text queries for the error (lines 213, 248, 349, 379) now pass `NOT_STATUS` (`ignore: '[role="status"], script, style'`), mirroring story 1.4's e2e `inlineError(page)` (9699de1). The `waitFor(() => getByText(…))` at 379 had the same race. A sweep of every `*ByText` in the component and e2e tests found no other text that a status region repeats: the counters (`N/200`) never appear in a status, `e2e/validation.spec.ts` already uses `inlineError(page)` and its count-0 check is meant to cover both, and the Announcer tests query the live element directly. The race was reproduced by making the status set synchronously: the old queries failed 4 tests with "Found multiple elements", and the new queries passed 22/22.
+- verdicts: 3 findings — high 0, medium 0, low 3, false 0, maybe-false 0
+- findings:
+  - `low` `patch` The `NOT_STATUS` change to four K1 assertions is not recorded in the plan, and its comment names only the Field status though `[role="status"]` also skips the Announcer's live element. Recording it in the plan would mean editing the plan, so that part is rejected (this log records it anyway). Fixed the comment: it now names both live regions.
+  - `low` `patch` The client test case "a response without a content type" built `new Response('', …)`, which the Fetch spec gives `text/plain;charset=UTF-8`, so the missing-header branch was never tested. Fixed: the case uses `new Response(null, { status: 500 })` (no Content-Type, checked in Node).
+  - `low` `patch` A message announced while the Dismiss fade-out copy is showing could paint together with the copy for one frame, because the copy is removed in a passive effect. Fixed: the copy renders only while `message === null`. The effect still clears the state.
+
 ## Design Notes
 
 - Query function shape (golden example):
@@ -183,3 +191,20 @@ AD-14's announcer is built:
 - The banner's phone and wide layouts and the fade-out were not inspected by eye. Only axe and the behaviour assertions cover them.
 - The e2e refetch is triggered by dispatching `visibilitychange`, not by a real tab switch. The story's manual Verify (stop the api container, switch tabs) was not run by hand.
 - No screen reader was used, so the spoken output was not checked by ear.
+
+### Follow-up pass — 2026-11-25 (CI component fix)
+
+**Summary:** `AddForm.component.test.tsx` "K1 refuses an empty submit by Add" failed in CI (run 45535291517) with a strict-mode violation that depends on timing. The hidden Field status receives the Inline error's words one animation frame after it, so an unscoped `getByText` matched both. Every K1 query for the error text now ignores `[role="status"]`. A sweep of the other component and e2e tests found no further cases. The review also patched two small defects in this story's code.
+
+**Files changed:**
+- `apps/web/src/components/AddForm.component.test.tsx`: the `NOT_STATUS` query option on the four inline-error text queries
+- `apps/web/src/api/client.test.ts`: the "without a content type" case really has no Content-Type
+- `apps/web/src/components/Announcer.tsx`: the fade-out copy never renders beside a new message
+
+**Review findings:** 3 patches applied, all low (comment wording, test-case header, one-frame banner overlap). None deferred. Rejected: recording the test change in the plan's Implementation Notes, because that fix edits the plan (the triage log records it instead).
+
+**Follow-up review recommended:** false (follow-up pass; patched: high 0, medium 0, low 3).
+
+**Verification:** `pnpm typecheck` passes. `vitest run --project unit --project component` passes 180 of 180. `pnpm test:all` exits 0 with every step passed. The CI race was reproduced locally by making the status set synchronously (old queries: 4 failures; new: 22/22 pass), then the change was reverted.
+
+**Residual risks:** The real CI timing was not rerun. The fix removes the ambiguity whichever way the frame lands.

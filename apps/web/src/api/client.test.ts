@@ -74,7 +74,7 @@ describe('API client failure classification', () => {
     ['an inherited property as the type', answer(500, problem('constructor', 500), 'application/problem+json')],
     ['a problem with bad JSON', answer(500, '{not json', 'application/problem+json; charset=utf-8')],
     ['a problem body that is not an object', answer(500, '"text"', 'application/problem+json')],
-    ['a response without a content type', answer(500, '')],
+    ['a response without a content type', new Response(null, { status: 500 })],
   ])('K7 classifies %s as generic', async (_name, response) => {
     fetchMock.mockResolvedValue(response);
     expect((await failureOf(listTodos())).kind).toBe('generic');
