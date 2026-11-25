@@ -10,7 +10,7 @@ hitl: true
 risk: medium
 tracker_id: "31"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/31"
-tracker_status: backlog
+tracker_status: in-progress
 parent: epic-manage-todos
 ---
 
@@ -49,3 +49,4 @@ The add field's Enter handling for composing keyboards was proven only with synt
 - Decision: 2026-11-25, user: This untested risk moves to the backlog at epic-todo-foundation's closure (retrospective A6).
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): The order set on 2026-11-24 (this spike before the edit-field story) is reversed: the edit field (story 4) is built without waiting, and this spike moves into epic-manage-todos as entry 13 (`tickets.py move`), its one open hitl item, run by the user on a real phone against production after story 4 and story 11 ship. Any defect it finds becomes a new bug. No story, and not the epic's closing stories, waits on it.
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): Refined: devices, cases, the time box and where the answer goes are set in Approach.
+- Result: 2026-11-25, user, on an Android phone against production: in the add field, the keyboard's Enter key submits the todo (works as specified; no newline inserted). Keyboard, composing or committed word, phone model, Android and Chrome versions, the edit field and Shift+Enter cases not yet reported.
