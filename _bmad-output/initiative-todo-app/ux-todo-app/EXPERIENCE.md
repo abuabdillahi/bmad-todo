@@ -2,7 +2,7 @@
 name: 'BMad Todos'
 status: final
 created: '2026-11-24'
-updated: '2026-11-24'
+updated: '2026-11-25'
 sources: ['../initiative-todo-app.md', '../architecture-todo-app/architecture-todo-app.md']
 ---
 
@@ -363,7 +363,7 @@ Behavioural. Contrast is in `DESIGN.md` Colors.
 | Reflows at 320px. 200% zoom works, with the layout switching to the phone layout. Text-spacing overrides don't clip, because cards and fields grow. | 1.4.10, 1.4.4, 1.4.12 |
 | Reduced motion is honoured. | 2.3.3 (best practice) |
 | `lang="en"` on `<html>`. **[ASSUMPTION]** | 3.1.1 |
-| axe-core in every e2e test with AD-20 tags. Every e2e project emulates reduced motion, so no scan lands mid-transition, and one motion-on spec runs without axe. A second project reruns every axe-bearing spec in the dark scheme (AD-20). | — |
+| axe-core in every e2e test with AD-20 tags. Every e2e project emulates reduced motion, so no scan lands mid-transition, and one motion-on spec scans only once no animation is running. A second project reruns every spec in the dark scheme, and `pnpm test:all` fails when a passed e2e test ran no scan (AD-20). | — |
 | A manual keyboard and screen-reader pass covers every core action (R14). Expected, not bugs: NVDA and JAWS may need a second Escape to leave forms mode before Escape cancels; JAWS may voice the curly quotes in names at its default punctuation level; on Android, Enter submits even while a word is composing; a `status` message such as "Added" can replace a failure before a polite screen reader has finished it (AD-14); when a failed write turns out to have landed, the list changes silently and the failure message stays (Row states › Landed after all); VoiceOver may drop either "Your todos are loaded." or an Announcer message set a moment before it, such as "Added" during a slow first load (Component Patterns › Loading status › Recovery line). Revisit that last one if this pass loses either line. | — |
 
 ## Responsive & Platform
@@ -511,6 +511,7 @@ All twelve flags are resolved in the architecture spine (2026-11-24; flags 11 an
 - **UX need:** axe must never scan mid-fade, and the dark tokens must be audited.
 - **AD touched:** AD-20
 - **Resolution: accepted** (AD-20). Every e2e project emulates `reducedMotion: 'reduce'`, one motion-on spec runs without axe, and a second project with `colorScheme: 'dark'` reruns every axe-bearing spec.
+- **Superseded 2026-11-25:** the motion-on spec now scans too, once no animation is running, and every e2e test must scan (epic-todo-foundation retrospective F1, PR #23).
 
 **Flag 10 — Announcer message priority**
 - **UX need:** A `refresh` failure must never replace a showing mutation-failure message.
