@@ -9,7 +9,7 @@ hitl: false
 risk: low
 tracker_id: "10"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/10"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # Every profile starts healthy and hardened, with readable logs, and todos survive a restart
