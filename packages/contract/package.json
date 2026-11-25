@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./description": "./src/description.ts",
     "./openapi.json": "./openapi.json"
   },
   "scripts": {
@@ -12,5 +13,8 @@
   },
   "dependencies": {
     "typebox": "1.4.7"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0"
   }
 }

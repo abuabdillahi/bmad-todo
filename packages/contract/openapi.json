@@ -49,12 +49,174 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "An unexpected server error (/problems/internal).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                  ],
+                  "properties": {
+                    "type": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/validation"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/not-found"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/conflict"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/unavailable"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/internal"
+                          ]
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The service is unavailable, from the API or from nginx (/problems/unavailable).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                  ],
+                  "properties": {
+                    "type": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/validation"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/not-found"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/conflict"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/unavailable"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/internal"
+                          ]
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         }
       },
       "post": {
         "operationId": "createTodo",
-        "summary": "Create a todo with a client-minted id",
+        "summary": "Create a todo with a client-minted id; a replay of the same create answers 200",
         "requestBody": {
           "required": true,
           "content": {
@@ -73,7 +235,8 @@
                   "description": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 200
+                    "maxLength": 200,
+                    "pattern": "^[^\\p{Cc}\\u2028\\u2029]*$"
                   }
                 },
                 "additionalProperties": false
@@ -82,8 +245,8 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Default Response",
+          "200": {
+            "description": "A replay: the id already exists with the same trimmed description (AD-6).",
             "content": {
               "application/json": {
                 "schema": {
@@ -114,6 +277,363 @@
                 }
               }
             }
+          },
+          "201": {
+            "description": "The todo was created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "description",
+                    "completed",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "completed": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid (/problems/validation).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                  ],
+                  "properties": {
+                    "type": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/validation"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/not-found"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/conflict"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/unavailable"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/internal"
+                          ]
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The id already exists with a different description (/problems/conflict).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                  ],
+                  "properties": {
+                    "type": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/validation"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/not-found"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/conflict"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/unavailable"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/internal"
+                          ]
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error (/problems/internal).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                  ],
+                  "properties": {
+                    "type": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/validation"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/not-found"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/conflict"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/unavailable"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/internal"
+                          ]
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The service is unavailable, from the API or from nginx (/problems/unavailable).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                  ],
+                  "properties": {
+                    "type": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/validation"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/not-found"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/conflict"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/unavailable"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/internal"
+                          ]
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
           }
         }
       }
@@ -138,6 +658,168 @@
                       "enum": [
                         "ok"
                       ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An unexpected server error (/problems/internal).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                  ],
+                  "properties": {
+                    "type": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/validation"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/not-found"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/conflict"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/unavailable"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/internal"
+                          ]
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The service is unavailable, from the API or from nginx (/problems/unavailable).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                  ],
+                  "properties": {
+                    "type": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/validation"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/not-found"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/conflict"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/unavailable"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "/problems/internal"
+                          ]
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
                     }
                   },
                   "additionalProperties": false

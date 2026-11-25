@@ -1,4 +1,4 @@
-import { desc, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import type { Todo } from '@todo/contract';
 import type { Db } from '../db/client.ts';
 import { todos, type TodoRow } from '../db/schema.ts';
@@ -10,6 +10,8 @@ export interface NewTodo {
 
 export interface TodoRepository {
   list(): Todo[];
+  /** The stored todo with this id, or `undefined`. */
+  findById(id: string): Todo | undefined;
   create(todo: NewTodo): Todo;
   /** Throws when storage can't be reached. */
   ping(): void;
@@ -30,6 +32,11 @@ export function createTodoRepository(db: Db, now: () => number = Date.now): Todo
   return {
     list() {
       return db.select().from(todos).orderBy(desc(todos.createdAt), desc(todos.id)).all().map(toTodo);
+    },
+
+    findById(id) {
+      const row = db.select().from(todos).where(eq(todos.id, id)).get();
+      return row === undefined ? undefined : toTodo(row);
     },
 
     create({ id, description }) {

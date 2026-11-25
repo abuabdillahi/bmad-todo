@@ -1,4 +1,5 @@
 import type { CreateTodoBody, Todo } from '@todo/contract';
+import { ConflictError } from '../errors.ts';
 import type { TodoRepository } from './repository.ts';
 
 /** Newest first: `createdAt` desc, then `id` desc (AD-6). */
@@ -10,9 +11,16 @@ export function sortNewestFirst(list: readonly Todo[]): Todo[] {
   });
 }
 
+/** The outcome of a create: `created` is false for an idempotent replay (AD-6). */
+export interface CreateResult {
+  todo: Todo;
+  created: boolean;
+}
+
 export interface TodoService {
   list(): Todo[];
-  create(input: CreateTodoBody): Todo;
+  /** Throws `ConflictError` when the id exists with a different description. */
+  create(input: CreateTodoBody): CreateResult;
 }
 
 /** Domain rules for todos; knows nothing about HTTP (AD-10). */
@@ -22,8 +30,16 @@ export function createTodoService(repository: TodoRepository): TodoService {
       return sortNewestFirst(repository.list());
     },
 
+    // Find, then insert: better-sqlite3 is synchronous and the API is the only
+    // writer (AD-2), so nothing runs between the two, and the insert stays one
+    // statement (AD-15). `input.description` is already trimmed (AD-8).
     create(input) {
-      return repository.create({ id: input.id, description: input.description });
+      const existing = repository.findById(input.id);
+      if (existing !== undefined) {
+        if (existing.description === input.description) return { todo: existing, created: false };
+        throw new ConflictError('a todo with this id already exists with a different description');
+      }
+      return { todo: repository.create({ id: input.id, description: input.description }), created: true };
     },
   };
 }

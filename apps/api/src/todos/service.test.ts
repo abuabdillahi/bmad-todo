@@ -40,6 +40,7 @@ describe('createTodoService', () => {
     const newer = todo('a0000000-0000-4000-8000-000000000002', '2026-11-23T10:00:00.000Z');
     const repository: TodoRepository = {
       list: () => [older, newer],
+      findById: () => undefined,
       create: () => {
         throw new Error('not used');
       },
