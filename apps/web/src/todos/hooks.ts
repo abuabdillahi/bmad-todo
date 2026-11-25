@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import type { Todo } from '@todo/contract';
 import type { Announcer, AnnouncerSnapshot } from './announcer.ts';
+import { messages } from './messages.ts';
 import type { AddOutcome, MutationOutcome } from './mutations.ts';
 import { todosQueryKey } from './query.ts';
 import { selectListState, type ListState, type TodosSnapshot } from './store.ts';
@@ -65,6 +66,33 @@ export function useAddTodo(): (description: string, id?: string) => Promise<AddO
  */
 export function useSetCompleted(): (todo: Pick<Todo, 'id' | 'description'>, completed: boolean) => Promise<MutationOutcome> {
   return useTodosContext().mutations.setCompleted;
+}
+
+/**
+ * Changes a todo's text through the optimistic-mutation helper (AD-13): the
+ * card shows the new text at once, and the promise resolves with the outcome.
+ * It never rejects.
+ */
+export function useEditDescription(): (todo: Pick<Todo, 'id' | 'description'>, description: string) => Promise<MutationOutcome> {
+  return useTodosContext().mutations.editDescription;
+}
+
+/**
+ * The list area's one announcement (AD-14): “{t}” was deleted elsewhere, kind
+ * `failure`, when a refetch removes the row in edit mode. Skipped while that
+ * exact failure message is already showing (a `not-found` the helper announced).
+ */
+export function useAnnounceDeletedElsewhere(): (description: string) => void {
+  const { announcer } = useTodosContext();
+  return useCallback(
+    (description: string) => {
+      const text = messages.deletedElsewhere(description);
+      const showing = announcer.getSnapshot().message;
+      if (showing?.kind === 'failure' && showing.text === text) return;
+      announcer.announce('failure', text);
+    },
+    [announcer],
+  );
 }
 
 /**

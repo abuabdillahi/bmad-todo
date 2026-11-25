@@ -76,6 +76,16 @@ export function completionCheck(page: Page, description: string): Locator {
   return todoList(page).getByRole('checkbox', { name: description, exact: true });
 }
 
+/** A todo's Edit button, named `Edit “{full text}”`, never cut. */
+export function editButton(page: Page, description: string): Locator {
+  return todoList(page).getByRole('button', { name: `Edit “${description}”`, exact: true });
+}
+
+/** The open Edit form's Text field (edit), named by its hidden label. */
+export function editField(page: Page): Locator {
+  return todoList(page).getByRole('textbox', { name: 'Edit description', exact: true });
+}
+
 /** `{t}`'s text: cut at 40 code points with "…" inside the quote (EXPERIENCE Voice and Tone). */
 export function quoteText(description: string): string {
   const points = [...description];
@@ -107,6 +117,8 @@ export const MESSAGES = {
     `Couldn't mark “${quoteText(description)}” done, so it's still open. ${reason}`,
   reopenFailed: (description: string, reason: string): string =>
     `Couldn't reopen “${quoteText(description)}”, so it's still done. ${reason}`,
+  editFailed: (description: string, reason: string): string =>
+    `Couldn't save your edit, so “${quoteText(description)}” is back as it was. ${reason}`,
   deletedElsewhere: (description: string): string => `“${quoteText(description)}” was deleted elsewhere.`,
   /** The Inline error for an empty submit. */
   empty: 'Enter a description.',

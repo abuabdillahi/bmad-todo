@@ -80,9 +80,6 @@
 .card {
   position: relative;
   isolation: isolate;
-  display: flex;
-  align-items: flex-start;
-  gap: var(--todo-card-gap);
   padding: var(--todo-card-padding-block) var(--todo-card-padding-inline);
   border: var(--todo-card-border-width) solid var(--todo-card-border-color);
   border-radius: var(--todo-card-radius);
@@ -123,6 +120,54 @@
 
 .done::after {
   opacity: 1;
+}
+
+/*
+ * Phone: the check-and-text line, then the actions row right-aligned 8px below.
+ * Wide: one row, the check-and-text line (flex 1) and the actions inline at the
+ * top right (DESIGN.md Components › Todo card, Layout & Spacing).
+ */
+.main {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--todo-card-gap);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--todo-card-actions-gap);
+  margin-top: var(--todo-card-actions-gap);
+}
+
+/* spacing.breakpoint-wide (768px), repeated literally: CSS can't read custom properties in @media. */
+@media (min-width: 768px) {
+  .card {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--todo-card-gap);
+  }
+
+  .main {
+    flex: 1;
+    min-width: 0;
+    padding-top: var(--todo-card-check-row-nudge-wide);
+  }
+
+  .actions {
+    flex: none;
+    margin-top: 0;
+  }
+
+  /* Edit mode has no inline buttons to centre on: Save and Cancel sit under the field. */
+  .editing .main {
+    padding-top: 0;
+  }
+}
+
+/* Edit mode: the check is nudged to line up with the field's first line. */
+.editing .check {
+  margin-top: var(--completion-check-nudge-edit);
 }
 
 .content {
@@ -278,6 +323,11 @@
     }
   }
 
+  /* Leave edit (EXPERIENCE Motion): only the text and the actions coming back fade in, once. */
+  .swapIn {
+    animation: todo-card-swap-in var(--motion-duration-swap) var(--motion-ease-out);
+  }
+
   .flagged {
     animation: todo-card-revert-flag var(--motion-duration-revert) var(--motion-ease-in-out);
   }
@@ -287,6 +337,15 @@
     animation:
       todo-card-in var(--motion-duration-base) var(--motion-ease-out),
       todo-card-revert-flag var(--motion-duration-revert) var(--motion-ease-in-out);
+  }
+}
+
+@keyframes todo-card-swap-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

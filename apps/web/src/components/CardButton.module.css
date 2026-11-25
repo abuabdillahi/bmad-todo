@@ -1,0 +1,105 @@
+/*
+ * Card buttons (DESIGN.md Components › Card buttons): Edit, Save and Cancel
+ * here; story 5 adds Delete and Confirm delete. Every one has rest, hover
+ * (pointer only), pressed (one more step plus the press scale) and
+ * focus-visible (the global ring) states, and none has a disabled look.
+ */
+.button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--card-button-min-width);
+  min-height: var(--card-button-min-height);
+  margin: 0;
+  padding: 0 var(--card-button-padding-inline);
+  border: var(--card-button-border-width) solid transparent;
+  border-radius: var(--card-button-radius);
+  font-size: var(--font-button-size);
+  font-weight: var(--font-button-weight);
+}
+
+/* Edit and Cancel. */
+.soft {
+  background: var(--edit-button-background);
+  color: var(--edit-button-foreground);
+}
+
+.cancel {
+  background: var(--cancel-button-background);
+  color: var(--cancel-button-foreground);
+}
+
+.primary {
+  padding: 0 var(--save-button-padding-inline);
+  border: 0;
+  background: var(--save-button-background);
+  color: var(--save-button-foreground);
+}
+
+/* Edit on a done card: no fill, a done-coloured edge and label, so the card recedes. */
+.done {
+  border-color: var(--card-button-done-border-color);
+  background: var(--card-button-done-background);
+  color: var(--card-button-done-foreground);
+}
+
+@media (hover: hover) {
+  .soft:hover {
+    background: var(--edit-button-background-hover);
+  }
+
+  .cancel:hover {
+    background: var(--cancel-button-background-hover);
+  }
+
+  .primary:hover {
+    background: var(--save-button-background-hover);
+  }
+
+  .done:hover {
+    background: var(--card-button-done-background-hover);
+  }
+}
+
+.soft:active {
+  background: var(--edit-button-background-pressed);
+}
+
+.cancel:active {
+  background: var(--cancel-button-background-pressed);
+}
+
+.primary:active {
+  background: var(--save-button-background-pressed);
+}
+
+.done:active {
+  background: var(--card-button-done-background-pressed);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .button {
+    transition:
+      background-color var(--motion-duration-press) var(--motion-ease-out),
+      transform var(--motion-duration-press) var(--motion-ease-out);
+  }
+
+  .button:active {
+    transform: scale(var(--motion-press-scale));
+  }
+}
+
+/* Forced colours: Save has no border of its own, so it gets a system-painted edge like Edit and Cancel. */
+@media (forced-colors: active) {
+  .primary {
+    border: var(--card-button-border-width) solid ButtonText;
+  }
+}
+
+/* spacing.breakpoint-wide (768px), repeated literally: CSS can't read custom properties in @media. */
+@media (min-width: 768px) {
+  .button {
+    min-height: var(--card-button-min-height-wide);
+  }
+}

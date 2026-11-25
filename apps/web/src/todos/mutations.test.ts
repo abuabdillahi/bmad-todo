@@ -588,3 +588,168 @@ describe('mutation helper: complete and reopen (U3, U4, U5)', () => {
     expect(store.getSnapshot().pendingCount).toBe(0);
   });
 });
+
+describe('mutation helper: edit (U4, U5)', () => {
+  const UNAVAILABLE = "The server isn't available right now. Try again in a moment.";
+  const NETWORK = 'Check your connection and try again.';
+  const GENERIC = 'Something went wrong on our side. Try again.';
+  const VALIDATION = 'Keep it to 1–200 characters.';
+
+  /** Answers each PATCH once the test settles it, recording its path and body. */
+  function heldPatches() {
+    const calls: { path: string; body: unknown; settle: (answer: () => Response | Promise<Response>) => void }[] = [];
+    fetchMock.mockImplementation(
+      (url, init) =>
+        new Promise<Response>((resolve, reject) => {
+          calls.push({
+            path: String(url),
+            body: JSON.parse(String(init!.body)),
+            settle: (answer) => void Promise.resolve().then(answer).then(resolve, reject),
+          });
+        }),
+    );
+    return calls;
+  }
+
+  it('U4 an edit applies at once, sends {description} by PATCH and announces nothing', async () => {
+    const { helper, store, announce, invalidate, list } = setup([first, second]);
+    const calls = heldPatches();
+
+    const pending = helper.editDescription(first, 'Edited text');
+    await flush();
+
+    expect(list()).toEqual([{ ...first, description: 'Edited text' }, second]);
+    expect(store.getSnapshot().pendingCount).toBe(1);
+    expect(calls.map(({ path, body }) => ({ path, body }))).toEqual([{ path: `/api/todos/${first.id}`, body: { description: 'Edited text' } }]);
+    expect(fetchMock.mock.calls[0]![1]!.method).toBe('PATCH');
+
+    calls[0]!.settle(() => Response.json({ ...first, description: 'Edited text' }));
+    await expect(pending).resolves.toEqual({ status: 'ok' });
+    expect(list()).toEqual([{ ...first, description: 'Edited text' }, second]);
+    expect(announce).not.toHaveBeenCalled();
+    expect(store.getSnapshot().revertedAt.size).toBe(0);
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: todosQueryKey });
+  });
+
+  it.each([
+    ['a 503 problem', () => problem('/problems/unavailable', 503), UNAVAILABLE],
+    ['no response', () => Promise.reject(new TypeError('Failed to fetch')), NETWORK],
+    ['an HTML 500', () => new Response('<html>boom</html>', { status: 500, headers: { 'Content-Type': 'text/html' } }), GENERIC],
+    ['a 400 naming description', () => problem('/problems/validation', 400, [{ field: 'description', message: 'x' }]), VALIDATION],
+    ['a 400 naming another field', () => problem('/problems/validation', 400, [{ field: 'id', message: 'x' }]), GENERIC],
+  ])('U4 an edit failing with %s reverts only that todo\'s text, records the revert and announces edit with the pre-edit text plus the reason', async (_name, answer, reason) => {
+    const { helper, store, announce, invalidate, list, queryClient } = setup([first, second]);
+    const calls = heldPatches();
+
+    const pending = helper.editDescription(first, 'Edited text');
+    await flush();
+    // Another todo changes meanwhile; the revert keeps that change.
+    queryClient.setQueryData<Todo[]>(todosQueryKey, (todos) => todos!.map((t) => (t.id === second.id ? { ...t, completed: true } : t)));
+    calls[0]!.settle(answer);
+    const outcome = await pending;
+
+    expect(outcome).toMatchObject({ status: 'failed' });
+    expect(list()).toEqual([first, { ...second, completed: true }]);
+    expect([...store.getSnapshot().revertedAt]).toEqual([[first.id, 1234]]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't save your edit, so “Already here” is back as it was. ${reason}`);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+    expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: todosQueryKey });
+  });
+
+  it('U4 an edit answered 404 reverts and announces deletedElsewhere with the pre-edit text, with no lead or reason', async () => {
+    const { helper, store, announce, list } = setup([first, second]);
+    const calls = heldPatches();
+
+    const pending = helper.editDescription(first, 'Edited text');
+    await flush();
+    calls[0]!.settle(() => problem('/problems/not-found', 404));
+
+    await expect(pending).resolves.toMatchObject({ status: 'failed', failure: { kind: 'not-found' } });
+    expect(list()).toEqual([first, second]);
+    expect(store.getSnapshot().revertedAt.get(first.id)).toBe(1234);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', '“Already here” was deleted elsewhere.');
+  });
+
+  it('U4 two queued edits, the first failing: the card shows the second, and the message quotes it', async () => {
+    const { helper, announce, list } = setup([first]);
+    const calls = heldPatches();
+
+    const toB = helper.editDescription(first, 'Text B');
+    const toC = helper.editDescription({ ...first, description: 'Text B' }, 'Text C');
+    await flush();
+    expect(list()).toEqual([{ ...first, description: 'Text C' }]);
+    expect(calls.map(({ body }) => body)).toEqual([{ description: 'Text B' }]);
+
+    calls[0]!.settle(() => problem('/problems/unavailable', 503));
+    await expect(toB).resolves.toMatchObject({ status: 'failed' });
+    // Rebuilt from "Already here", with the queued edit re-applied on it.
+    expect(list()).toEqual([{ ...first, description: 'Text C' }]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't save your edit, so “Text C” is back as it was. ${UNAVAILABLE}`);
+
+    await flush();
+    calls[1]!.settle(() => Response.json({ ...first, description: 'Text C' }));
+    await expect(toC).resolves.toEqual({ status: 'ok' });
+  });
+
+  /** Holds each request by method, so a create and an edit on its todo settle independently. */
+  function heldByMethod() {
+    type Settle = (answer: (body: Record<string, unknown>) => Response) => void;
+    const held: { POST: Settle[]; PATCH: { body: Record<string, unknown>; settle: Settle }[] } = { POST: [], PATCH: [] };
+    fetchMock.mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((resolve) => {
+          const body = JSON.parse(String(init!.body)) as Record<string, unknown>;
+          const settle: Settle = (answer) => resolve(answer(body));
+          if (init!.method === 'POST') held.POST.push(settle);
+          else held.PATCH.push({ body, settle });
+        }),
+    );
+    return held;
+  }
+
+  it('U5 an edit on a todo whose create is pending shows at once and is sent only after the create settles', async () => {
+    const { helper, announce, list } = setup([second]);
+    const held = heldByMethod();
+
+    const added = helper.addTodo('Buy milk');
+    await flush();
+    const id = list()![0]!.id;
+    const edited = helper.editDescription({ id, description: 'Buy milk' }, 'Buy oat milk');
+    await flush();
+
+    expect(list()![0]).toMatchObject({ id, description: 'Buy oat milk' });
+    expect(held.POST).toHaveLength(1);
+    expect(held.PATCH).toHaveLength(0);
+
+    held.POST[0]!((body) => Response.json({ ...body, completed: false, createdAt: '2026-11-25T10:00:00.000Z' }, { status: 201 }));
+    await expect(added).resolves.toMatchObject({ status: 'ok' });
+    await flush();
+    expect(held.PATCH.map(({ body }) => body)).toEqual([{ description: 'Buy oat milk' }]);
+    expect(fetchMock.mock.calls[1]![0]).toBe(`/api/todos/${id}`);
+
+    held.PATCH[0]!.settle(() => Response.json({ id, description: 'Buy oat milk', completed: false, createdAt: '2026-11-25T10:00:00.000Z' }));
+    await expect(edited).resolves.toEqual({ status: 'ok' });
+    expect(list()![0]).toMatchObject({ id, description: 'Buy oat milk' });
+    expect(announce).toHaveBeenCalledExactlyOnceWith('status', 'Added “Buy milk”.');
+  });
+
+  it('U5 an edit behind a create that fails is dropped: not sent, announced or reverted', async () => {
+    const { helper, store, announce, list } = setup([second]);
+    const held = heldByMethod();
+
+    const added = helper.addTodo('Buy milk');
+    await flush();
+    const id = list()![0]!.id;
+    const edited = helper.editDescription({ id, description: 'Buy milk' }, 'Buy oat milk');
+    await flush();
+
+    held.POST[0]!(() => problem('/problems/unavailable', 503));
+    await expect(added).resolves.toMatchObject({ status: 'failed' });
+    await expect(edited).resolves.toEqual({ status: 'dropped' });
+
+    expect(held.PATCH).toHaveLength(0);
+    expect(list()).toEqual([second]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't add “Buy milk”. ${UNAVAILABLE}`);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+  });
+});

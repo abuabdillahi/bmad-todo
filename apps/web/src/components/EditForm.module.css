@@ -1,0 +1,32 @@
+/* Edit form (DESIGN.md Components › Edit form): the Text field (edit), then Save and Cancel, right-aligned, 8px apart and 8px below. */
+.form {
+  flex: 1;
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--edit-form-gap);
+  margin-top: var(--edit-form-gap);
+}
+
+/*
+ * Enter edit (EXPERIENCE Motion): an instant swap, then only the incoming
+ * content fades in, once. The field box is never faded, so its focus ring is
+ * fully visible from the first frame.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .swapIn {
+    animation: edit-form-swap-in var(--motion-duration-swap) var(--motion-ease-out);
+  }
+}
+
+@keyframes edit-form-swap-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

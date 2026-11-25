@@ -32,6 +32,12 @@ const unavailableProblem = () =>
     { status: 503, headers: { 'Content-Type': 'application/problem+json; charset=utf-8' } },
   );
 
+/** A row's todo text: the span its Completion check's `aria-labelledby` names. */
+function todoText(item: HTMLElement): string {
+  const check = within(item).getByRole('checkbox');
+  return document.getElementById(check.getAttribute('aria-labelledby')!)?.textContent ?? '';
+}
+
 type Answer = () => Response | Promise<Response>;
 
 /** GET /api/todos answers from a queue; the last answer repeats. Counts the requests. */
@@ -90,7 +96,7 @@ describe('Announcer: refresh failures', () => {
     await settled(queryClient);
 
     expect(calls.count).toBe(2);
-    expect(within(list).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Already here']);
+    expect(within(list).getAllByRole('listitem').map(todoText)).toEqual(['Already here']);
     expect(liveElement().getAttribute('aria-live')).toBe('polite');
     expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();
   });

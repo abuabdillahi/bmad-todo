@@ -40,7 +40,7 @@ test.describe('add a todo', () => {
     // The card shows on top at once, before the server answers; the field clears and keeps focus.
     const create = await createHeld;
     await expect(todoItem(page, description)).toHaveCount(1);
-    await expect(todoList(page).getByRole('listitem').first()).toHaveText(description);
+    await expect(todoList(page).getByRole('listitem').first().getByRole('checkbox')).toHaveAccessibleName(description);
     await expect(field).toHaveValue('');
     await expect(page.getByText('0/200')).toBeVisible();
     await expect(field).toBeFocused();
@@ -50,7 +50,7 @@ test.describe('add a todo', () => {
     await create.continue();
     await page.unroute('**/api/todos');
     await expect(announcement(page, MESSAGES.addOutcome)).toHaveText(MESSAGES.added(description));
-    await expect(todoList(page).getByRole('listitem').first()).toHaveText(description);
+    await expect(todoList(page).getByRole('listitem').first().getByRole('checkbox')).toHaveAccessibleName(description);
     await expectNoAxeViolations(page, 'added');
 
     // The Add button is the next tab stop.
