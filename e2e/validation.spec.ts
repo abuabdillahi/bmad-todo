@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type CDPSession, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
 
 /**
@@ -45,6 +45,17 @@ function inlineError(page: Page) {
 async function writeClipboard(page: Page, text: string) {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.evaluate((value) => navigator.clipboard.writeText(value), text);
+}
+
+/**
+ * Enter as a keyboard that keeps every word composing sends it (e.g. Gboard): keyCode 229,
+ * which the keydown handler stands aside for, so Chromium's own default action raises a
+ * trusted `beforeinput` line break. CDP sends a real key, not a synthetic DOM event.
+ */
+async function pressComposingEnter(cdp: CDPSession) {
+  const key = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 };
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', text: '\r', unmodifiedText: '\r', ...key });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
 }
 
 test.describe('add form validation', () => {
@@ -102,6 +113,69 @@ test.describe('add form validation', () => {
 
     await page.keyboard.press('ControlOrMeta+Z');
     await expect(field).toHaveValue('Buy  milk');
+  });
+
+  test('E6 K1 a trusted Enter with keyCode 229 submits through beforeinput and inserts no newline', async ({ page, browserName }, testInfo) => {
+    test.skip(browserName !== 'chromium', 'CDP key input is Chromium only');
+    const creates = recordCreates(page);
+    const description = uniqueDescription(testInfo.project.name);
+    const field = await focusAddField(page);
+    // Every line break the engine itself raises, so the test knows the beforeinput path ran.
+    await field.evaluate((el) => {
+      const seen: string[] = [];
+      (window as unknown as { lineBreaks: string[] }).lineBreaks = seen;
+      el.addEventListener('beforeinput', (event) => {
+        const { inputType, isTrusted } = event as InputEvent;
+        if (inputType === 'insertLineBreak' || inputType === 'insertParagraph') seen.push(`${inputType} ${isTrusted}`);
+      });
+    });
+    const lineBreaks = () => page.evaluate(() => (window as unknown as { lineBreaks: string[] }).lineBreaks);
+
+    const cdp = await page.context().newCDPSession(page);
+
+    // Empty: refused inline, nothing sent, no newline.
+    await pressComposingEnter(cdp);
+    await expect(inlineError(page)).toBeVisible();
+    await expect(field).toHaveValue('');
+    expect(await lineBreaks()).toEqual(['insertLineBreak true']);
+    expect(creates).toEqual([]);
+
+    // Valid: added once, with no line break, and the field clears.
+    await page.keyboard.insertText(description);
+    await pressComposingEnter(cdp);
+    await expect(todoItem(page, description)).toHaveCount(1);
+    await expect(todoItem(page, description)).toHaveText(description);
+    await expect(field).toHaveValue('');
+    await expect(field).toBeFocused();
+    expect(await lineBreaks()).toEqual(['insertLineBreak true', 'insertLineBreak true']);
+    expect(creates).toHaveLength(1);
+    expect(JSON.parse(creates[0]!).description).toBe(description);
+  });
+
+  test('E6 K1 Enter with keyCode 229 during an open composition adds the composed word and the field stays empty', async ({ page, browserName }, testInfo) => {
+    test.skip(browserName !== 'chromium', 'CDP key input is Chromium only');
+    const creates = recordCreates(page);
+    const description = uniqueDescription(testInfo.project.name);
+    const field = await focusAddField(page);
+    const cdp = await page.context().newCDPSession(page);
+
+    // A real IME composition is open on the last word when Enter arrives.
+    await page.keyboard.insertText(`${description} `);
+    await cdp.send('Input.imeSetComposition', { text: 'milk', selectionStart: 4, selectionEnd: 4 });
+    await expect(field).toHaveValue(`${description} milk`);
+    const created = page.waitForResponse(
+      (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/todos',
+    );
+    await pressComposingEnter(cdp);
+
+    expect((await created).ok()).toBe(true);
+    await expect(todoItem(page, description)).toHaveText(`${description} milk`);
+    await expect(field).toHaveValue('');
+    expect(creates).toHaveLength(1);
+    expect(JSON.parse(creates[0]!).description).toBe(`${description} milk`);
+    // The composed word never comes back once the add has resolved and a key follows.
+    await page.keyboard.type('a');
+    await expect(field).toHaveValue('a');
   });
 
   test('E6 E8 over 200 characters shows the over state, Enter adds nothing, and 200 clears it', async ({ page }, testInfo) => {
