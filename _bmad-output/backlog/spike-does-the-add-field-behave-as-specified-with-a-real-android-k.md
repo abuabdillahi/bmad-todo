@@ -8,6 +8,9 @@ assignee: ""
 refined: false
 hitl: true
 risk: medium
+tracker_id: "31"
+remote: "https://github.com/abuabdillahi/bmad-todo/issues/31"
+tracker_status: backlog
 ---
 
 # Does the add field behave as specified with a real Android keyboard?

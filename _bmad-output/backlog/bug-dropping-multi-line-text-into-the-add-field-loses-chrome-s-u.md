@@ -9,6 +9,9 @@ refined: false
 hitl: false
 risk: low
 severity: P3
+tracker_id: "29"
+remote: "https://github.com/abuabdillahi/bmad-todo/issues/29"
+tracker_status: backlog
 ---
 
 # Dropping multi-line text into the add field loses Chrome's undo step

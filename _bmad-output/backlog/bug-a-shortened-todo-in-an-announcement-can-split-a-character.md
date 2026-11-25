@@ -9,6 +9,9 @@ refined: false
 hitl: false
 risk: low
 severity: P3
+tracker_id: "33"
+remote: "https://github.com/abuabdillahi/bmad-todo/issues/33"
+tracker_status: backlog
 ---
 
 # A shortened todo in an announcement can split a character

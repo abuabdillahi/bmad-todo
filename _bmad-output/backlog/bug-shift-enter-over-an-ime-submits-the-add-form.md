@@ -9,6 +9,9 @@ refined: false
 hitl: false
 risk: low
 severity: P3
+tracker_id: "30"
+remote: "https://github.com/abuabdillahi/bmad-todo/issues/30"
+tracker_status: backlog
 ---
 
 # Shift+Enter over an IME submits the add form
@@ -36,4 +39,4 @@ After a composing (keyCode 229) keydown, the browser sends `beforeinput` with `i
 ## Notes
 
 - Decision: 2026-11-25, user: This rejected-but-real finding moves to the backlog at epic-todo-foundation's closure (retrospective A6).
-- Open question: Reproducing it needs a real IME or Android keyboard; the spike on real Android keyboards (backlog id 9) may confirm it on the way.
+- Open question: Reproducing it needs a real IME or Android keyboard; the spike on real Android keyboards (backlog id 9, #31) may confirm it on the way.

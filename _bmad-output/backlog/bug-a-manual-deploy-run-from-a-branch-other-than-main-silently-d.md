@@ -9,6 +9,9 @@ refined: false
 hitl: false
 risk: low
 severity: P3
+tracker_id: "27"
+remote: "https://github.com/abuabdillahi/bmad-todo/issues/27"
+tracker_status: backlog
 ---
 
 # A manual deploy run from a branch other than main silently does nothing

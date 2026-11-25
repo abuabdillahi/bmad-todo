@@ -9,6 +9,9 @@ refined: false
 hitl: false
 risk: low
 severity: P3
+tracker_id: "26"
+remote: "https://github.com/abuabdillahi/bmad-todo/issues/26"
+tracker_status: backlog
 ---
 
 # A burst of merges can leave the tip of main undeployed

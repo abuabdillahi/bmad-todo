@@ -9,6 +9,9 @@ refined: false
 hitl: false
 risk: low
 severity: P3
+tracker_id: "28"
+remote: "https://github.com/abuabdillahi/bmad-todo/issues/28"
+tracker_status: backlog
 ---
 
 # nginx's own 4xx errors under /api are HTML, not problem responses

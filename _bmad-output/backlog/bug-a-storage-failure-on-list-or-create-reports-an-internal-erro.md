@@ -9,6 +9,9 @@ refined: false
 hitl: false
 risk: low
 severity: P3
+tracker_id: "32"
+remote: "https://github.com/abuabdillahi/bmad-todo/issues/32"
+tracker_status: backlog
 ---
 
 # A storage failure on list or create reports an internal error, not unavailable
