@@ -1,7 +1,8 @@
 // Runs two shell steps of .github/workflows/ci.yml as written, with a fake `ssh`
 // (the deploy job itself only runs on main): the deploy guard, unchanged for a push
 // and, on schedule, skipping when production changed since `catch-up` read it; and
-// `catch-up`'s read of the SHA production runs, which fails on an SSH failure.
+// `catch-up`'s read of the SHA production runs, which fails on an SSH failure; and
+// `dispatch-off-main`'s refusal of a rollback started from another branch (#27).
 // Also pins the job and step names scripts/deploy-catch-up.mjs reads runs by.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -274,17 +275,20 @@ type Scenario = {
   gate?: { result: string; clear?: string };
 };
 
+const OFF_MAIN_JOB = 'dispatch-off-main';
+
 /** Which jobs run, in dependency order, for one event. */
 function jobsThatRun(s: Scenario) {
   const ctx: Ctx = { github: { event_name: s.event, ref: s.ref ?? 'refs/heads/main' }, needs: {} };
   const ran: Record<string, boolean> = {};
   const plan: Record<string, { result: string; outputs: Record<string, string> }> = {
+    'dispatch-off-main': { result: 'failure', outputs: {} },
     'catch-up': { result: s.catchUp?.result ?? 'success', outputs: { deploy: s.catchUp?.deploy ?? '', deployed: s.catchUp?.deployed ?? '' } },
     test: { result: s.test ?? 'success', outputs: {} },
     'catch-up-gate': { result: s.gate?.result ?? 'success', outputs: { clear: s.gate?.clear ?? '' } },
     deploy: { result: 'success', outputs: {} },
   };
-  for (const id of ['catch-up', TEST_JOB, 'catch-up-gate', DEPLOY_JOB]) {
+  for (const id of [OFF_MAIN_JOB, 'catch-up', TEST_JOB, 'catch-up-gate', DEPLOY_JOB]) {
     const needed = needsOf(id);
     ran[id] = evaluate(ifAt(jobBlock(id), 4), { ...ctx, needs: Object.fromEntries(needed.map((n) => [n, ctx.needs[n]])) }, needed);
     ctx.needs[id] = ran[id] ? plan[id] : { result: 'skipped', outputs: {} };
@@ -294,23 +298,26 @@ function jobsThatRun(s: Scenario) {
 
 describe('the job graph, evaluated from ci.yml', () => {
   it('needs: catch-up before test; catch-up and test before the gate; all three before deploy', () => {
+    expect(needsOf(OFF_MAIN_JOB)).toEqual([]);
     expect(needsOf(TEST_JOB)).toEqual(['catch-up']);
     expect(needsOf('catch-up-gate')).toEqual(['catch-up', TEST_JOB]);
     expect(needsOf(DEPLOY_JOB)).toEqual(['catch-up', TEST_JOB, 'catch-up-gate']);
   });
 
   it.each<[string, Scenario, Record<string, boolean>]>([
-    ['push to main: test and deploy, as before', { event: 'push' }, { 'catch-up': false, test: true, 'catch-up-gate': false, deploy: true }],
-    ['push to main, red test: no deploy', { event: 'push', test: 'failure' }, { 'catch-up': false, test: true, 'catch-up-gate': false, deploy: false }],
-    ['push to a branch: test only', { event: 'push', ref: 'refs/heads/story-x' }, { 'catch-up': false, test: true, 'catch-up-gate': false, deploy: false }],
-    ['rollback by hand on main: deploy only', { event: 'workflow_dispatch' }, { 'catch-up': false, test: false, 'catch-up-gate': false, deploy: true }],
-    ['dispatch on a branch: nothing', { event: 'workflow_dispatch', ref: 'refs/heads/x' }, { 'catch-up': false, test: false, 'catch-up-gate': false, deploy: false }],
-    ['schedule, nothing to deploy', { event: 'schedule', catchUp: { result: 'success', deploy: 'false' } }, { 'catch-up': true, test: false, 'catch-up-gate': false, deploy: false }],
-    ['schedule, catch-up failed after writing deploy=true', { event: 'schedule', catchUp: { result: 'failure', deploy: 'true' } }, { 'catch-up': true, test: false, 'catch-up-gate': false, deploy: false }],
-    ['schedule, deploy, red test', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, test: 'failure' }, { 'catch-up': true, test: true, 'catch-up-gate': false, deploy: false }],
-    ['schedule, deploy, gate clear', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, gate: { result: 'success', clear: 'true' } }, { 'catch-up': true, test: true, 'catch-up-gate': true, deploy: true }],
-    ['schedule, deploy, a rollback pending or ran meanwhile', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, gate: { result: 'success', clear: 'false' } }, { 'catch-up': true, test: true, 'catch-up-gate': true, deploy: false }],
-    ['schedule, deploy, gate failed', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, gate: { result: 'failure' } }, { 'catch-up': true, test: true, 'catch-up-gate': true, deploy: false }],
+    ['push to main: test and deploy, as before', { event: 'push' }, { [OFF_MAIN_JOB]: false, 'catch-up': false, test: true, 'catch-up-gate': false, deploy: true }],
+    ['push to main, red test: no deploy', { event: 'push', test: 'failure' }, { [OFF_MAIN_JOB]: false, 'catch-up': false, test: true, 'catch-up-gate': false, deploy: false }],
+    ['push to a branch: test only', { event: 'push', ref: 'refs/heads/story-x' }, { [OFF_MAIN_JOB]: false, 'catch-up': false, test: true, 'catch-up-gate': false, deploy: false }],
+    ['rollback by hand on main: deploy only', { event: 'workflow_dispatch' }, { [OFF_MAIN_JOB]: false, 'catch-up': false, test: false, 'catch-up-gate': false, deploy: true }],
+    ['dispatch on a branch: the run fails in dispatch-off-main, nothing else runs', { event: 'workflow_dispatch', ref: 'refs/heads/x' }, { [OFF_MAIN_JOB]: true, 'catch-up': false, test: false, 'catch-up-gate': false, deploy: false }],
+    ['dispatch on a branch named like main: the same', { event: 'workflow_dispatch', ref: 'refs/heads/main-old' }, { [OFF_MAIN_JOB]: true, 'catch-up': false, test: false, 'catch-up-gate': false, deploy: false }],
+    ['dispatch on a tag: the same', { event: 'workflow_dispatch', ref: 'refs/tags/main' }, { [OFF_MAIN_JOB]: true, 'catch-up': false, test: false, 'catch-up-gate': false, deploy: false }],
+    ['schedule, nothing to deploy', { event: 'schedule', catchUp: { result: 'success', deploy: 'false' } }, { [OFF_MAIN_JOB]: false, 'catch-up': true, test: false, 'catch-up-gate': false, deploy: false }],
+    ['schedule, catch-up failed after writing deploy=true', { event: 'schedule', catchUp: { result: 'failure', deploy: 'true' } }, { [OFF_MAIN_JOB]: false, 'catch-up': true, test: false, 'catch-up-gate': false, deploy: false }],
+    ['schedule, deploy, red test', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, test: 'failure' }, { [OFF_MAIN_JOB]: false, 'catch-up': true, test: true, 'catch-up-gate': false, deploy: false }],
+    ['schedule, deploy, gate clear', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, gate: { result: 'success', clear: 'true' } }, { [OFF_MAIN_JOB]: false, 'catch-up': true, test: true, 'catch-up-gate': true, deploy: true }],
+    ['schedule, deploy, a rollback pending or ran meanwhile', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, gate: { result: 'success', clear: 'false' } }, { [OFF_MAIN_JOB]: false, 'catch-up': true, test: true, 'catch-up-gate': true, deploy: false }],
+    ['schedule, deploy, gate failed', { event: 'schedule', catchUp: { result: 'success', deploy: 'true' }, gate: { result: 'failure' } }, { [OFF_MAIN_JOB]: false, 'catch-up': true, test: true, 'catch-up-gate': true, deploy: false }],
   ])('%s', (_title, scenario, expected) => {
     expect(jobsThatRun(scenario)).toEqual(expected);
   });
@@ -334,5 +341,33 @@ describe('the job graph, evaluated from ci.yml', () => {
       const ctx: Ctx = { github: { event_name: 'schedule', ref: 'refs/heads/main' }, needs: {}, steps: { guard: { outputs: { skip: 'true' } } } };
       expect(evaluate(ifAt(lines, indent + 2), ctx, [])).toBe(false);
     }
+  });
+});
+
+describe('dispatch-off-main: a rollback started off main fails with the reason (#27)', () => {
+  const refuse = (refName: string) =>
+    runStep('Refuse a rollback started off main', { GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF_NAME: refName });
+
+  it('fails the run with an ::error:: telling the person to choose main under "Use workflow from", and says so in the step summary', () => {
+    const r = refuse('story-x');
+    expect(r.status).toBe(1);
+    const reason =
+      'Rollback runs only from main, and this run was started from story-x, so nothing was deployed. Run the workflow again and choose main under "Use workflow from".';
+    expect(r.log).toBe(`::error title=Rollback not run::${reason}\n`);
+    expect(r.summary).toBe(`### Rollback not run\n\n${reason}\n`);
+    expect(r.outputs).toBe('');
+  });
+
+  it("escapes % in the branch name in the ::error:: only, so it cannot forge the command's encoding; the summary shows it as is", () => {
+    const r = refuse('a%0Ab');
+    expect(r.log).toContain('started from a%250Ab, so');
+    expect(r.summary).toContain('started from a%0Ab, so');
+  });
+
+  it('needs no job, no job needs it, and it reads no secret or variable and reaches no host', () => {
+    const block = jobBlock(OFF_MAIN_JOB).join('\n');
+    expect(block).not.toMatch(/secrets\.|vars\.|ssh|scp|docker|concurrency|needs:/);
+    expect(block).toContain('permissions: {}');
+    for (const id of ['catch-up', TEST_JOB, 'catch-up-gate', DEPLOY_JOB]) expect(needsOf(id)).not.toContain(OFF_MAIN_JOB);
   });
 });
