@@ -126,7 +126,8 @@ try {
       );
       const observer = new MutationObserver(() => {
         const items = document.querySelectorAll('ul[aria-label="Todos"] > li');
-        if (![...items].some((li) => li.textContent === text)) return;
+        // Match the card's text span: the card also holds its Edit and Delete buttons.
+        if (![...items].some((li) => [...li.querySelectorAll('span')].some((span) => span.textContent === text))) return;
         observer.disconnect();
         const inDom = performance.now();
         requestAnimationFrame(() => {

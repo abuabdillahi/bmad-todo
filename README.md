@@ -1,10 +1,22 @@
 # BMad Todos
 
-A single shared todo list in the browser. You add a todo and it shows at once. It is saved on the server and still there after a reload. Three parts:
+A single shared todo list in the browser. You add, edit, complete, reopen and delete todos, and each change shows at once. If the server refuses or can't be reached, that one change is undone and a message says why. Todos are saved on the server and still there after a reload. Every action works by keyboard, on a phone or a desktop. The app is built to WCAG 2.2 AA and checked with axe, Lighthouse and a keyboard pass (`docs/quality/`); automated checks cover only part of WCAG. Three parts:
 
 - `apps/web`: a React single-page app.
 - `apps/api`: a Fastify REST API under `/api`, which stores todos in one SQLite file.
 - `packages/contract`: the TypeBox schemas, shared by web and API, and the generated `openapi.json`.
+
+The API's routes (the full contract, errors included, is `packages/contract/openapi.json`):
+
+| Route | What |
+|---|---|
+| `GET /api/todos` | Every todo, newest first |
+| `POST /api/todos` | Creates a todo with a client-minted id; a repeat with the same id and text is answered `200` with the stored todo |
+| `PATCH /api/todos/{id}` | Changes a todo's `description`, `completed`, or both |
+| `DELETE /api/todos/{id}` | Deletes a todo (`204`, or a `404` problem for an unknown id) |
+| `GET /api/health` | `200 {"status":"ok"}` when storage is reachable, otherwise a `503` problem |
+
+Errors are RFC 9457 problems (`application/problem+json`).
 
 Everything runs in Docker Compose: one `compose.yml` with three profiles, `dev`, `test` and `prod`. Production runs on a Hetzner host behind a Cloudflare Tunnel and is deployed by GitHub Actions.
 
@@ -82,13 +94,15 @@ Every e2e test must call `expectNoAxeViolations(page, '<state>')` from `e2e/axe.
 
 ### Measurements (at each epic's close)
 
-Run these against a running `todo-test`. They are for local stacks only, and `perf:api` and `perf:first-load` create todos, so each refuses any host other than `127.0.0.1` or `localhost`. `perf:first-load` and `perf:lighthouse` need Playwright's Chromium. `pnpm test:all` installs it, or you can install it with `pnpm --filter @todo/e2e exec playwright install chromium`.
+Run these against a running `todo-test`. They are for local stacks only, and they create todos, so each refuses any host other than `127.0.0.1`, `localhost` or `[::1]` before its first request. All but `perf:api` need Playwright's Chromium. `pnpm test:all` installs it, or you can install it with `pnpm --filter @todo/e2e exec playwright install chromium`. None of them runs in `pnpm test:all` or CI: they need a quiet machine.
 
-- `pnpm perf:api`: one-user API timing, at least 100 sequential requests per endpoint. It prints p50, p95, p99 and max, and fails if any p95 is 300 ms or more (C4).
-- `pnpm perf:first-load`: first load and the add action, profiled in Chromium (Playwright and CDP), over 5 cold-cache runs on a seeded list.
-- `pnpm perf:lighthouse`: Lighthouse (accessibility, best practices, performance) on mobile and desktop, in light and dark. Reports go to `coverage/lighthouse/`. It fails on any accessibility audit failure.
+- `pnpm perf:first-load`: first load and the add action, profiled in Chromium (Playwright and CDP), over 5 cold-cache runs on a list seeded to 50.
+- `pnpm perf:actions`: add, edit, complete, reactivate and delete, each timed from its input event to the change in the DOM and to the painted frame after it, over 5 runs at desktop 1280×720 and on Pixel 7 (viewport and touch; the CPU is not throttled). It fails if any run takes 100 ms or more to the painted frame (C4).
+- `pnpm perf:api`: one-user API timing, at least 100 sequential requests to each of `GET /api/health`, `GET /api/todos`, `POST /api/todos`, `PATCH /api/todos/{id}` (timed for a `completed` change and for a description change) and `DELETE /api/todos/{id}` (each delete removes a todo it created for it). It prints p50, p95, p99 and max, and fails if any p95 is 300 ms or more (C4).
+- `pnpm perf:lighthouse`: seeds the list to at least 10 todos with at least 3 done, then runs Lighthouse (accessibility, best practices, performance) on mobile and desktop, in light and dark. Reports go to `coverage/lighthouse/`. It fails on any accessibility audit failure.
+- `pnpm a11y:pass`: the keyboard-only and accessibility-tree pass of every core action (EXPERIENCE Flow 2 and its failure path). After each key it prints the focused element's role, name, description and states, every live-region message, and the card's aria snapshot. It fails if focus drops to `<body>` or an expected focus target or message does not appear. It does not replace a person's check with a real screen reader.
 
-Start a fresh stack, run `pnpm --filter @todo/e2e exec playwright install chromium`, then run `perf:first-load` first (it seeds the list to 50), then the other two, then `down -v`. The dated reports in [`docs/quality/`](docs/quality/) record the results and every finding.
+Start a fresh stack, install Chromium, then run them in this order: `perf:first-load` (it seeds the list to 50), `perf:actions`, `perf:api`, `perf:lighthouse`, `a11y:pass`. Then `down -v`. The dated reports in [`docs/quality/`](docs/quality/) record the results and every finding.
 
 ## Logs and health
 
@@ -169,4 +183,4 @@ There are no test-only routes or flags in app code. E2e injects failures with Pl
 
 ## Quality reports
 
-[`docs/quality/`](docs/quality/) holds the dated coverage, performance, accessibility and security reports for each epic, named `<yyyy-mm-dd>-<epic>-<report>.md`. They are written from `pnpm test:all` and the measurement scripts above: `scripts/perf-api.mjs`, `e2e/perf/first-load.mjs` and `e2e/perf/lighthouse.mjs`.
+[`docs/quality/`](docs/quality/) holds the dated coverage, performance, accessibility and security reports for each epic, named `<yyyy-mm-dd>-<epic>-<report>.md`. They are written from `pnpm test:all` and the measurement scripts above: `e2e/perf/first-load.mjs`, `e2e/perf/actions.mjs`, `scripts/perf-api.mjs`, `e2e/perf/lighthouse.mjs` and `e2e/a11y/keyboard-pass.mjs`. The latest are epic-manage-todos's, which cover the whole app: `2026-11-25-epic-manage-todos-{coverage,performance,accessibility,security}.md`.
