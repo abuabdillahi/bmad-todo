@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expectDocumented, PROBLEM_MEDIA_TYPE, UNAVAILABLE_BODY, type Method } from '../openapi-schema.ts';
+import { expectSecurityHeaders } from '../security-headers.ts';
 
 /**
  * The `contract-unavailable` project: runs from `pnpm test:all` after e2e, with
@@ -57,5 +58,14 @@ describe('contract: /api through web-test with the api container stopped', () =>
     expect(response.headers.get('content-type')).toBe(PROBLEM_MEDIA_TYPE);
     expect(text).toBe(UNAVAILABLE_BODY);
     expectDocumented(path, method, 503, response.headers.get('content-type'), JSON.parse(text));
+  });
+
+  it("I8 GET /api/todos's unavailable problem from nginx carries the AD-19 security headers", async () => {
+    const response = await call('get', '/api/todos');
+    const text = await response.text();
+
+    expect(response.status).toBe(503);
+    expect(text).toBe(UNAVAILABLE_BODY);
+    expectSecurityHeaders(response);
   });
 });
