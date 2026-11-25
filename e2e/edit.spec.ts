@@ -8,6 +8,7 @@ import {
   editField,
   focusAddField,
   MESSAGES,
+  pressComposingEnter,
   resetList,
   todoItem,
   todoList,
@@ -180,6 +181,56 @@ test('E6 E8 an empty Save says "Enter a description.", keeps focus in the field 
   await expect(announcement(page, /./)).toHaveCount(0);
   await expectNoAxeViolations(page, 'edit empty');
   expect(patches).toEqual([]);
+});
+
+test('E4 K3 a trusted Shift+Enter with keyCode 229 in the edit field neither saves nor inserts a line break, and Enter then saves', async ({
+  page,
+  request,
+  browserName,
+}, testInfo) => {
+  test.skip(browserName !== 'chromium', 'CDP key input is Chromium only');
+  const description = uniqueDescription('E4 ime', testInfo.project.name);
+  const edited = `${description} oat`;
+  await createTodo(request, description);
+  const patches = recordPatches(page);
+
+  await tabToOnlyEdit(page, description);
+  await page.keyboard.press('Enter');
+  const field = editField(page);
+  await expect(field).toBeFocused();
+  await page.keyboard.press('End');
+  await page.keyboard.insertText(' oat');
+  await expect(field).toHaveValue(edited);
+  // Every line break the engine itself raises, so the test knows the beforeinput path ran.
+  await field.evaluate((el) => {
+    const seen: string[] = [];
+    (window as unknown as { lineBreaks: string[] }).lineBreaks = seen;
+    el.addEventListener('beforeinput', (event) => {
+      const { inputType, isTrusted } = event as InputEvent;
+      if (inputType === 'insertLineBreak' || inputType === 'insertParagraph') seen.push(`${inputType} ${isTrusted}`);
+    });
+  });
+  const lineBreaks = () => page.evaluate(() => (window as unknown as { lineBreaks: string[] }).lineBreaks);
+  const cdp = await page.context().newCDPSession(page);
+
+  // Shift+Enter: the line break is raised and cancelled, and nothing is saved.
+  await pressComposingEnter(cdp, { shift: true });
+  expect(await lineBreaks()).toEqual(['insertLineBreak true']);
+  // Give a wrongly sent save time to go out before asserting none did.
+  await page.waitForTimeout(300);
+  await expect(field).toHaveValue(edited);
+  await expect(field).toBeFocused();
+  expect(patches).toEqual([]);
+  await expectNoAxeViolations(page, 'edit keyCode 229 Shift+Enter');
+
+  // Enter alone then saves it once.
+  const saved = patchAndRefetch(page);
+  await pressComposingEnter(cdp);
+  expect((await saved).status()).toBe(200);
+  await expect(editField(page)).toHaveCount(0);
+  await expect(completionCheck(page, edited)).toBeVisible();
+  expect(await lineBreaks()).toEqual(['insertLineBreak true', 'insertLineBreak true']);
+  expect(patches).toEqual([{ description: edited }]);
 });
 
 for (const failure of [

@@ -319,6 +319,47 @@ describe('AddForm validation', () => {
     expect(received[0]!.description).toBe('Buy milk');
   });
 
+  it('K1 a beforeinput line break with Shift held (keyCode 229) is cancelled and adds nothing; Enter then submits', async () => {
+    const received = acceptCreates();
+    const { field } = renderAddForm();
+    const lineBreak = () => new InputEvent('beforeinput', { inputType: 'insertLineBreak', bubbles: true, cancelable: true });
+
+    fireEvent.change(field, { target: { value: 'Buy milk' } });
+    fireEvent.keyDown(field, { key: 'Enter', keyCode: 229, shiftKey: true });
+    const shifted = lineBreak();
+    fireEvent(field, shifted);
+
+    expect(shifted.defaultPrevented).toBe(true);
+    expect(field).toHaveProperty('value', 'Buy milk');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(received).toEqual([]);
+
+    fireEvent.keyUp(field, { key: 'Shift', keyCode: 229 });
+    fireEvent.keyDown(field, { key: 'Enter', keyCode: 229 });
+    const plain = lineBreak();
+    fireEvent(field, plain);
+
+    expect(plain.defaultPrevented).toBe(true);
+    await waitFor(() => expect(received).toHaveLength(1));
+    expect(received[0]!.description).toBe('Buy milk');
+  });
+
+  it('K1 a Shift held when the field loses focus does not block a later beforeinput line break', async () => {
+    const received = acceptCreates();
+    const { field } = renderAddForm();
+
+    fireEvent.change(field, { target: { value: 'Buy milk' } });
+    // Shift+Tab: Shift goes down in the field, its keyup lands elsewhere.
+    fireEvent.keyDown(field, { key: 'Shift', shiftKey: true });
+    fireEvent.blur(field);
+    const event = new InputEvent('beforeinput', { inputType: 'insertLineBreak', bubbles: true, cancelable: true });
+    fireEvent(field, event);
+
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(received).toHaveLength(1));
+    expect(received[0]!.description).toBe('Buy milk');
+  });
+
   it('K1 a beforeinput paragraph on an empty field is cancelled and refused inline', async () => {
     const received = acceptCreates();
     const { field } = renderAddForm();

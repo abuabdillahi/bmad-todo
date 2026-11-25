@@ -195,17 +195,36 @@ export function useTextField({ hint, initial = '' }: TextFieldOptions): TextFiel
       }
     }
 
-    // Keyboards that keep every word composing send Enter as a line break here.
+    // `beforeinput` carries no modifier state: Shift comes from the latest key event.
+    // Keyup counts too, so a Shift released since the last keydown no longer blocks.
+    let shiftHeld = false;
+    function trackShift(event: globalThis.KeyboardEvent) {
+      shiftHeld = event.shiftKey;
+    }
+    // A Shift released after focus leaves (Shift+Tab, a window switch) never reaches the keyup.
+    function forgetShift() {
+      shiftHeld = false;
+    }
+
+    // Keyboards that keep every word composing send Enter, and Shift+Enter, as a
+    // line break here. It is never inserted, and only Enter without Shift submits.
     function handleBeforeInput(event: InputEvent) {
       if (event.inputType !== 'insertLineBreak' && event.inputType !== 'insertParagraph') return;
       event.preventDefault();
+      if (shiftHeld) return;
       el!.form?.requestSubmit();
     }
 
     el.addEventListener('paste', handlePaste);
+    el.addEventListener('keydown', trackShift);
+    el.addEventListener('keyup', trackShift);
+    el.addEventListener('blur', forgetShift);
     el.addEventListener('beforeinput', handleBeforeInput);
     return () => {
       el.removeEventListener('paste', handlePaste);
+      el.removeEventListener('keydown', trackShift);
+      el.removeEventListener('keyup', trackShift);
+      el.removeEventListener('blur', forgetShift);
       el.removeEventListener('beforeinput', handleBeforeInput);
     };
   }, []);
