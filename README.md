@@ -29,7 +29,7 @@ You need no `.env` to run locally. `.env.example` lists every variable the app, 
 
 ## Run
 
-Each environment runs under its own compose project name, so they never share containers or data, and both can run at once.
+Each environment runs under its own compose project name, so they never share containers or data, and both can run at once. Every `docker compose` command needs its `-p`: one with no `-p` (and no `COMPOSE_PROJECT_NAME`) is refused before it does anything, so it can never act on production's project `todo`.
 
 ### Dev: hot reload on http://127.0.0.1:5173
 

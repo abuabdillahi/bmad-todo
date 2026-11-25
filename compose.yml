@@ -3,6 +3,12 @@
 #   docker compose -p todo-test --profile test up -d --build --wait
 #   docker compose -p todo --profile prod up -d --wait               # the deploy runs this (AD-18)
 
+# A command with no -p (and no COMPOSE_PROJECT_NAME) is refused before it touches anything.
+# Without this, Compose would take the folder's name, and a checkout or the host's ~/todo
+# named `todo` would act on production. Compose sets COMPOSE_PROJECT_NAME from -p, so with -p
+# it resolves to exactly that name.
+name: "${COMPOSE_PROJECT_NAME:?pass a project name: -p todo-dev, -p todo-test or -p todo}"
+
 # Every service logs to stdout through json-file, rotated so logs can't fill the disk (AD-17).
 x-logging: &logging
   driver: json-file
