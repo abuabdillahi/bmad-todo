@@ -10,7 +10,7 @@ hitl: false
 risk: low
 tracker_id: "24"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/24"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # The security headers are tested on assets, a missing asset and the unavailable response
