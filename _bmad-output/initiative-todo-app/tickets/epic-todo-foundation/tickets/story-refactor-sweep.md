@@ -8,7 +8,7 @@ hitl: false
 risk: low
 tracker_id: "11"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/11"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # Refactor sweep
