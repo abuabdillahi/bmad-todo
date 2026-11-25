@@ -6,7 +6,7 @@ import { configDefaults, defineConfig } from 'vitest/config';
  * run in-process and report coverage per project. `contract` runs only from
  * `pnpm test:all`, against the test profile at E2E_BASE_URL;
  * `profile` runs there after e2e (it restarts the api container, and checks
- * logs and headers); `contract-unavailable` runs last, with the api container
+ * logs and headers; its compose project-name check needs no stack); `contract-unavailable` runs last, with the api container
  * stopped. Every project reports by scenario id.
  */
 export default defineConfig({
