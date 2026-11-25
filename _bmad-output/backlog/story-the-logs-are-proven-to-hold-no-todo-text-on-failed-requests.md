@@ -10,7 +10,7 @@ hitl: false
 risk: low
 tracker_id: "35"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/35"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # The logs are proven to hold no todo text on failed requests too
