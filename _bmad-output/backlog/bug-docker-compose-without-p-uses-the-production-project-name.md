@@ -34,15 +34,15 @@ Each environment runs under its own compose project name (C7, AD-16): `todo-dev`
 1. **A command with no project name never uses the production project** (C7; AD-16)
    **Given** a checkout, or the host's `~/todo`, in a folder named `todo`, with no `-p` and no `COMPOSE_PROJECT_NAME` set
    **When** a person runs any `docker compose` command there
-   **Then** the project it uses is not `todo`, so it cannot touch production's containers or volume
+   **Then** it refuses to run before it creates, changes or removes anything, and its error names the `-p` to pass, so it cannot touch production's containers or volume, nor any other environment's
 2. **Every named environment still uses its own project** (AD-16, AD-18)
    **Given** the documented commands with `-p todo-dev`, `-p todo-test` and `-p todo`
    **When** each runs
-   **Then** it uses exactly that project, `pnpm test:all` passes, and the deploy's commands need no change
+   **Then** it uses exactly that project, `pnpm test:all` passes, and the deploy's commands need no change. Every compose command the repository runs (scripts, tests, the workflow) passes a project name
 3. **A check guards it**
    **Given** the test suite
    **When** `pnpm test:all` runs
-   **Then** an automated check fails if `compose.yml` would fall back to the project name `todo` when no project is given, and passes on the fix
+   **Then** an automated check fails if `compose.yml` resolves any project name when none is given, and passes on the fix
 4. **Production deploys as before**
    **Given** the fix is merged to `main`
    **When** the deploy job runs
@@ -55,7 +55,7 @@ Each environment runs under its own compose project name (C7, AD-16): `todo-dev`
 ## Boundaries
 
 - Must not change: the three project names (`todo-dev`, `todo-test`, `todo`), the deploy job's commands, or production's volume. No compose command is run by hand against project `todo`; the deploy job's own run after the merge is the only one.
-- Must not change: `README.md` or `.env.example`; ticket #25 edits them in parallel. If a line about running with no `-p` is wanted, record it as a deferred item in the plan.
+- `README.md` and `.env.example` change only where they describe the project names or a command with no `-p` (for example `.env.example`'s "compose.yml's default").
 
 ## References
 
@@ -65,4 +65,6 @@ Each environment runs under its own compose project name (C7, AD-16): `todo-dev`
 ## Notes
 
 - Decision: 2026-11-25, user: This deferred finding moves to the backlog after epic-todo-foundation's closure.
+- Decision: 2026-11-25, user: A command with no `-p` and no `COMPOSE_PROJECT_NAME` refuses to run (option a of the first build's intent gap, in its plan's Review Triage Log). A default of `todo-dev` was built and reverted: on the host, a forgotten `-p` with `--profile prod up` would start a second `cloudflared` on the real tunnel token in front of an empty database, and `--profile test down -v` would delete the dev data. A fourth project name avoids only the second. Cost accepted: `docker compose config` and editor tooling need `-p` too. Criteria 1 and 3 are reworded to match.
+- Decision: 2026-11-25, po: Ticket #25 has merged, so the boundary keeping `README.md` and `.env.example` out of this ticket is lifted for lines about the project names and a command with no `-p`.
 - Where the finding pointed: `compose.yml:1-4`.
