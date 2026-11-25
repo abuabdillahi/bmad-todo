@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "9"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/9"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # An add shows at once and reverts with a message when saving fails
