@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { expectDocumented } from '../openapi-schema.ts';
 import { startHarness, type Harness } from './harness.ts';
 
@@ -48,18 +49,36 @@ describe('GET /api/health with storage unreachable', () => {
     });
   });
 
-  it('I9 answers a storage failure on list with a 500 internal problem, with no stack or SQL', async () => {
+  it('I7 answers a storage failure on list with the same 503 unavailable problem as health', async () => {
+    const health = await harness.app.inject({ method: 'GET', url: '/api/health' });
     const response = await harness.app.inject({ method: 'GET', url: '/api/todos' });
 
-    expect(response.statusCode).toBe(500);
+    expect(health.statusCode).toBe(503);
+    expect(response.statusCode).toBe(503);
     const body = response.json();
-    expectDocumented('/api/todos', 'get', 500, response.headers['content-type'], body);
-    expect(body).toEqual({
-      type: '/problems/internal',
-      title: expect.any(String),
-      status: 500,
-      detail: expect.any(String),
-    });
+    expectDocumented('/api/todos', 'get', 503, response.headers['content-type'], body);
+    expect(body).toEqual(health.json());
     expect(response.body).not.toMatch(/stack|sqlite|database|select /i);
+  });
+
+  it('I9 answers a storage failure on create with a 503 unavailable problem', async () => {
+    const description = 'Water the plants';
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: '/api/todos',
+      payload: { id: randomUUID(), description },
+    });
+
+    expect(response.statusCode).toBe(503);
+    const body = response.json();
+    expectDocumented('/api/todos', 'post', 503, response.headers['content-type'], body);
+    expect(body).toEqual({
+      type: '/problems/unavailable',
+      title: 'Service unavailable',
+      status: 503,
+      detail: 'The service is unavailable. Try again shortly.',
+    });
+    expect(response.body).not.toContain(description);
+    expect(response.body).not.toMatch(/stack|sqlite|database|insert |select /i);
   });
 });
