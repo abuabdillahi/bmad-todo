@@ -48,5 +48,25 @@ services:
     ports:
       - "127.0.0.1:${TEST_WEB_PORT:-8081}:8080"
 
+  # The only ingress in prod (AD-3): connects outbound to Cloudflare, which forwards the
+  # public hostname to web:8080. It publishes no port. TUNNEL_TOKEN comes from the host .env.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.11.2
+    profiles: [prod]
+    command: tunnel --no-autoupdate --metrics 127.0.0.1:2000 run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      start_interval: 1s
+      retries: 3
+    restart: unless-stopped
+
 volumes:
   data:

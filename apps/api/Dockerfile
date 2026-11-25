@@ -13,6 +13,8 @@ COPY e2e/package.json e2e/
 RUN pnpm install --frozen-lockfile --prod --filter @todo/api...
 
 FROM node:26.13.1-bookworm-slim AS runtime
+# Links the GHCR package to the repo, so the workflow's GITHUB_TOKEN can push and pull it.
+LABEL org.opencontainers.image.source=https://github.com/abuabdillahi/bmad-todo
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=deps /app /app
