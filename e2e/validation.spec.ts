@@ -1,11 +1,14 @@
 import { expect, test, type CDPSession, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { containing, fieldStatus, focusAddField, MESSAGES, todoItem, uniqueDescription, visibleText } from './helpers.ts';
+import { containing, fieldStatus, focusAddField, MESSAGES, resetList, todoItem, uniqueDescription, visibleText } from './helpers.ts';
 
 /**
  * Add-form validation in a real browser (E6, E7, E8, K1), by keyboard only.
  * Each test uses a unique description and asserts only on its own todos.
  */
+
+test.beforeEach(({ request }) => resetList(request));
+
 /** Records every create request the page sends, so a test can assert none went out. */
 function recordCreates(page: Page): string[] {
   const bodies: string[] = [];

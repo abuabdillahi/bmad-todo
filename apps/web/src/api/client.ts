@@ -1,4 +1,4 @@
-import type { CreateTodoBody, ProblemType, Todo, TodoList } from '@todo/contract';
+import type { CreateTodoBody, ProblemType, Todo, TodoList, UpdateTodoBody } from '@todo/contract';
 
 /**
  * The kind name of each problem type (AD-9). Local literals, because the web
@@ -143,6 +143,15 @@ export function listTodos(signal?: AbortSignal): Promise<TodoList> {
 export function createTodo(body: CreateTodoBody): Promise<Todo> {
   return request<Todo>('/api/todos', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Sets a todo's description, its completion, or both (AD-6). */
+export function updateTodo(id: string, body: UpdateTodoBody): Promise<Todo> {
+  return request<Todo>(`/api/todos/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });

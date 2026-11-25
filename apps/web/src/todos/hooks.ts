@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import type { Todo } from '@todo/contract';
 import type { Announcer, AnnouncerSnapshot } from './announcer.ts';
-import type { AddOutcome } from './mutations.ts';
+import type { AddOutcome, MutationOutcome } from './mutations.ts';
 import { todosQueryKey } from './query.ts';
 import { selectListState, type ListState, type TodosSnapshot } from './store.ts';
 import { useTodosContext } from './TodosProvider.tsx';
@@ -47,7 +47,7 @@ export function useAnnouncement(): AnnouncerSnapshot {
   return useSyncExternalStore(announcer.subscribe, announcer.getSnapshot);
 }
 
-export type { AddOutcome };
+export type { AddOutcome, MutationOutcome };
 
 /**
  * Adds a todo through the optimistic-mutation helper (AD-13): the card goes on
@@ -56,6 +56,25 @@ export type { AddOutcome };
  */
 export function useAddTodo(): (description: string, id?: string) => Promise<AddOutcome> {
   return useTodosContext().mutations.addTodo;
+}
+
+/**
+ * Completes or reopens a todo through the optimistic-mutation helper (AD-13):
+ * the card changes at once, and the promise resolves with the outcome. It
+ * never rejects.
+ */
+export function useSetCompleted(): (todo: Pick<Todo, 'id' | 'description'>, completed: boolean) => Promise<MutationOutcome> {
+  return useTodosContext().mutations.setCompleted;
+}
+
+/**
+ * When this todo's last revert happened (AD-13), or undefined. Selects only
+ * this id's record, so a card re-renders only when its own record changes.
+ */
+export function useRevertedAt(id: string): number | undefined {
+  const { store } = useTodosContext();
+  const select = useCallback(() => store.getSnapshot().revertedAt.get(id), [store, id]);
+  return useSyncExternalStore(store.subscribe, select);
 }
 
 /** The list area reports the ids it renders, each time they change (Add landed after all). */

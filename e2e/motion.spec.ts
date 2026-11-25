@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { announcement, MESSAGES, todoItem, uniqueDescription } from './helpers.ts';
+import { announcement, MESSAGES, resetList, todoItem, uniqueDescription } from './helpers.ts';
 
 /**
  * The one motion-on spec (AD-20). An added card plays its enter motion and ends
@@ -8,6 +8,8 @@ import { announcement, MESSAGES, todoItem, uniqueDescription } from './helpers.t
  * the page, so it never lands mid-transition.
  */
 test.use({ reducedMotion: 'no-preference' });
+
+test.beforeEach(({ request }) => resetList(request));
 
 test('E1 an added card runs its enter animation and ends fully visible', async ({ page }, testInfo) => {
   const description = uniqueDescription('E1 motion', testInfo.project.name);

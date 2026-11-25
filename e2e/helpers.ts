@@ -1,9 +1,51 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
 /**
- * Locators, test data and expected copy shared by the e2e specs. Each test
- * adds todos with unique descriptions and asserts only on its own.
+ * Locators, test data, list setup and expected copy shared by the e2e specs.
+ * Every spec empties the list through the public API before each test
+ * (`resetList`, AD-20), and sets up todos through it (`createTodo`); a test
+ * still gives its todos unique descriptions and asserts only on its own.
  */
+
+/** A todo as the API returns it (AD-6). */
+export interface Todo {
+  id: string;
+  description: string;
+  completed: boolean;
+  createdAt: string;
+}
+
+/**
+ * Empties the list through the public API (AD-20): lists the todos, deletes
+ * each one, and checks the list is then empty. A 404 means another delete got
+ * there first. DELETE goes
+ * with no body and no content type: a JSON content type with an empty body is
+ * refused with 400.
+ */
+export async function resetList(request: APIRequestContext): Promise<void> {
+  const listed = await request.get('/api/todos');
+  expect(listed.status()).toBe(200);
+  const todos = (await listed.json()) as Todo[];
+  for (const { id } of todos) {
+    const deleted = await request.delete(`/api/todos/${encodeURIComponent(id)}`);
+    expect([204, 404]).toContain(deleted.status());
+  }
+  const after = await request.get('/api/todos');
+  expect(after.status()).toBe(200);
+  expect(await after.json()).toEqual([]);
+}
+
+/** Creates a todo through the public API with a fresh id, then completes it when `completed`. */
+export async function createTodo(request: APIRequestContext, description: string, completed = false): Promise<Todo> {
+  const id = randomUUID();
+  const created = await request.post('/api/todos', { data: { id, description } });
+  expect(created.status()).toBe(201);
+  if (!completed) return (await created.json()) as Todo;
+  const updated = await request.patch(`/api/todos/${encodeURIComponent(id)}`, { data: { completed: true } });
+  expect(updated.status()).toBe(200);
+  return (await updated.json()) as Todo;
+}
 
 /** Opens the app and moves focus to the add field with Tab, its first tab stop. */
 export async function focusAddField(page: Page): Promise<Locator> {
@@ -27,6 +69,11 @@ export function todoList(page: Page): Locator {
 /** The todo cards whose text contains `description`. */
 export function todoItem(page: Page, description: string): Locator {
   return todoList(page).getByRole('listitem').filter({ hasText: description });
+}
+
+/** A todo's Completion check, named by its text alone. */
+export function completionCheck(page: Page, description: string): Locator {
+  return todoList(page).getByRole('checkbox', { name: description, exact: true });
 }
 
 /** `{t}`'s text: cut at 40 code points with "…" inside the quote (EXPERIENCE Voice and Tone). */
@@ -56,6 +103,11 @@ export const MESSAGES = {
   addOutcome: /^(Added|Couldn't add)/,
   added: (description: string): string => `Added “${quoteText(description)}”.`,
   addFailed: (description: string, reason: string): string => `Couldn't add “${quoteText(description)}”. ${reason}`,
+  completeFailed: (description: string, reason: string): string =>
+    `Couldn't mark “${quoteText(description)}” done, so it's still open. ${reason}`,
+  reopenFailed: (description: string, reason: string): string =>
+    `Couldn't reopen “${quoteText(description)}”, so it's still done. ${reason}`,
+  deletedElsewhere: (description: string): string => `“${quoteText(description)}” was deleted elsewhere.`,
   /** The Inline error for an empty submit. */
   empty: 'Enter a description.',
   /** The over-limit words the Field status speaks once the limit is crossed. */

@@ -1,12 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { announcement, MESSAGES, todoItem, UNAVAILABLE_BODY, uniqueDescription } from './helpers.ts';
+import { announcement, MESSAGES, resetList, todoItem, UNAVAILABLE_BODY, uniqueDescription } from './helpers.ts';
 
 /**
  * A failed background refresh (E6, E8, story 5): the list stays, the Announcer
  * reports it with its reason, and Dismiss clears it. Each test adds a unique
  * todo and asserts only on its own todo.
  */
+
+test.beforeEach(({ request }) => resetList(request));
+
 /** Opens the app and adds a todo by keyboard, leaving focus in the add field. */
 async function addTodo(page: Page, description: string) {
   await page.goto('/');

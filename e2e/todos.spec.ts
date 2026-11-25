@@ -1,12 +1,14 @@
 import { expect, test, type BrowserContextOptions, type Route } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { announcement, MESSAGES, todoItem, todoList, uniqueDescription } from './helpers.ts';
+import { announcement, MESSAGES, resetList, todoItem, todoList, uniqueDescription } from './helpers.ts';
 
 /**
- * List reset (story 1 Decision 2026-11-24): each test adds a todo with a unique
- * description and asserts only on its own todo. `pnpm test:all` starts
- * todo-test on a fresh volume. Epic 2 adds the AD-20 reset through DELETE.
+ * List reset (AD-20): each test starts from a list emptied through the public
+ * API, and still adds a todo with a unique description and asserts only on its
+ * own todo.
  */
+test.beforeEach(({ request }) => resetList(request));
+
 test.describe('add a todo', () => {
   test('E1 E7 E8 a todo added by keyboard is listed, and is still there after a reload and in a new session', async ({
     page,

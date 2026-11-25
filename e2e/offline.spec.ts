@@ -1,11 +1,14 @@
 import { expect, test } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { announcement, MESSAGES, todoItem, uniqueDescription } from './helpers.ts';
+import { announcement, MESSAGES, resetList, todoItem, uniqueDescription } from './helpers.ts';
 
 /**
  * Offline (E6, AD-20): with the browser offline, a focus refetch and an add
  * each fail at once as `network`, and the list stays.
  */
+
+test.beforeEach(({ request }) => resetList(request));
+
 test('E6 offline, a focus refetch and an add fail at once with the network reason and the text comes back', async ({
   page,
   context,

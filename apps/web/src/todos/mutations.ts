@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { Todo } from '@todo/contract';
-import { createTodo, RequestFailure } from '../api/client.ts';
+import { createTodo, RequestFailure, updateTodo } from '../api/client.ts';
 import type { Announcer } from './announcer.ts';
 import { messages, type FailureInfo } from './messages.ts';
 import { todosQueryKey } from './query.ts';
@@ -38,6 +38,13 @@ export interface MutationHelper {
    * an add the server already stored replays instead of being stored twice (AD-6).
    */
   addTodo(description: string, id?: string): Promise<AddOutcome>;
+  /**
+   * Completes or reopens the todo at once (R4, R7), as a follow-up: behind a
+   * pending create it waits, and is dropped if that create fails. A success
+   * announces nothing; a failure announces the `complete` or `reopen` lead plus
+   * the reason, or `deletedElsewhere` for `not-found`.
+   */
+  setCompleted(todo: Pick<Todo, 'id' | 'description'>, completed: boolean): Promise<MutationOutcome>;
 }
 
 export interface MutationHelperDeps {
@@ -222,5 +229,18 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
     }).then((outcome) => ({ ...outcome, id }));
   }
 
-  return { run, addTodo };
+  function setCompleted({ id, description }: Pick<Todo, 'id' | 'description'>, completed: boolean): Promise<MutationOutcome> {
+    return run({
+      id,
+      kind: 'follow-up',
+      apply: (prev) => (prev ? { ...prev, completed } : null),
+      send: () => updateTodo(id, { completed }),
+      failureText: (failure) =>
+        failure.kind === 'not-found'
+          ? messages.deletedElsewhere(description)
+          : messages.failureMessage(completed ? 'complete' : 'reopen', failure, description),
+    });
+  }
+
+  return { run, addTodo, setCompleted };
 }
