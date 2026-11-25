@@ -7,7 +7,12 @@
 - **Tools:** pnpm 12.23.0 `pnpm audit` (npm advisory database, queried 2026-11-25), `git grep`, curl, Node 26.13.1 `fetch`, Playwright 1.65.1 with Chromium 159.0.8154.6, Docker 29.9.3 with Compose v5.7.1
 - **Reproduce:**
   - `pnpm audit --prod` and `pnpm audit`
-  - `git grep -n -E 'dangerouslySetInnerHTML|innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function|sql\.raw|sql`[^`]*\$\{' -- apps packages e2e scripts`
+  - The grep for unsafe patterns:
+
+    ```sh
+    git grep -n -E 'dangerouslySetInnerHTML|innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function|sql\.raw|sql`[^`]*\$\{' -- apps packages e2e scripts
+    ```
+
   - With `todo-test` up: `docker compose -p todo-test --profile test exec api id`, `… exec web-test id`, `docker image inspect` / `docker history --no-trunc` for both images, a `find` for `.env*`, keys and `.git` inside each container, `docker compose -p todo-test --profile test logs api`, and `curl -D -` against the routes listed below
   - The injection probe: five payloads `POST`ed to `/api/todos`, read back with `GET /api/todos`, then the page loaded in Chromium and one payload typed into the add form. The probe script was a one-off and is not committed. I8's integration tests (`apps/api/test/integration/todos.test.ts`, "injection payloads are inert text") cover the API half on every run.
 
@@ -24,7 +29,7 @@
 
 - `git grep` finds no `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`, `eval(`, `new Function`, `sql.raw` or interpolated `sql` template in `apps`, `packages`, `e2e` or `scripts`.
 - `apps/web/src/components/TodoCard.tsx` renders the description as a React text child (`{todo.description}`), so React escapes it (AD-19).
-- `apps/api/src/todos/repository.ts` uses only Drizzle's query builder (`select`, `insert … values`, `eq`, `desc`), which binds parameters. Its one raw template is the constant `sql\`select 1\`` for the health ping.
+- `apps/api/src/todos/repository.ts` uses only Drizzle's query builder (`select`, `insert … values`, `eq`, `desc`), which binds parameters. Its one raw template is the constant ``sql`select 1` `` for the health ping.
 - Validation is strict (AD-8): `coerceTypes: false`, `removeAdditional: false`, `additionalProperties: false` and the description pattern. Malformed JSON, a `text/plain` body and a body over nginx's 1 MiB limit are all refused (400, 400, 413).
 
 ### Injection probe on todo-test
@@ -46,7 +51,7 @@ In the page, the cards' text equals the payloads exactly. The list holds no `scr
 |---|---|
 | `api` user | `uid=1000(node)`. Image `User` is `node`, and `/app` is owned by root and read-only to the app user. |
 | `web-test` user | `uid=101(nginx)` (`nginx-unprivileged`, listens on 8080) |
-| Secrets in images | `docker history` shows no secret, token or `.env` step. `find` in both containers finds no `.env*`, private key, `.npmrc` or `.git`, only the Alpine CA bundle in `web`. `.dockerignore` excludes `.env`, `.git`, `*.db`, `_bmad*` and `.claude`. The image environments hold only `PATH`, `NODE_ENV` and nginx versions. |
+| Secrets in images | `docker history` shows no secret, token or `.env` step. `find` in both containers finds no `.env*`, private key, `.npmrc` or `.git`, only the Alpine CA bundle in `web`. `.dockerignore` excludes `.env`, `.git`, `**/*.db`, `.claude`, `.agents`, `_bmad` and `_bmad-output`. The image environments hold only `PATH`, `NODE_ENV` and nginx versions. |
 | Secrets in compose | `compose.yml` holds no secret value. `TUNNEL_TOKEN` is `${TUNNEL_TOKEN:-}`, written to the host `.env` (mode 600) by each deploy from a GitHub secret (AD-19). `.env.example` names it with no value. |
 | Published ports | `test`: only `127.0.0.1:8081`. `prod`: none (`docker compose -p todo --profile prod config` lists no `published`). The API publishes no host port in any profile (AD-4). |
 | CORS | `GET /api/todos` with `Origin: https://evil.example` returns 200 and no `Access-Control-Allow-*` header. A preflight `OPTIONS` returns 404 `application/problem+json` with no CORS header. The browser talks to one origin (AD-4). |

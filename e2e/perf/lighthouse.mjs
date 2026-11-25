@@ -75,6 +75,12 @@ for (const [scheme, value] of Object.entries(SCHEMES)) {
     for (const category of Object.values(report.categories)) {
       for (const { id } of category.auditRefs) {
         const audit = report.audits[id];
+        // An audit that failed to run counts as a failure in accessibility.
+        if (audit.scoreDisplayMode === 'error') {
+          if (category.id === 'accessibility') a11yFailures++;
+          console.log(`  ${category.id}: ${id} (error: ${audit.errorMessage ?? 'audit did not run'})`);
+          continue;
+        }
         if (audit.score === null || audit.score >= 1) continue;
         if (!['binary', 'numeric', 'metricSavings'].includes(audit.scoreDisplayMode)) continue;
         if (category.id === 'accessibility') a11yFailures++;

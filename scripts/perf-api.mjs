@@ -11,7 +11,8 @@
 //
 // Env: BASE_URL (default http://127.0.0.1:8081), PERF_N timed requests per
 // endpoint (default 200, minimum 100), PERF_WARMUP (default 20), PERF_SEED list
-// size to reach before timing GET /api/todos (default 50), PERF_P95_MS (300).
+// size to reach before timing GET /api/todos (default 50). The pass bar is
+// fixed at p95 < 300 ms (C4) and cannot be changed from the environment.
 import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 
@@ -37,7 +38,7 @@ if (!LOCAL_HOSTS.has(baseUrl.hostname)) {
 const n = intEnv('PERF_N', 200, 100);
 const warmup = intEnv('PERF_WARMUP', 20, 0);
 const seed = intEnv('PERF_SEED', 50, 0);
-const p95Bar = intEnv('PERF_P95_MS', 300, 1);
+const p95Bar = 300;
 
 /** One request, body read in full; returns its duration in ms. Exits on failure. */
 async function timed(label, method, path, body) {

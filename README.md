@@ -15,7 +15,7 @@ The design is in `_bmad-output/initiative-todo-app/architecture-todo-app/archite
 - **Node.js 26.13.1**, the version in `.nvmrc`. With nvm: `nvm install && nvm use`.
 - **pnpm 12.23.0**: `npm i -g pnpm@12.23.0`. Node 26 has no corepack.
 - **Docker with Compose v2** (`docker compose version`), with the daemon running.
-- **Free local ports:** `127.0.0.1:5173` (dev) and `127.0.0.1:8081` (test). To move the test port, set `TEST_WEB_PORT`, and set `E2E_BASE_URL` to match.
+- **Free local ports:** `127.0.0.1:5173` (dev) and `127.0.0.1:8081` (test). To move the test port, set `TEST_WEB_PORT`: `pnpm test:all` derives `E2E_BASE_URL` from it. The measurement scripts read `BASE_URL` instead (default `http://127.0.0.1:8081`).
 
 ## Install
 
@@ -25,7 +25,7 @@ cd bmad-todo
 pnpm install --frozen-lockfile
 ```
 
-You need no `.env` to run locally. `.env.example` lists every variable the system reads, with its default.
+You need no `.env` to run locally. `.env.example` lists every variable the app, compose and CI read, with its default. The measurement scripts' own variables (`BASE_URL`, `PERF_*`) are documented at the top of each script.
 
 ## Run
 
@@ -80,13 +80,13 @@ Test titles start with their scenario ids, and new tests should do the same. To 
 
 ### Measurements (at each epic's close)
 
-Run these against a running `todo-test`. Each refuses any host other than `127.0.0.1` or `localhost`, because it creates todos:
+Run these against a running `todo-test`. They are for local stacks only, and `perf:api` and `perf:first-load` create todos, so each refuses any host other than `127.0.0.1` or `localhost`. `perf:first-load` and `perf:lighthouse` need Playwright's Chromium. `pnpm test:all` installs it, or you can install it with `pnpm --filter @todo/e2e exec playwright install chromium`.
 
 - `pnpm perf:api`: one-user API timing, at least 100 sequential requests per endpoint. It prints p50, p95, p99 and max, and fails if any p95 is 300 ms or more (C4).
 - `pnpm perf:first-load`: first load and the add action, profiled in Chromium (Playwright and CDP), over 5 cold-cache runs on a seeded list.
 - `pnpm perf:lighthouse`: Lighthouse (accessibility, best practices, performance) on mobile and desktop, in light and dark. Reports go to `coverage/lighthouse/`. It fails on any accessibility audit failure.
 
-Start a fresh stack, run `perf:first-load` first (it seeds the list to 50), then the other two, then `down -v`. The dated reports in [`docs/quality/`](docs/quality/) record the results and every finding.
+Start a fresh stack, run `pnpm --filter @todo/e2e exec playwright install chromium`, then run `perf:first-load` first (it seeds the list to 50), then the other two, then `down -v`. The dated reports in [`docs/quality/`](docs/quality/) record the results and every finding.
 
 ## Logs and health
 

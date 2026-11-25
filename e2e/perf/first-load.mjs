@@ -114,33 +114,34 @@ try {
     // The add action: Enter to the card in the DOM, and to the frame after it.
     const description = `perf add ${run} ${Date.now().toString(36)}`;
     await page.getByRole('textbox', { name: 'New todo' }).fill(description);
-    const added = page.evaluate(
-      (text) =>
-        new Promise((resolve) => {
-          let pressed = null;
-          document.addEventListener(
-            'keydown',
-            (event) => {
-              if (event.key === 'Enter') pressed = performance.now();
-            },
-            { capture: true, once: true },
-          );
-          const observer = new MutationObserver(() => {
-            const items = document.querySelectorAll('ul[aria-label="Todos"] > li');
-            if (![...items].some((li) => li.textContent === text)) return;
-            observer.disconnect();
-            const inDom = performance.now();
-            requestAnimationFrame(() => {
-              const frame = performance.now();
-              resolve({ dom: inDom - pressed, frame: frame - pressed });
-            });
-          });
-          observer.observe(document, { childList: true, subtree: true, characterData: true });
-        }),
-      description,
-    );
+    // Register the listeners first (awaited), then press Enter and wait for the result.
+    await page.evaluate((text) => {
+      window.__add = { pressed: null, result: null };
+      document.addEventListener(
+        'keydown',
+        (event) => {
+          if (event.key === 'Enter') window.__add.pressed = performance.now();
+        },
+        { capture: true, once: true },
+      );
+      const observer = new MutationObserver(() => {
+        const items = document.querySelectorAll('ul[aria-label="Todos"] > li');
+        if (![...items].some((li) => li.textContent === text)) return;
+        observer.disconnect();
+        const inDom = performance.now();
+        requestAnimationFrame(() => {
+          const { pressed } = window.__add;
+          window.__add.result = { dom: inDom - pressed, frame: performance.now() - pressed };
+        });
+      });
+      observer.observe(document, { childList: true, subtree: true, characterData: true });
+    }, description);
     await page.keyboard.press('Enter');
-    const add = await added;
+    await page.waitForFunction(() => window.__add.result !== null, null, { timeout: 15_000 });
+    const add = await page.evaluate(() => {
+      if (window.__add.pressed === null) throw new Error('the Enter keydown was not observed');
+      return window.__add.result;
+    });
     await page.getByRole('list', { name: 'Todos' }).getByText(description).waitFor();
     await context.close();
 

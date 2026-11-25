@@ -28,14 +28,16 @@ Lighthouse found no failing accessibility audit in either scheme. The 10 "manual
 
 Every e2e spec scans with axe using the AD-20 tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` and `wcag22aa`, and fails on any violation (`e2e/axe.ts`). The suite runs in three Playwright projects. `desktop` and `phone` (Pixel 7) run in light, and `desktop-dark` runs in dark, so every state is audited in both schemes. Each project emulates reduced motion, so no scan lands mid-transition.
 
-States scanned in each project: loaded, added, reloaded (`todos.spec.ts`); empty submit, over the limit (`validation.spec.ts`); add failed (`add-failure.spec.ts`); refresh failed, refresh failed while offline (`refresh.spec.ts`); offline (`offline.spec.ts`).
+States scanned in each project: loaded, added, reloaded, new session (`todos.spec.ts`); empty submit, over the limit (`validation.spec.ts`); add failed (`add-failure.spec.ts`); refresh failed, refresh failed while offline (`refresh.spec.ts`); offline (`offline.spec.ts`).
 
 Result from `pnpm test:all` on 2026-11-25: 39 e2e tests passed (13 per project), **0 axe violations** in any state in any project. E8 is covered by 21 passing tests across the three projects (`coverage/scenarios.md`).
 
 ## Findings
 
+Lighthouse found no failing accessibility audit in light or dark, on mobile or desktop, and axe found no violation in any e2e state in either scheme. So there is nothing to fix there, and the table lists only the findings below.
+
+
 | # | Finding | Status | Change or reason |
 |---|---|---|---|
-| A1 | No failing Lighthouse accessibility audit in light or dark, on mobile or desktop. No axe violation in any e2e state in either scheme. | n/a | Nothing to fix. |
-| A2 | Lighthouse, by default, follows the OS colour scheme. On a host in dark mode, the "light" run audited the dark theme. | fixed | `e2e/perf/lighthouse.mjs` forces each scheme with a Blink setting and checks it with a probe before each run, so the light and dark runs always audit what they claim. |
-| A3 | The keyboard and screen-reader pass of every core action has not been done. | accepted | Out of this epic's scope by the test strategy and story 1.9's ticket. It is owned by epic-manage-todos's accessibility report, once edit, complete and delete exist. |
+| A1 | Lighthouse, by default, follows the OS colour scheme. On a host in dark mode, the "light" run audited the dark theme. | fixed | `e2e/perf/lighthouse.mjs` forces each scheme with a Blink setting and checks it with a probe before each run, so the light and dark runs always audit what they claim. |
+| A2 | The keyboard and screen-reader pass of every core action has not been done. | accepted | Out of this epic's scope by the test strategy and story 1.9's ticket. It is owned by epic-manage-todos's accessibility report, once edit, complete and delete exist. |
