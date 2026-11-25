@@ -7,7 +7,7 @@ paradigm: 'Layered three-tier (SPA → REST API → embedded SQLite), one schema
 scope: 'The whole Todo App v1 system — web client, API, storage, containers, environments, tests, CI and deployment — for epic-todo-foundation and epic-manage-todos'
 status: final
 created: '2026-11-23'
-updated: '2026-11-24'
+updated: '2026-11-25'
 binds: [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15, R16, R17, R18, R19, R20, R21, R22, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12]
 sources: ['_bmad-output/initiative-todo-app/initiative-todo-app.md', '_bmad-output/initiative-todo-app/test-strategy.md', '_bmad-output/initiative-todo-app/notes-quality-infra.md', '_bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md']
 ---
@@ -201,9 +201,13 @@ Every `/api` route can also answer `503` `unavailable` from nginx (AD-4), and `o
 - **Prevents:** Untested images reaching production, out-of-order deploys, and deploys or rollbacks that need a person to finish them.
 - **Rule:** One GitHub Actions workflow runs on every push:
   1. The **`test`** job builds both images tagged `<git-sha>` and runs `pnpm test:all` against them in `todo-test`. Its result shows on the commit.
-  2. The **`deploy`** job (`needs: test`, `main` only, concurrency group `deploy-prod`, not cancelled in progress) pushes those same tags to GHCR. It then, over SSH, copies `compose.yml` at that SHA to the host, rewrites the whole host `.env` (mode 600) from GitHub secrets and variables plus `IMAGE_TAG`, logs the host into GHCR with the job's own `GITHUB_TOKEN` (`packages: read`), runs `docker compose -p todo --profile prod pull`, logs out, runs `up -d --wait`, and checks that the public `/api/health` returns `200`. Any failure fails the workflow.
+  2. The **`deploy`** job (`needs: test`, `main` only, concurrency group `deploy-prod`, not cancelled in progress) pushes those same tags to GHCR. It then, over SSH, copies `compose.yml` at that SHA to the host, rewrites the whole host `.env` (mode 600) from GitHub secrets and variables plus `IMAGE_TAG`, logs the host into GHCR with the job's own `GITHUB_TOKEN`, runs `docker compose -p todo --profile prod pull`, logs out, runs `up -d --wait`, and checks that the public `/api/health` returns `200`. Any failure fails the workflow.
   
   Rollback is the same deploy run by hand (`workflow_dispatch`) with an earlier SHA.
+  
+  - **The deploy job's token is `packages: write`** (job permissions `contents: read`, `packages: write`). A job has one `GITHUB_TOKEN`, and this job both pushes the images and deploys them, so the host's pull uses that same write token.
+  - **How the host holds it:** the token goes to the host only on the SSH session's stdin, never in a command argument or the host `.env`. On the host, `docker login ghcr.io --password-stdin` reads it and keeps it in the deploy user's Docker credentials for the pull, and a shell `trap` runs `docker logout ghcr.io` when the session exits, whether the pull succeeded or not. GitHub expires the token when the job ends, and the job's timeout is 20 minutes.
+  - **Rejected for v1 (2026-11-25, user):** a separate `publish` job holding `packages: write`, so the deploy job, and the host, only ever get a `packages: read` token. It is a workflow change for a small gain. Take this path if the write token on the shared host becomes a concern.
 
 ### AD-19 — Security baseline
 
@@ -224,10 +228,12 @@ Every `/api` route can also answer `503` `unavailable` from nginx (AD-4), and `o
 - **Rule:**
   - **Unit and integration** tests run in-process through `buildApp`, on a temp SQLite file per test file with the committed migrations. I7's unhealthy case closes the db handle.
   - **Component** tests use Testing Library with MSW as the only HTTP stub. They never mock the hooks.
-  - **Contract, I6 and e2e** tests run against `todo-test`, reaching the API only through `web-test`'s origin (`E2E_BASE_URL`). The contract suite validates every response against `openapi.json` with `Ajv2020` and `ajv-formats`. That suite is C9's "equivalent". Postman MCP, Playwright MCP and Chrome DevTools MCP are agent-side tools for development and debugging, never CI dependencies.
+  - **Contract, profile, contract-unavailable and e2e** tests run against `todo-test`, reaching the API only through `web-test`'s origin (`E2E_BASE_URL`). `pnpm test:all` runs all four after it brings `todo-test` up, and `pnpm test` runs none of them. The contract suite validates every response against `openapi.json` with `Ajv2020` and `ajv-formats`. That suite is C9's "equivalent". Postman MCP, Playwright MCP and Chrome DevTools MCP are agent-side tools for development and debugging, never CI dependencies.
   - **E2e** runs with `workers: 1`. Each test empties the list through the public API in `beforeEach`. Failures are injected only with Playwright `page.route` (a problem response for "failing", `abort` for "unreachable"). App code has no test-only routes or flags.
   - **axe-core** runs in every e2e test with the tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` and `wcag22aa`. Every e2e project sets `reducedMotion: 'reduce'` (browser emulation, not an app flag), so no scan lands mid-transition. One motion-on spec, without axe, covers the default motion path. One spec takes the browser offline with `context.setOffline(true)` to prove that offline writes and loads fail at once instead of pausing (AD-11, AD-13). A second Playwright project with `colorScheme: 'dark'` reruns every axe-bearing spec, so both colour schemes are audited.
-  - **Vitest** has one project per layer (`unit`, `component`, `integration`). Coverage is reported per project, and container-run suites report coverage by scenario id.
+  - **Profile** tests (`apps/api/test/profile/`) run in `pnpm test:all` after e2e, one file at a time. They restart the `api` container with `docker compose` and prove a todo survives it (I6), read the `api` logs (JSON lines, a UUID request id, no todo text: AD-17, AD-19), and check `web-test`'s security headers (AD-19).
+  - **Contract-unavailable** tests (`apps/api/test/unavailable/`) run last in `pnpm test:all`, which first stops `todo-test`'s `api` container and leaves `web-test` up. They check that every `/api` route answers with AD-4's literal `503` problem, never HTML. If the `api` won't stop, `pnpm test:all` skips them and fails.
+  - **Vitest** has one project per layer: `unit`, `component` and `integration` in-process; `contract`, `profile` and `contract-unavailable` against `todo-test`. Coverage is reported per in-process project, and every project reports by scenario id.
   - **At each epic's close,** Lighthouse and the C4 performance profile run against `todo-test`. API p95 comes from at least 100 requests per endpoint.
 
 ## Consistency Conventions
@@ -240,7 +246,7 @@ Every `/api` route can also answer `503` `unavailable` from nginx (AD-4), and `o
 | Errors | RFC 9457 with closed `type` URIs (AD-9). The client classifies each failure as a problem `type`, `network` or generic, and maps it through `messages.ts` (AD-14) |
 | Styling | CSS Modules plus CSS custom-property tokens from the `bmad-ux` DESIGN.md. No CSS framework or CSS-in-JS |
 | Accessibility | Native elements first (a checkbox for completion, buttons for actions, a form for add/edit), every control keyboard-operable with a visible focus ring, and WCAG 2.2 AA (R14) |
-| Tests | Unit tests are `*.test.ts(x)` and component tests `*.component.test.tsx`, both beside the code. Integration tests are in `apps/api/test/integration/`, contract tests in `apps/api/test/contract/`, e2e tests in `e2e/`. Test titles start with their scenario id (U/I/K/E) |
+| Tests | Unit tests are `*.test.ts(x)` and component tests `*.component.test.tsx`, both beside the code. Integration tests are in `apps/api/test/integration/`, contract tests in `apps/api/test/contract/`, profile tests in `apps/api/test/profile/`, contract-unavailable tests in `apps/api/test/unavailable/`, e2e tests in `e2e/`. Test titles start with their scenario id (U/I/K/E) |
 | One command | `pnpm test:all` brings up `todo-test`, runs every layer, writes coverage, and tears the project down |
 | Toolchain | `packageManager: pnpm@12.23.0`. Dockerfiles install pnpm with `npm i -g pnpm@12.23.0` (Node 26 has no corepack) and CI uses `pnpm/action-setup`. `allowBuilds` lists `esbuild`. The TS configs list `types` explicitly (`node`, `vitest/globals`) |
 | Reports | `docs/quality/<yyyy-mm-dd>-<epic>-<report>.md` (test-strategy Reports) |
@@ -328,7 +334,7 @@ erDiagram
   apps/
     api/                   # Fastify; Dockerfile (multi-stage, non-root)
       src/routes/  src/todos/{service,repository}.ts  src/db/  drizzle/
-      test/integration/  test/contract/
+      test/integration/  test/contract/  test/profile/  test/unavailable/
     web/                   # React + Vite; Dockerfile (build → nginx-unprivileged)
       src/api/  src/todos/{hooks,mutation helper,messages.ts}  src/components/  nginx.conf
   packages/contract/       # TypeBox schemas, Problem types, openapi.json (generated, committed)
