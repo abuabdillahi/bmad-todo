@@ -29,3 +29,7 @@ Verify: On the test profile: Delete on a todo shows 'Delete this todo?' and send
 - architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-6 (DELETE, 204, 404), AD-11 (the leaving row stays inert and aria-hidden for its exit motion only; a failed delete remounts the row fresh), AD-13 (404 on DELETE is success; Deleted on server confirmation), AD-14
 - ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: Component Patterns (Delete confirm, Card buttons: Delete, Confirm delete, Cancel; Todo card: one card in edit mode or confirm at a time), State Patterns (Row states: Delete confirm, Leaving, Delete succeeded, Reverted after a failed delete, Confirm open todo vanishes on refetch, Failed add removes a card in use), Motion (Delete), Interaction Primitives (Focus management: Delete, Cancel, Confirm delete), Voice and Tone (delete lead, Deleted status); DESIGN.md Components (Delete confirm)
 - initiative — _bmad-output/initiative-todo-app/initiative-todo-app.md: Notes, Decision 2026-11-24 (delete confirms inline in the card, no undo)
+
+## Notes
+
+- From 2.2's review (PR #53): the web client's `request()` calls `response.json()` on every success, so DELETE's `204` with no body would surface as a `generic` failure. This story's client handles a `204` with no body and sends no `Content-Type` on DELETE (Fastify answers an empty JSON-typed DELETE body with an undocumented `400`).

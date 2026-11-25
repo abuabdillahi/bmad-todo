@@ -9,7 +9,7 @@ hitl: false
 risk: medium
 tracker_id: "43"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/43"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # The API updates and deletes a todo, atomically, with integration and contract tests

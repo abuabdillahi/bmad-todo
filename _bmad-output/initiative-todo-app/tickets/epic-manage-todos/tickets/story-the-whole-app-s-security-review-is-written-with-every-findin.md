@@ -33,3 +33,4 @@ Verify: docs/quality/ holds a dated security report naming epic-manage-todos, co
 ## Notes
 
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): #26, #27 and #28 stay in the backlog until this story, which decides each. The user's standing rule for this run: no change to the workflow's deploy steps, secrets, the host or the Cloudflare tunnel without asking them first. #26 and #27 live in the deploy job, so a fix for either is proposed to the user, not built here; each gets a dated line in its ticket and in the report.
+- From 2.2's review (PR #53), for this review to settle: an id with malformed percent-encoding gets a `400` that `DELETE`/`PATCH` do not document (GET /api/todos already behaves the same), and a `DELETE` sent with `Content-Type: application/json` and an empty body gets an undocumented Fastify `400`.
