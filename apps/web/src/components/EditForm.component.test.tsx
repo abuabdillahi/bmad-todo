@@ -79,7 +79,7 @@ function serve(initial: Todo[]) {
 
 /** The Announcer's live element: the status outside every form. */
 function liveElement(): HTMLElement {
-  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null);
+  const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null && !el.hasAttribute('data-loading-status'));
   expect(statuses).toHaveLength(1);
   return statuses[0]!;
 }
@@ -378,7 +378,7 @@ describe('EditForm', () => {
   it.each([
     ['the next row\'s check', milk, [milk, rent], () => check('Pay rent')],
     ['the previous row\'s check when it was the last row', rent, [milk, rent], () => check('Buy milk')],
-    ['the list when it was the only row', milk, [milk], () => screen.getByRole('list', { name: 'Todos' })],
+    ['the Empty panel when it was the only row', milk, [milk], () => screen.getByText('No todos yet.')],
   ])('K3 a refetch removing the row in edit mode closes it, announces once and moves focus to %s', async (_name, removed, todos, target) => {
     const state = serve(todos);
     const { user, listAnnounce, refetch } = await renderLoaded(todos.map((todo) => todo.description));

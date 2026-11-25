@@ -25,6 +25,9 @@ export function renderApp({ children }: { children?: ReactNode } = {}) {
     field: screen.getByRole('textbox', { name: 'New todo' }) as HTMLTextAreaElement,
     addButton: screen.getByRole('button', { name: 'Add' }),
     heading: screen.getByRole('heading', { level: 1, name: 'BMad Todos' }),
-    list: screen.getByRole('list', { name: 'Todos' }),
+    /** The Todo list, queried on each read: it renders only while it has rows. */
+    get list(): HTMLElement {
+      return screen.getByRole('list', { name: 'Todos' });
+    },
   };
 }

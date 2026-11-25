@@ -455,7 +455,7 @@ describe('AddForm: optimistic add', () => {
 
   /** The Announcer's live element: the status outside the add form. */
   function liveElement(): HTMLElement {
-    const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null);
+    const statuses = screen.getAllByRole('status').filter((el) => el.closest('form') === null && !el.hasAttribute('data-loading-status'));
     expect(statuses).toHaveLength(1);
     return statuses[0]!;
   }
@@ -794,13 +794,14 @@ describe('AddForm: optimistic add', () => {
       snapshot = useTodosStore();
       return null;
     }
-    const { user, field, list, queryClient } = renderApp({ children: <Probe /> });
+    const app = renderApp({ children: <Probe /> });
+    const { user, field, queryClient } = app;
     await waitFor(() => expect(lists).toBe(1));
     const before = snapshot;
 
     await user.type(field, 'Buy milk{Enter}');
 
-    await waitFor(() => expect(items(list)).toEqual(['Buy milk']));
+    await waitFor(() => expect(items(app.list)).toEqual(['Buy milk']));
     await waitFor(() => expect(firstAborted).toBe(true));
     expect(queryClient.getQueryState(['todos'])?.fetchStatus).toBe('idle');
     const recorded = ({ loaded, lastFetchFailure, retryRequested }: TodosSnapshot) => ({ loaded, lastFetchFailure, retryRequested });
@@ -812,7 +813,7 @@ describe('AddForm: optimistic add', () => {
     await waitFor(() => expect(liveElement().textContent).toBe('Added “Buy milk”.'));
     await waitFor(() => expect(snapshot).toMatchObject({ loaded: true }));
     expect(lists).toBe(2);
-    expect(items(list)).toEqual(['Already here']);
+    expect(items(app.list)).toEqual(['Already here']);
   });
 
   it('K1 an add during Error renders above while the list stays in error', async () => {
@@ -830,12 +831,13 @@ describe('AddForm: optimistic add', () => {
       snapshot = useTodosStore();
       return null;
     }
-    const { user, field, list } = renderApp({ children: <Probe /> });
+    const app = renderApp({ children: <Probe /> });
+    const { user, field } = app;
     await waitFor(() => expect(snapshot).toMatchObject({ lastFetchFailure: 'unavailable' }));
 
     await user.type(field, 'Buy milk{Enter}');
 
-    await waitFor(() => expect(items(list)).toEqual(['Buy milk']));
+    await waitFor(() => expect(items(app.list)).toEqual(['Buy milk']));
     expect(snapshot).toMatchObject({ loaded: false, lastFetchFailure: 'unavailable', retryRequested: false, pendingCount: 1 });
     release.open();
     await waitFor(() => expect(liveElement().textContent).toBe('Added “Buy milk”.'));
@@ -851,14 +853,15 @@ describe('AddForm: optimistic add', () => {
       snapshot = useTodosStore();
       return null;
     }
-    const { user, field, list } = renderApp({ children: <Probe /> });
+    const { user, field } = renderApp({ children: <Probe /> });
     await waitFor(() => expect(snapshot).toMatchObject({ lastFetchFailure: 'unavailable' }));
 
     await user.type(field, 'Buy milk{Enter}');
 
     await waitFor(() => expect(liveElement().textContent).toBe("Couldn't add “Buy milk”. Check your connection and try again."));
     await waitFor(() => expect(field.value).toBe('Buy milk'));
-    expect(items(list)).toEqual([]);
+    // No rows left, so the Todo list goes with them.
+    expect(screen.queryByRole('list', { name: 'Todos' })).toBeNull();
     expect(snapshot).toMatchObject({ loaded: false, lastFetchFailure: 'unavailable' });
   });
 });

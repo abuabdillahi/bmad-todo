@@ -1,4 +1,160 @@
+/*
+ * The list area (DESIGN.md Components › Todo list, Empty panel, Skeleton card,
+ * List error panel, Try again button). Its blocks have no margins: before the
+ * first load, the Todo list with early cards sits 12px above the skeleton list
+ * or List error panel, as one stack. The Loading status is visually hidden and
+ * out of the flow.
+ */
+.area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
 .list {
   display: flex;
   flex-direction: column;
+}
+
+.skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.skeleton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--skeleton-card-padding-block) var(--skeleton-card-padding-inline);
+  border: var(--skeleton-card-border-width) solid var(--skeleton-card-border-color);
+  border-radius: var(--skeleton-card-radius);
+  background: var(--skeleton-card-background);
+}
+
+.skeletonCircle {
+  flex: none;
+  width: var(--skeleton-card-circle-size);
+  height: var(--skeleton-card-circle-size);
+  border-radius: 50%;
+  background: var(--skeleton-card-shape-color);
+}
+
+.skeletonBar {
+  height: var(--skeleton-card-bar-height);
+  border-radius: var(--skeleton-card-bar-radius);
+  background: var(--skeleton-card-shape-color);
+}
+
+/* The bar widths are the only literals here (DESIGN.md Do's and Don'ts). */
+.skeleton:nth-child(1) .skeletonBar {
+  width: 62%;
+}
+
+.skeleton:nth-child(2) .skeletonBar {
+  width: 44%;
+}
+
+.skeleton:nth-child(3) .skeletonBar {
+  width: 54%;
+}
+
+/* A programmatic focus target only, with the Todo list's focus ring rule. */
+.empty {
+  padding: var(--empty-panel-padding);
+  border: var(--empty-panel-border-width) solid var(--empty-panel-border-color);
+  border-radius: var(--empty-panel-radius);
+  color: var(--empty-panel-foreground);
+  font-size: var(--font-body-size);
+  font-weight: var(--font-body-weight);
+  line-height: var(--font-body-line-height);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.errorPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--list-error-panel-gap);
+  padding: var(--list-error-panel-padding);
+  border: var(--list-error-panel-border-width) solid var(--list-error-panel-border-color);
+  border-radius: var(--list-error-panel-radius);
+  background: var(--list-error-panel-background);
+  color: var(--list-error-panel-foreground);
+  text-align: center;
+}
+
+.errorLine {
+  font-size: var(--font-announcer-size);
+  font-weight: var(--font-announcer-weight);
+  line-height: var(--font-announcer-line-height);
+  overflow-wrap: anywhere;
+}
+
+/* The Dismiss button's failure variant (DESIGN.md Components › Try again button). */
+.tryAgain {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--try-again-button-min-height);
+  padding: 0 var(--try-again-button-padding-inline);
+  border: var(--try-again-button-border-width) solid var(--try-again-button-border-color);
+  border-radius: var(--try-again-button-radius);
+  background: var(--try-again-button-background);
+  color: var(--try-again-button-foreground);
+  font-size: var(--font-button-size);
+  font-weight: var(--font-button-weight);
+}
+
+@media (hover: hover) {
+  .tryAgain:hover {
+    background: var(--try-again-button-background-hover);
+  }
+}
+
+.tryAgain:active {
+  background: var(--try-again-button-background-pressed);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Breathes 1 → min → 1, three times, then holds at opacity 1 (EXPERIENCE Motion). */
+  .skeleton {
+    animation: skeleton-breathe var(--motion-duration-skeleton) var(--motion-ease-in-out) var(--motion-skeleton-iterations);
+  }
+
+  .tryAgain {
+    transition:
+      background-color var(--motion-duration-press) var(--motion-ease-out),
+      transform var(--motion-duration-press) var(--motion-ease-out);
+  }
+
+  .tryAgain:active {
+    transform: scale(var(--motion-press-scale));
+  }
+}
+
+@keyframes skeleton-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: var(--motion-skeleton-opacity-min);
+  }
+}
+
+@media (forced-colors: active) {
+  .empty,
+  .errorPanel {
+    border: 1px solid CanvasText;
+  }
+
+  /* Background-only shapes vanish in forced colours; keep them visible. */
+  .skeletonCircle,
+  .skeletonBar {
+    forced-color-adjust: none;
+    background: GrayText;
+  }
 }

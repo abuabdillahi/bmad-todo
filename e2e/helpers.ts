@@ -143,7 +143,35 @@ export function quoteText(description: string): string {
 
 /** The Announcer's live message containing `text`: a `role="status"` outside the add form. */
 export function announcement(page: Page, text: string | RegExp): Locator {
-  return page.getByRole('status').filter({ hasText: text }).and(page.locator(':not(form [role="status"])'));
+  return page
+    .getByRole('status')
+    .filter({ hasText: text })
+    .and(page.locator(':not(form [role="status"]):not([data-loading-status])'));
+}
+
+/** The list area's one hidden Loading status (AD-14). The Announcer's `announcement` never matches it. */
+export function loadingStatus(page: Page): Locator {
+  return page.locator('[data-loading-status]');
+}
+
+/** The Empty panel: "No todos yet." */
+export function emptyPanel(page: Page): Locator {
+  return page.getByText(MESSAGES.emptyList, { exact: true });
+}
+
+/** The List error panel's Try again button. */
+export function tryAgain(page: Page): Locator {
+  return page.getByRole('button', { name: 'Try again', exact: true });
+}
+
+/** The List error panel: the load message and Try again. */
+export function listErrorPanel(page: Page): Locator {
+  return tryAgain(page).locator('xpath=..');
+}
+
+/** The skeleton list shown while the list loads. */
+export function skeletonList(page: Page): Locator {
+  return page.locator('ul[aria-busy="true"]');
 }
 
 /** The add form's hidden Field status containing `text`. */
@@ -172,6 +200,14 @@ export const MESSAGES = {
   deleted: (description: string): string => `Deleted “${quoteText(description)}”.`,
   deleteFailed: (description: string, reason: string): string =>
     `Couldn't delete “${quoteText(description)}”, so it's back in the list. ${reason}`,
+  /** The List error panel's line, which the Loading status also speaks. */
+  loadFailed: (reason: string): string => `Couldn't load your todos. ${reason}`,
+  /** The Loading status after about 500 ms of loading. */
+  loading: 'Loading your todos',
+  /** The Loading status's recovery line. */
+  loaded: 'Your todos are loaded.',
+  /** The Empty panel. */
+  emptyList: 'No todos yet.',
   /** The Inline error for an empty submit. */
   empty: 'Enter a description.',
   /** The over-limit words the Field status speaks once the limit is crossed. */
