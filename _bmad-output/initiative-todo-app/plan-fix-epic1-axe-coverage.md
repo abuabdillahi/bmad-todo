@@ -80,6 +80,8 @@ Oneshot route: the change is about 85 lines across 6 files, and it is mechanical
   - It exits 1 on the report from before the fix, listing all 39 results.
   - It exits 1 on this run's report with the `axe` annotations removed from motion.spec in desktop-dark, naming only that test.
 
+- After the build, at the user's request: the README now covers the guard, which resolves the one `deferred` item (README.md:70 and :158). Line 70 lists the `axe coverage` step. A new paragraph after line 79 states the rule and the command. Line 158 says "an axe scan at each key state".
+
 ## Plan Change Log
 
 ## Review Triage Log
