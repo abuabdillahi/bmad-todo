@@ -12,7 +12,7 @@ import {
   type RefObject,
 } from 'react';
 import { checkDescription, DESCRIPTION_MAX_LENGTH } from '@todo/contract/description';
-import { useAddTodo } from '../todos/hooks.ts';
+import { useAddTodo, useLandedAfterAll } from '../todos/hooks.ts';
 import { messages } from '../todos/messages.ts';
 import { countCodePoints, prepareDescription, replaceForbidden } from './description-input.ts';
 import styles from './AddForm.module.css';
@@ -96,7 +96,12 @@ export function AddForm({ fieldRef: externalFieldRef }: { fieldRef?: Ref<HTMLTex
   const [value, setValue] = useState('');
   const [emptyShown, setEmptyShown] = useState(false);
   const status = useFieldStatus();
-  const pending = useRef<string | null>(null);
+  // The latest committed value, read after an add's promise resolves.
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  // A failed add's text put back in the field, until its id is listed or it is replaced.
+  const restored = useRef<{ id: string; text: string } | null>(null);
+  const caretToEnd = useRef(false);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   // The add field is a focus target outside the form too (Dismiss, Try again).
   useImperativeHandle(externalFieldRef, () => fieldRef.current!, []);
@@ -122,6 +127,23 @@ export function AddForm({ fieldRef: externalFieldRef }: { fieldRef?: Ref<HTMLTex
     selection.current = null;
     el.setSelectionRange(range[0], range[1]);
   }, [value]);
+
+  // Restored text puts the caret at its end, if focus is still in the field (EXPERIENCE Focus management).
+  useLayoutEffect(() => {
+    const el = fieldRef.current;
+    if (!caretToEnd.current || !el) return;
+    caretToEnd.current = false;
+    if (document.activeElement === el) el.setSelectionRange(el.value.length, el.value.length);
+  }, [value]);
+
+  // Add landed after all: the failed add's id is listed, so its restored text clears,
+  // only if it is still exactly that text. Focus stays and nothing is spoken.
+  useLandedAfterAll((ids) => {
+    const landed = restored.current;
+    if (!landed || !ids.has(landed.id)) return;
+    restored.current = null;
+    setValue((current) => (current === landed.text ? '' : current));
+  });
 
   // The crossing above the limit is spoken once; dropping back clears silently.
   useEffect(() => {
@@ -218,20 +240,23 @@ export function AddForm({ fieldRef: externalFieldRef }: { fieldRef?: Ref<HTMLTex
     }
     // 'forbidden-character' can't happen after the replace (AD-8); it has no copy of its own.
     if (problem !== null) return;
-    // A second press while the same text is on its way would create a duplicate.
-    if (pending.current === description) return;
 
-    pending.current = description;
+    // Submitted: the card is on top at once (the helper), the field clears and
+    // focus stays in it, even when Add was pressed (EXPERIENCE Focus management).
+    restored.current = null;
+    setValue('');
+    fieldRef.current?.focus();
     const outcome = await addTodo(description);
-    pending.current = null;
+    if (outcome.status !== 'failed') return;
 
-    // On failure the text stays and nothing is added (epic Decision 2026-11-24).
-    // On success the field clears, unless the user has typed something new since,
-    // and focus is in the field even when Add was pressed (EXPERIENCE Focus management).
-    if (outcome === 'ok') {
-      setValue((current) => (current === value ? '' : current));
-      fieldRef.current?.focus();
-    }
+    // Add failed: the sent text comes back only into an empty field, so newer typing is kept.
+    if (valueRef.current !== '') return;
+    restored.current = { id: outcome.id, text: description };
+    caretToEnd.current = true;
+    setValue((current) => (current === '' ? description : current));
+    // The restored text is valid: clear an empty-submit error made while the add was pending.
+    setEmptyShown(false);
+    status.clear();
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {

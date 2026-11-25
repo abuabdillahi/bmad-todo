@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContextOptions, type Page } from '@playwright/test';
+import { expect, test, type BrowserContextOptions, type Page, type Route } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
 
 /**
@@ -8,6 +8,12 @@ import { expectNoAxeViolations } from './axe.ts';
  */
 function uniqueDescription(project: string): string {
   return `E1 ${project} ${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** `{t}`'s text: cut at 40 code points with "…" inside the quote (EXPERIENCE Voice and Tone). */
+function quoteText(description: string): string {
+  const points = [...description];
+  return points.length <= 40 ? description : `${points.slice(0, 40).join('').trimEnd()}…`;
 }
 
 function todoList(page: Page) {
@@ -37,14 +43,29 @@ test.describe('add a todo', () => {
     await expect(field).toBeFocused();
     await page.keyboard.type(description);
     await expect(page.getByText(`${[...description].length}/200`)).toBeVisible();
+
+    // Hold the create, so the card can only come from the optimistic add.
+    let heldCreate: (route: Route) => void = () => {};
+    const createHeld = new Promise<Route>((resolve) => (heldCreate = resolve));
+    await page.route('**/api/todos', (route) =>
+      route.request().method() === 'POST' ? heldCreate(route) : route.continue(),
+    );
     await page.keyboard.press('Enter');
 
-    // The card shows on top once the server has answered; the field clears and keeps focus.
+    // The card shows on top at once, before the server answers; the field clears and keeps focus.
+    const create = await createHeld;
     await expect(todoItem(page, description)).toHaveCount(1);
     await expect(todoList(page).getByRole('listitem').first()).toHaveText(description);
     await expect(field).toHaveValue('');
     await expect(page.getByText('0/200')).toBeVisible();
     await expect(field).toBeFocused();
+    await expect(page.getByRole('status').filter({ hasText: 'Added' })).toHaveCount(0);
+
+    // Once the server answers, the Announcer says so.
+    await create.continue();
+    await page.unroute('**/api/todos');
+    await expect(page.getByRole('status').filter({ hasText: 'Added' })).toHaveText(`Added “${quoteText(description)}”.`);
+    await expect(todoList(page).getByRole('listitem').first()).toHaveText(description);
     await expectNoAxeViolations(page, 'added');
 
     // The Add button is the next tab stop.
