@@ -10,7 +10,7 @@ hitl: false
 risk: medium
 tracker_id: "64"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/64"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # The deploy job reads its secrets from a production environment limited to main

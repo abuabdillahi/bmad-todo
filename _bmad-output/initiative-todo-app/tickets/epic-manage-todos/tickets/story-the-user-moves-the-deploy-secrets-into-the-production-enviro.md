@@ -29,3 +29,4 @@ Verify: The production environment lists the five secrets and only main may depl
 ## Notes
 
 - Decision: 2026-11-25, user: The user moves the deploy secrets into the `production` environment after story 17 ships, as the security review's S10 proposed. No agent creates, reads or deletes a secret. The epic's closure does not wait on it; until it is done, the secrets stay repository secrets and deploys keep working.
+- Decision: 2026-11-26, po (hands-off run on the user's instruction): "re-run the last main deploy" means redeploy the SHA production runs now, as README's Required GitHub settings says (re-run its push run if under a day old, otherwise run the workflow by hand on main with that SHA). Re-running the newest push run could undo a live rollback (story 17's review, PR #69). The `production` environment exists since main run 45727428285, with no rules or secrets yet; deploys read the repository secrets until the move.
