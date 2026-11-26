@@ -11,7 +11,7 @@ risk: low
 severity: P3
 tracker_id: "72"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/72"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # The README overstates where the deploy secrets live and what the catch-up guarantees

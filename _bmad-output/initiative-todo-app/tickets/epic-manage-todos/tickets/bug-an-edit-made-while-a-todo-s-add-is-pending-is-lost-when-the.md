@@ -11,7 +11,7 @@ risk: medium
 severity: P2
 tracker_id: "70"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/70"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # An edit made while a todo's add is pending is lost when the add fails

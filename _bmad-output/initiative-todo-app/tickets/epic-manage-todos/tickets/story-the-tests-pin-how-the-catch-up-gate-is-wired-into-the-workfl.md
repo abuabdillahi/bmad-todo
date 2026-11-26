@@ -10,7 +10,7 @@ hitl: false
 risk: low
 tracker_id: "71"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/71"
-tracker_status: backlog
+tracker_status: in-progress
 ---
 
 # The tests pin how the catch-up gate is wired into the workflow
