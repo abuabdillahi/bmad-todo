@@ -125,9 +125,9 @@ Merge to `main` by pull request. Every push to `main` deploys. Work on a feature
 One workflow, `.github/workflows/ci.yml`, runs on every push:
 
 1. **`test`** installs, typechecks, checks that `packages/contract/openapi.json` is regenerated and committed, then builds both images tagged with the commit SHA and runs `pnpm test:all` against them. On `main` it saves those exact images as a workflow artifact, kept for one day.
-2. **`deploy`** runs on `main` only, after a green `test`, one deploy at a time. It downloads that artifact and pushes the tested images to GHCR as `ghcr.io/abuabdillahi/bmad-todo-{api,web}:<sha>`. It then connects to the host over SSH, copies `compose.yml`, and rewrites `~/todo/.env` (mode 600) from GitHub secrets with `IMAGE_TAG=<sha>`. It logs the host into GHCR only for the pull, runs `docker compose -p todo --profile prod up -d --wait`, and checks that `https://$PUBLIC_HOSTNAME/api/health` answers `{"status":"ok"}`. If a newer SHA is already live, it skips. No step after `test` builds an image.
+2. **`deploy`** runs on `main` only, after a green `test`, one deploy at a time. It downloads that artifact and pushes the tested images to GHCR as `ghcr.io/abuabdillahi/bmad-todo-{api,web}:<sha>`. It then connects to the host over SSH, copies `compose.yml`, and rewrites `~/todo/.env` (mode 600) from the `production` environment's secrets with `IMAGE_TAG=<sha>`. It logs the host into GHCR only for the pull, runs `docker compose -p todo --profile prod up -d --wait`, and checks that `https://$PUBLIC_HOSTNAME/api/health` answers `{"status":"ok"}`. If a newer SHA is already live, it skips. No step after `test` builds an image.
 
-**Scheduled catch-up.** GitHub keeps only one pending deploy at a time, so when merges land close together, a later-queued deploy of an older commit can cancel the tip's pending one in the `deploy-prod` group; and a push can produce no run at all. So the same workflow also runs every 30 minutes on `main` (event `schedule`, at :17 and :47 past the hour). Its **`catch-up`** job reads the SHA production runs over SSH, the way the deploy's newer-SHA check does, and `scripts/deploy-catch-up.mjs` decides from that SHA, `main`'s history since it, and the CI runs on `main`.
+**Scheduled catch-up.** GitHub keeps only one pending deploy at a time, so when merges land close together, a later-queued deploy of an older commit can cancel the tip's pending one in the `deploy-prod` group; and a push can produce no run at all. So the same workflow also runs every 30 minutes on `main` (event `schedule`, at :17 and :47 past the hour). Its **`catch-up`** job (in the `production` environment, for the SSH secrets) reads the SHA production runs over SSH, the way the deploy's newer-SHA check does, and `scripts/deploy-catch-up.mjs` decides from that SHA, `main`'s history since it, and the CI runs on `main`.
 
 A commit whose message carries `[skip ci]` (or `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, or a `skip-checks: true` trailer), such as a board bookkeeping commit, needs no deploy. So when every commit on `main` after the one production runs is like that, production already runs `main`'s code. Otherwise the catch-up judges the newest commit since production without a skip token, from its push runs on `main` and the scheduled runs since. Only when that commit's newest attempted deploy was cancelled by the `deploy-prod` group (its cancellation annotation says a higher-priority request replaced it), or no push to `main` ran CI for it, do `test` and `deploy` run for `main`'s tip, exactly as for a push. Otherwise it deploys nothing and says why in a notice or warning on the run and in the job summary (Actions › CI, event `schedule`):
 
@@ -150,21 +150,34 @@ Never run `down -v` on production (project `todo`): it deletes the todos.
 
 ### Required GitHub settings (names only, values never in the repo)
 
-| Kind | Name | What |
-|---|---|---|
-| secret | `DEPLOY_SSH_KEY` | Private SSH key of the host's deploy user |
-| secret | `DEPLOY_KNOWN_HOSTS` | The host's `known_hosts` line(s), for strict host-key checking |
-| secret | `DEPLOY_HOST` | The Hetzner host's address |
-| secret | `DEPLOY_USER` | The deploy user on that host |
-| secret | `TUNNEL_TOKEN` | The Cloudflare Tunnel token |
-| variable | `PUBLIC_HOSTNAME` | The public hostname, for the post-deploy health check |
+The five deploy secrets live in the GitHub environment **`production`** (Settings › Environments), whose deployment branches are limited to `main`, so a workflow change on another branch cannot read them (security report S10). Only the `deploy` and `catch-up` jobs name `environment: production`, and neither runs on any ref but `main`.
 
-Also: Actions must be enabled, with workflow permissions that allow `packages: write`. The repository's default branch must be `main`, so rollback by hand works.
+| Kind | Where | Name | What |
+|---|---|---|---|
+| secret | environment `production` | `DEPLOY_SSH_KEY` | Private SSH key of the host's deploy user |
+| secret | environment `production` | `DEPLOY_KNOWN_HOSTS` | The host's `known_hosts` line(s), for strict host-key checking |
+| secret | environment `production` | `DEPLOY_HOST` | The Hetzner host's address |
+| secret | environment `production` | `DEPLOY_USER` | The deploy user on that host |
+| secret | environment `production` | `TUNNEL_TOKEN` | The Cloudflare Tunnel token |
+| variable | repository | `PUBLIC_HOSTNAME` | The public hostname, for the post-deploy health check |
+
+Also: Actions must be enabled, with workflow permissions that allow `packages: write`. The repository's default branch must be `main`, so rollback by hand and the scheduled catch-up run on `main`.
+
+**Moving the secrets into `production` (once, by a person with admin rights).** GitHub creates the `production` environment, with no protection rules and no secrets, the first time a job naming it runs, and a job in an environment still reads repository secrets of the same names (an environment secret wins over a repository one). So deploys keep working before and during the move. Then:
+
+1. Settings › Environments › `production` (create it if no run has yet) › Deployment branches and tags: **Selected branches and tags**, add the rule `main`.
+2. Add the five secrets above to the environment, with the same names and values as the repository secrets.
+3. Settings › Secrets and variables › Actions › Repository secrets: delete those five. Leave `PUBLIC_HOSTNAME` as a repository variable.
+4. Re-run the last `main` deploy, of the SHA production runs now, and check that `deploy` passes the public health check. If that SHA's push run is less than a day old, re-run its `deploy` job (Actions › CI › the run › Re-run); otherwise its artifact is gone, so run the workflow by hand on `main` with `sha` set to that SHA (as in [Roll back](#roll-back)), which redeploys it from GHCR. Do not re-run a push run of any other SHA: while a rollback is live, re-running a newer push's deploy would undo it. A re-run uses the workflow file of its original run, so it must be a run from after `production` was added to `ci.yml`. The next scheduled `catch-up` should pass its SSH read too.
+
+Once the rule is set, GitHub refuses any job naming `production` on another ref ("Branch … is not allowed to deploy to production"); none does, since `deploy` runs only on `main` and `catch-up` only on schedule, which runs on `main`.
+
+**Deployments list.** Each run of a job naming an environment creates a GitHub deployment to it. So every `deploy` run shows as a deployment to `production` (also when it skips because a newer SHA is live), and so does every scheduled `catch-up`, every 30 minutes, though it usually deploys nothing. The repository's Deployments list and the environment's history are therefore mostly catch-up checks; read Actions › CI, not the Deployments list, to see what deployed.
 
 ### One-time bootstrap (a person does this once)
 
 - **Hetzner host:** Docker Engine 25 or later with the compose plugin 2.24.4 or later, since the deploy runs the same `compose.yml`; a deploy user allowed to run `docker`, with the public half of `DEPLOY_SSH_KEY` in its `~/.ssh/authorized_keys`; no existing compose project named `todo`. The deploy creates `~/todo` itself. The host keeps no registry credential.
-- **Cloudflare:** a token-run Cloudflare Tunnel that routes the public hostname to `http://web:8080`, the hostname's DNS record, and the tunnel token stored as the `TUNNEL_TOKEN` secret. Production publishes no ports: `cloudflared` is the only way in. Also turn on SSL/TLS › Edge Certificates › **Always Use HTTPS** for the zone, so plain-HTTP visits are redirected (security report S2).
+- **Cloudflare:** a token-run Cloudflare Tunnel that routes the public hostname to `http://web:8080`, the hostname's DNS record, and the tunnel token stored as the `TUNNEL_TOKEN` secret of the `production` environment. Production publishes no ports: `cloudflared` is the only way in. Also turn on SSL/TLS › Edge Certificates › **Always Use HTTPS** for the zone, so plain-HTTP visits are redirected (security report S2).
 
 ## Roll back
 
