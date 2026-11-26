@@ -10,7 +10,7 @@ companions: []
 after: []
 refined: true
 risk: high
-status: in-progress
+status: done
 ---
 
 # A user manages their whole list, instantly, on any device
@@ -109,3 +109,4 @@ Each line keeps its parent's number. A shared id is narrowed to this epic's shar
 - Decision: 2026-11-26, user: check, simplify and close this epic. The scheduled deploy catch-up (entry 15's build, PR #67) is removed by PR #87 (merge acf8b5e), since GitHub fired no scheduled run in the two hours after its cron reached main; the deploy job's steps are back to what they were before PR #67, apart from entry 17's `environment: production`; entry 16's `dispatch-off-main` stays. Entry 15 (#26) is closed as not planned; README keeps its remedy (re-run a cancelled tip deploy).
 - Decision: 2026-11-26, user: entry 18 (#65) is done: the five deploy secrets live in environment `production`, which only main may deploy to; main run 45727428285 attempt 3 redeployed b167cfe and passed its public health check.
 - Decision: 2026-11-26, po on the user's instruction: backlog tickets #71, #74, #75 and #81 are dropped as moot (they were about the removed catch-up), and #82 and #83 as process-only (they stay retrospective action items A14 and A15). #76 loses its catch-up parts. #72 closes when the closing-reports PR puts the 2026-11-25 edge results into the security report's S2 and S3 (its other parts are true after #65 or moot). Kept: #73, #76, #77, #78, #79, #80, #84. No new ticket.
+- Decision: 2026-11-26, user: the epic is closed after its retrospective accepted it (accepted-with-open-items) and the PO's closure check passed: every Requirement, constraint and `Done when` line holds against the code, the `docs/quality/` reports at d0884e2 and main run 45741129446 (test and deploy, public health ok). Accepted deviations: the screen-reader half of R14 is the user's optional check (2026-11-25 Decision); restart persistence is proven only for create; a new session's persistence is tested only for create (complete, edit and delete keep no client-side state); the UI journeys ran on todo-test, production only through the API. Dropped: 2.15 (#26). Open items left in the backlog: #73, #76, #77, #78, #79, #80, #84.
