@@ -5,22 +5,14 @@
 # reuses the images already in GHCR for it, and its compose.yml, with no test or build.
 # Run by hand from any other branch or a tag, `dispatch-off-main` fails the run with
 # an error saying so, and nothing deploys.
-# Catch-up (R22): every 30 minutes, `catch-up` reads the SHA production runs and
-# scripts/deploy-catch-up.mjs decides whether main's tip, left undeployed by a deploy
-# the deploy-prod group cancelled or a push with no run, needs deploying (`[skip ci]`
-# commits need none); only then do `test` and `deploy` run for the tip, exactly as
-# for a push, with `catch-up-gate` between them so a rollback by hand is never
-# replaced or undone. Otherwise it says why and does nothing.
-# Secrets (S10): only `catch-up` and `deploy` read the deploy secrets, and both run in
-# GitHub environment `production`, which entry 18 limits to main and moves them into;
-# neither runs on another ref, so the branch rule never refuses a run.
+# Secrets (S10): only `deploy` reads the deploy secrets, and it runs in GitHub
+# environment `production`, whose deployment branches are limited to main; `deploy`
+# runs on no other ref, so the branch rule never refuses a run.
 name: CI
 
 on:
   push:
     branches: ['**']
-  schedule:
-    - cron: '17,47 * * * *'
   workflow_dispatch:
     inputs:
       sha:
@@ -54,77 +46,8 @@ jobs:
           printf '### Rollback not run\n\n%s\n' "$reason" >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
-  # Scheduled runs only: whether main's tip (github.sha) needs deploying. Not in
-  # deploy-prod, since a pending job there would replace a pending deploy.
-  catch-up:
-    if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    environment: production
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      actions: read
-      checks: read
-    outputs:
-      deploy: ${{ steps.decide.outputs.deploy }}
-      deployed: ${{ steps.decide.outputs.deployed }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-
-      - name: Set up SSH to the host
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-        run: |
-          for name in DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS DEPLOY_HOST DEPLOY_USER; do
-            if [ -z "${!name}" ]; then echo "::error::$name is not set"; exit 1; fi
-          done
-          umask 077
-          mkdir -p ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          cat > ~/.ssh/config <<EOF
-          Host prod-host
-            HostName $DEPLOY_HOST
-            User $DEPLOY_USER
-            IdentityFile ~/.ssh/deploy
-            IdentitiesOnly yes
-            StrictHostKeyChecking yes
-            UserKnownHostsFile ~/.ssh/known_hosts
-            BatchMode yes
-          EOF
-          chmod 600 ~/.ssh/deploy ~/.ssh/known_hosts ~/.ssh/config
-
-      # The same read as the deploy guard, but an SSH failure fails the job.
-      - name: Read the SHA production runs
-        id: live
-        run: |
-          set -o pipefail
-          image=$(ssh prod-host "docker ps --filter label=com.docker.compose.project=todo --filter label=com.docker.compose.service=api --format '{{.Image}}'" | sed -n 1p)
-          echo "deployed=${image##*:}" >> "$GITHUB_OUTPUT"
-
-      - name: Decide whether main's tip needs deploying
-        id: decide
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DEPLOYED: ${{ steps.live.outputs.deployed }}
-        run: node scripts/deploy-catch-up.mjs
-
   test:
-    needs: catch-up
-    if: >-
-      !cancelled() &&
-      (github.event_name == 'push' ||
-       (needs.catch-up.result == 'success' && needs.catch-up.outputs.deploy == 'true'))
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -181,42 +104,11 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # Scheduled runs only, after a green test and before deploy joins deploy-prod, which
-  # keeps one pending job: a deploy queued now would replace a rollback by hand still
-  # pending there, or undo one that ran during this run. So deploy runs on schedule only
-  # when no run by hand on main is unfinished and none started after this run did.
-  catch-up-gate:
-    needs: [catch-up, test]
-    if: github.event_name == 'schedule' && needs.catch-up.outputs.deploy == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      clear: ${{ steps.gate.outputs.clear }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-
-      - name: Check that no rollback by hand is pending or ran during this run
-        id: gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/deploy-catch-up.mjs gate
-
   deploy:
-    needs: [catch-up, test, catch-up-gate]
+    needs: test
     if: >-
       !cancelled() && github.ref == 'refs/heads/main' &&
-      (github.event_name == 'workflow_dispatch' || needs.test.result == 'success') &&
-      (github.event_name != 'schedule' ||
-       (needs.catch-up.outputs.deploy == 'true' && needs.catch-up-gate.outputs.clear == 'true'))
+      (github.event_name == 'workflow_dispatch' || needs.test.result == 'success')
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 20
@@ -276,13 +168,11 @@ jobs:
           chmod 600 ~/.ssh/deploy ~/.ssh/known_hosts ~/.ssh/config
 
       # A newer SHA may already be live (an older run reached this job later): keep it.
-      # On schedule, also skip if production changed since `catch-up` read it.
       - name: Skip if a newer SHA is already deployed
         id: guard
-        if: github.event_name == 'push' || github.event_name == 'schedule'
+        if: github.event_name == 'push'
         env:
           SHA: ${{ steps.sha.outputs.sha }}
-          CHECKED: ${{ needs.catch-up.outputs.deployed }}
         run: |
           # The SHA actually running: the image tag of project todo's running api container.
           image=$(ssh prod-host "docker ps --filter label=com.docker.compose.project=todo --filter label=com.docker.compose.service=api --format '{{.Image}}'" | head -n 1)
@@ -291,26 +181,18 @@ jobs:
           if [[ "$deployed" =~ ^[0-9a-f]{40}$ ]] && [ "$SHA" != "$deployed" ] \
             && git merge-base --is-ancestor "$SHA" "$deployed" 2>/dev/null; then
             echo "::notice::Skipped: $SHA is older than the deployed $deployed, which stays live."
-            if [ "$GITHUB_EVENT_NAME" = schedule ]; then
-              printf '### Deploy catch-up\n\nSkipped: %s is older than the deployed %s, which stays live.\n' "$SHA" "$deployed" >> "$GITHUB_STEP_SUMMARY"
-            fi
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          elif [ "$GITHUB_EVENT_NAME" = schedule ] && [ "$deployed" != "$CHECKED" ]; then
-            reason="Skipped: production changed from ${CHECKED:-none} to ${deployed:-none} since the catch-up check; the next scheduled check decides again."
-            echo "::notice::$reason"
-            printf '### Deploy catch-up\n\n%s\n' "$reason" >> "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Download the tested images
-        if: (github.event_name == 'push' || github.event_name == 'schedule') && steps.guard.outputs.skip != 'true'
+        if: github.event_name == 'push' && steps.guard.outputs.skip != 'true'
         uses: actions/download-artifact@v8
         with:
           name: images-${{ github.sha }}
           path: ${{ runner.temp }}/images
 
       - name: Push the tested images to GHCR
-        if: (github.event_name == 'push' || github.event_name == 'schedule') && steps.guard.outputs.skip != 'true'
+        if: github.event_name == 'push' && steps.guard.outputs.skip != 'true'
         env:
           SHA: ${{ steps.sha.outputs.sha }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

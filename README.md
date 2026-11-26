@@ -127,18 +127,7 @@ One workflow, `.github/workflows/ci.yml`, runs on every push:
 1. **`test`** installs, typechecks, checks that `packages/contract/openapi.json` is regenerated and committed, then builds both images tagged with the commit SHA and runs `pnpm test:all` against them. On `main` it saves those exact images as a workflow artifact, kept for one day.
 2. **`deploy`** runs on `main` only, after a green `test`, one deploy at a time. It downloads that artifact and pushes the tested images to GHCR as `ghcr.io/abuabdillahi/bmad-todo-{api,web}:<sha>`. It then connects to the host over SSH, copies `compose.yml`, and rewrites `~/todo/.env` (mode 600) from the `production` environment's secrets with `IMAGE_TAG=<sha>`. It logs the host into GHCR only for the pull, runs `docker compose -p todo --profile prod up -d --wait`, and checks that `https://$PUBLIC_HOSTNAME/api/health` answers `{"status":"ok"}`. If a newer SHA is already live, it skips. No step after `test` builds an image.
 
-**Scheduled catch-up.** GitHub keeps only one pending deploy at a time, so when merges land close together, a later-queued deploy of an older commit can cancel the tip's pending one in the `deploy-prod` group; and a push can produce no run at all. So the same workflow also runs every 30 minutes on `main` (event `schedule`, at :17 and :47 past the hour). Its **`catch-up`** job (in the `production` environment, for the SSH secrets) reads the SHA production runs over SSH, the way the deploy's newer-SHA check does, and `scripts/deploy-catch-up.mjs` decides from that SHA, `main`'s history since it, and the CI runs on `main`.
-
-A commit whose message carries `[skip ci]` (or `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, or a `skip-checks: true` trailer), such as a board bookkeeping commit, needs no deploy. So when every commit on `main` after the one production runs is like that, production already runs `main`'s code. Otherwise the catch-up judges the newest commit since production without a skip token, from its push runs on `main` and the scheduled runs since. Only when that commit's newest attempted deploy was cancelled by the `deploy-prod` group (its cancellation annotation says a higher-priority request replaced it), or no push to `main` ran CI for it, do `test` and `deploy` run for `main`'s tip, exactly as for a push. Otherwise it deploys nothing and says why in a notice or warning on the run and in the job summary (Actions › CI, event `schedule`):
-
-- Notice: production already runs the tip, a newer commit, or `main`'s code with only `[skip ci]` commits after it; a run for that commit is still in progress; a deploy by hand ran after it landed (see [Roll back](#roll-back)); it failed its tests, so it is not tested again on every schedule; its test or deploy was cancelled other than by the `deploy-prod` group, so on purpose (a cancel the catch-up cannot attribute to the group counts as on purpose too). The next push to `main` that runs CI (a code merge, not a `[skip ci]` commit) deploys it.
-- Warning, a person should look: production runs no api container, or one whose image tag is not a commit on the tip's line of history; that commit's run deployed it, yet production now runs an older commit (changed by hand); its deploy failed (re-run it as below); it has a run on `main` that deployed nothing, yet production runs an older commit.
-
-Any SSH or GitHub API error fails `catch-up`, and then nothing is tested or deployed. If production changes between the check and the deploy, the deploy skips and the next schedule decides again. A run by hand on `main` (a rollback) that is queued, waiting or in progress makes the check wait. After a green `test`, the **`catch-up-gate`** job checks again just before `deploy` joins `deploy-prod`: if a run by hand on `main` is unfinished, or started after the scheduled run did, `deploy` is skipped. So a scheduled deploy never replaces a rollback waiting in `deploy-prod`, and never undoes one, even a rollback back to the SHA the check read.
-
-A scheduled deploy can still replace a push deploy waiting in `deploy-prod`. When that push deploy was for the same commit or an older one, nothing is lost. When it was for a newer commit, that commit's deploy shows as cancelled by the group, and the next schedule tests and deploys it: up to 30 minutes later, plus its test.
-
-GitHub runs schedules on a best-effort basis: a run can start late or be dropped when Actions is busy. It also turns a public repository's schedules off after 60 days without activity; Actions › CI then offers to turn them back on.
+When merges land close together, GitHub keeps only one pending deploy in the `deploy-prod` group, so a later-queued deploy of an older commit can replace the tip's pending one, and the tip stays undeployed until the next push to `main` that runs CI. Check Actions › CI after a burst of merges; if the tip's `deploy` shows as cancelled, re-run it.
 
 Never run `down -v` on production (project `todo`): it deletes the todos.
 
@@ -150,7 +139,7 @@ Never run `down -v` on production (project `todo`): it deletes the todos.
 
 ### Required GitHub settings (names only, values never in the repo)
 
-The five deploy secrets live in the GitHub environment **`production`** (Settings › Environments), whose deployment branches are limited to `main`, so a workflow change on another branch cannot read them (security report S10). Only the `deploy` and `catch-up` jobs name `environment: production`, and neither runs on any ref but `main`.
+The five deploy secrets live in the GitHub environment **`production`** (Settings › Environments), whose deployment branches are limited to `main`, so a workflow change on another branch cannot read them (security report S10). Only the `deploy` job names `environment: production`, and it runs on no ref but `main`, so GitHub never refuses it. Add no required reviewers or wait timer: every deploy would then wait for approval.
 
 | Kind | Where | Name | What |
 |---|---|---|---|
@@ -161,18 +150,7 @@ The five deploy secrets live in the GitHub environment **`production`** (Setting
 | secret | environment `production` | `TUNNEL_TOKEN` | The Cloudflare Tunnel token |
 | variable | repository | `PUBLIC_HOSTNAME` | The public hostname, for the post-deploy health check |
 
-Also: Actions must be enabled, with workflow permissions that allow `packages: write`. The repository's default branch must be `main`, so rollback by hand and the scheduled catch-up run on `main`.
-
-**Moving the secrets into `production` (once, by a person with admin rights).** GitHub creates the `production` environment, with no protection rules and no secrets, the first time a job naming it runs, and a job in an environment still reads repository secrets of the same names (an environment secret wins over a repository one). So deploys keep working before and during the move. Then:
-
-1. Settings › Environments › `production` (create it if no run has yet) › Deployment branches and tags: **Selected branches and tags**, add the rule `main`.
-2. Add the five secrets above to the environment, with the same names and values as the repository secrets.
-3. Settings › Secrets and variables › Actions › Repository secrets: delete those five. Leave `PUBLIC_HOSTNAME` as a repository variable.
-4. Re-run the last `main` deploy, of the SHA production runs now, and check that `deploy` passes the public health check. If that SHA's push run is less than a day old, re-run its `deploy` job (Actions › CI › the run › Re-run); otherwise its artifact is gone, so run the workflow by hand on `main` with `sha` set to that SHA (as in [Roll back](#roll-back)), which redeploys it from GHCR. Do not re-run a push run of any other SHA: while a rollback is live, re-running a newer push's deploy would undo it. A re-run uses the workflow file of its original run, so it must be a run from after `production` was added to `ci.yml`. The next scheduled `catch-up` should pass its SSH read too.
-
-Once the rule is set, GitHub refuses any job naming `production` on another ref ("Branch … is not allowed to deploy to production"); none does, since `deploy` runs only on `main` and `catch-up` only on schedule, which runs on `main`.
-
-**Deployments list.** Each run of a job naming an environment creates a GitHub deployment to it. So every `deploy` run shows as a deployment to `production` (also when it skips because a newer SHA is live), and so does every scheduled `catch-up`, every 30 minutes, though it usually deploys nothing. The repository's Deployments list and the environment's history are therefore mostly catch-up checks; read Actions › CI, not the Deployments list, to see what deployed.
+Also: Actions must be enabled, with workflow permissions that allow `packages: write`. The repository's default branch must be `main`, so rollback by hand works.
 
 ### One-time bootstrap (a person does this once)
 
@@ -187,7 +165,7 @@ Roll back by running the same deploy by hand with an earlier SHA:
 2. Set `sha` to an earlier commit on `main` that was deployed before, so its images are in GHCR.
 3. Run it. The workflow skips the test job and the one-day artifact, pulls that SHA's images from GHCR, deploys them with that SHA's `compose.yml`, and checks the public health endpoint. So a rollback by hand still works long after that SHA's test run.
 
-With the `gh` CLI: `gh workflow run ci.yml --ref main -f sha=<earlier-sha>`. A run started from any other branch or a tag deploys nothing: its `dispatch-off-main` job fails the run with the error "Rollback runs only from main …", so run it again with `main` chosen under "Use workflow from" (`--ref main`). The scheduled catch-up counts only runs by hand on `main`, so such a run neither blocks nor delays it (a tag named `main` would count as `main`, so do not create one). A branch cut before this check existed has no such job, and a run from it still skips every job without failing. A rollback stays live until the next push to `main` that runs CI (a code merge; `[skip ci]` commits run none): the scheduled catch-up sees a run by hand on `main` after the tip's code landed, whatever its result, and does not redeploy the tip, and its `catch-up-gate` never lets a scheduled deploy replace or undo a rollback that is waiting or ran meanwhile. It cannot tell a rollback from a deploy by hand of a newer commit, so after either, the next such push deploys. The data volume is untouched. Migrations only add (AD-15), which keeps an older API compatible with the newer schema.
+With the `gh` CLI: `gh workflow run ci.yml --ref main -f sha=<earlier-sha>`. A run started from any other branch or a tag deploys nothing: its `dispatch-off-main` job fails the run with the error "Rollback runs only from main …", so run it again with `main` chosen under "Use workflow from" (`--ref main`). A branch cut before this check existed has no such job, and a run from it still skips every job without failing. A rollback stays live until the next push to `main` that runs CI (a code merge; `[skip ci]` commits run none). The data volume is untouched. Migrations only add (AD-15), which keeps an older API compatible with the newer schema.
 
 ## Extend
 
