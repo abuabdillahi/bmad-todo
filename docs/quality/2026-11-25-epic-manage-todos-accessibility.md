@@ -13,7 +13,7 @@ This report has three parts: Lighthouse, axe-core in every e2e test, and the pas
 
 **No agent can drive a real screen reader** (decision 2026-11-25 in the ticket's Notes). So the manual pass was run as a committed script, `pnpm a11y:pass`: a keyboard-only walk of Flow 2 and its failure path, which records after each key the focused element's role, name, description and states from Chromium's accessibility tree, every text change in a live region, and the card's aria snapshot at each state. That is what a screen reader reads from. How a given screen reader speaks it, and the EXPERIENCE Accessibility Floor's "Expected, not bugs" list (NVDA and JAWS needing a second Escape in forms mode, JAWS voicing the curly quotes, VoiceOver dropping one of two polite updates, and the rest), cannot be checked this way. They are left to the person's own check below. Automated tools and an accessibility-tree pass catch only part of WCAG, so this report is not a claim of full AA conformance.
 
-User screen-reader check — pending (optional; may be run in spike 13's TalkBack session or on desktop; any failure becomes a new bug).
+User screen-reader check — pending (optional; may be run in spike 13's TalkBack session or on desktop; any failure becomes a new bug). Tracked since 2026-11-26 as spike #79 (see the addendum).
 
 ## Lighthouse
 
@@ -112,3 +112,15 @@ Lighthouse found no failing accessibility audit in either scheme on either form 
 | A5 | In edit mode, the hidden label "Edit description", the counter and hint, and the empty Field status show as items in the card's tree. | accepted | They are the field's label, its description and its live region (EXPERIENCE Static strings, Field status), and the tree must hold them for the names, the description and the announcements to work. In browse mode a screen reader reads a label before its field, which is the usual pattern. |
 
 Every finding is fixed or accepted. R14's automated checks pass with no violation, and the keyboard and tree pass covers every core action. What is left is the person's optional screen-reader check, above.
+
+## Addendum 2026-11-26
+
+The merges on `main` after PR #66 (these reports' own merge) up to `d0884e2`, from `git log --first-parent`: PR #67 (a scheduled deploy catch-up: `.github/workflows/ci.yml`, `scripts/deploy-catch-up.mjs` and tests, `vitest.config.ts`, README), PR #68 (the `dispatch-off-main` job: `ci.yml`, its test, README), PR #69 (`deploy` in the `production` environment: `ci.yml`, its test, README, the security report), PR #87 (the catch-up removed: `ci.yml`, scripts, README) and PR #86 (#70: `apps/web/src/todos/mutations.ts`, `apps/web/src/components/AddForm.tsx`, their tests, `e2e/add-failure.spec.ts`). PRs #67, #68, #69 and #87 touch no app source, image, `nginx.conf` or `compose.yml`, so they change nothing this report measured.
+
+PR #86 changes the client's add-failure path only: when an add fails, an empty add field gets back the todo's latest text, the edit saved on its card while the add was pending, or nothing if its delete was confirmed (before, always the sent text). `AddForm.tsx` changed only its submit logic: no markup, name, role, description, live-region message or style changed. So:
+
+- **Lighthouse:** not re-run. It audits the loaded list, which PR #86 does not change.
+- **Keyboard and tree pass:** not re-run. No add fails in it (its failure path is the over-limit edit), so it never reaches the changed code.
+- **axe in the e2e suite:** re-run by `pnpm test:all` on `d0884e2` (main CI run 45738427453), with PR #86's 4 new tests in `add-failure.spec.ts` (an edit, or a delete, made while the add is held, for each of the two failures): 129 e2e tests passed (43 per project) with 168 scans (56 per project), and the `axe coverage` step reported 129 passed tests scanned and 0 without a scan. `add-failure.spec.ts` now has 8 tests and 10 scans per project, adding the states "edit behind a failed add restored" and "delete behind a failed add". **0 axe violations**: every scan fails its test on any violation, and the run passed.
+
+No finding above changes. The user screen-reader check under Scope stays pending and optional; it is now spike #79 ("Does Flow 2 work with a real screen reader?"), and any failure it finds becomes a new bug.
