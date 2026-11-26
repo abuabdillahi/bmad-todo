@@ -155,18 +155,20 @@ references = [
 [[entry]]
 id = 26
 type = "bug"
-title = "The README overstates where the deploy secrets live and what the catch-up guarantees"
-description = "From the retrospective's D1, D2 and F6 (action A3): README says the five deploy secrets already live in the production environment limited to main, which holds only after 18 (#65); it says a scheduled deploy never replaces or undoes a rollback; and it gives no warning against re-running a scheduled run. The security report's S2 and S3 still say the Cloudflare edge was not checked, though it was checked on production on 2026-11-25. Docs only."
-verify = "README says the secrets are repository secrets until #65 moves them, makes no 'never' claim about scheduled deploys and rollbacks, and says not to re-run a scheduled run; the security report's S2 and S3 record the 2026-11-25 edge checks with their source."
-covers = ["R20"]
+title = "The closing reports of epic-manage-todos describe the code as it ends up"
+description = "From the retrospective's F6 (action A3), re-scoped 2026-11-26 on the user's instruction to reuse tickets: the four closing reports under docs/quality/ predate the epic's last merges. The security report still says the Cloudflare edge was not checked (S2, S3, #28), keeps S10 open though #65 moved the secrets, and describes the removed catch-up (#26) as to be built; the coverage report gives no whole-app figure against the user's 70% goal for the epic and predates PR #86; the accessibility and performance reports do not say whether PR #86 and PR #87 touch what they measured. Docs only."
+verify = "On main at d0884e2 the security report's S2, S3 and #28 line record the 2026-11-25 edge checks citing 2.8's Notes, S10 is fixed (#65), the #26 and #27 lines say what was built and removed, and a dated addendum names d0884e2; the coverage report states a whole-app figure (unit, component and integration merged), says whether it meets the user's 70% goal (with the gap if not), and gives the command that reproduces it, with per-project figures and PR #86's gap rows at d0884e2; the accessibility and performance reports carry a dated addendum on the later merges; the diff touches only those four reports."
+covers = ["R14", "R18", "R19", "R20"]
 after = []
 hitl = false
 risk = "low"
 refine = true
 references = [
-  "retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: findings D1, D2, D3 and F6; Action items A3",
+  "retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: finding F6; Behavior verification (run 45725697794); Action items A3",
   "story — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/tickets/story-the-whole-app-s-security-review-is-written-with-every-findin.md: Notes, the Result: line of 2026-11-25 (the production edge checks)",
-  "report — docs/quality/2026-11-25-epic-manage-todos-security.md: S2, S3, S9, S10",
+  "report — docs/quality/2026-11-25-epic-manage-todos-security.md: S2, S3, S9, S10; Backlog decisions",
+  "report — docs/quality/2026-11-25-epic-manage-todos-coverage.md: Result; Gaps and findings",
+  "report — docs/quality/2026-11-25-epic-manage-todos-accessibility.md and docs/quality/2026-11-25-epic-manage-todos-performance.md: headers",
 ]
 
 [[entry]]
