@@ -1,8 +1,8 @@
 ---
-id: 22
+id: 27
 type: story
 title: "Edits, completions and deletes are proven to survive an API restart"
-parent: epic-manage-todos
+parent: backlog
 covers: [R11, R17]
 after: []
 refined: true
@@ -40,7 +40,7 @@ R11 and the epic's Done when say completion, edits and deletions survive a serve
 
 ## References
 
-- parent — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos.md, R11 and Done when
+- parent — _bmad-output/backlog/backlog.md
 - retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md, Aggregate view, finding F4; Action items A4
 - test strategy — _bmad-output/initiative-todo-app/test-strategy.md, I6
 
@@ -48,3 +48,4 @@ R11 and the epic's Done when say completion, edits and deletions survive a serve
 
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): from the retrospective's action item A4, fixed in this epic on a fix branch through the full gate.
 - Risk low: test only; if a change does not survive the restart, that is a new high-risk bug, filed separately.
+- Decision: 2026-11-26, user: all non-essential work stops and closing epic-manage-todos comes first; this ticket moves out of the epic to the backlog (po's call on what is non-essential: it is test- or docs-only and the epic's criteria do not need it). Partial work: /Users/idris/me/todo-wt/patches/ (and, for #72, branch bug-72-readme-deploy-accuracy, PR #85 closed unmerged).

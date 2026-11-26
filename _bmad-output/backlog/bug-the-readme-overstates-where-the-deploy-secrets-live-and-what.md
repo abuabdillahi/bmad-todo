@@ -1,8 +1,8 @@
 ---
-id: 21
+id: 26
 type: bug
 title: "The README overstates where the deploy secrets live and what the catch-up guarantees"
-parent: epic-manage-todos
+parent: backlog
 covers: [R20]
 after: []
 refined: true
@@ -11,7 +11,7 @@ risk: low
 severity: P3
 tracker_id: "72"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/72"
-tracker_status: in-progress
+tracker_status: backlog
 ---
 
 # The README overstates where the deploy secrets live and what the catch-up guarantees
@@ -60,7 +60,7 @@ Story 17 (#64) wrote the README for the state after #65, in the present tense; s
 
 ## References
 
-- parent — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos.md, R20
+- parent — _bmad-output/backlog/backlog.md
 - retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md, Diff-scope review, findings D1, D2, D3; Aggregate view, finding F6; Action items A3
 - story — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/tickets/story-the-whole-app-s-security-review-is-written-with-every-findin.md, Notes, the Result: line of 2026-11-25 (the production edge checks, after main run 45713067680)
 - report — docs/quality/2026-11-25-epic-manage-todos-security.md, S2, S3, S9, S10
@@ -70,3 +70,4 @@ Story 17 (#64) wrote the README for the state after #65, in the present tense; s
 
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): from the retrospective's action item A3, fixed in this epic on a fix branch through the full gate.
 - Open question (for the user): after #65 moves the secrets, who updates the README and S10 back to the present tense? 2.18's description has no such step, and 2.18 is the user's own hitl task. This ticket does not wait on it.
+- Decision: 2026-11-26, user: all non-essential work stops and closing epic-manage-todos comes first; this ticket moves out of the epic to the backlog (po's call on what is non-essential: it is test- or docs-only and the epic's criteria do not need it). Partial work: /Users/idris/me/todo-wt/patches/ (and, for #72, branch bug-72-readme-deploy-accuracy, PR #85 closed unmerged).

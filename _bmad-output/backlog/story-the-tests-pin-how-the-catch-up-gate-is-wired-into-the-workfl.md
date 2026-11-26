@@ -1,8 +1,8 @@
 ---
-id: 20
+id: 25
 type: story
 title: "The tests pin how the catch-up gate is wired into the workflow"
-parent: epic-manage-todos
+parent: backlog
 covers: []
 after: []
 refined: true
@@ -10,7 +10,7 @@ hitl: false
 risk: low
 tracker_id: "71"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/71"
-tracker_status: in-progress
+tracker_status: backlog
 ---
 
 # The tests pin how the catch-up gate is wired into the workflow
@@ -44,7 +44,7 @@ The scheduled catch-up deploys only when `catch-up-gate` reports `clear` (2.15, 
 
 ## References
 
-- parent — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos.md
+- parent — _bmad-output/backlog/backlog.md
 - retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md, Diff-scope review, finding D4; Action items A2
 - bug — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/tickets/bug-a-burst-of-merges-can-leave-the-tip-of-main-undeployed.md (2.15, #26: the catch-up and its gate)
 
@@ -52,3 +52,4 @@ The scheduled catch-up deploys only when `catch-up-gate` reports `clear` (2.15, 
 
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): from the retrospective's action item A2, fixed in this epic on a fix branch through the full gate.
 - Risk low: test only, and a wrong test fails loudly on the branch.
+- Decision: 2026-11-26, user: all non-essential work stops and closing epic-manage-todos comes first; this ticket moves out of the epic to the backlog (po's call on what is non-essential: it is test- or docs-only and the epic's criteria do not need it). Partial work: /Users/idris/me/todo-wt/patches/ (and, for #72, branch bug-72-readme-deploy-accuracy, PR #85 closed unmerged).
