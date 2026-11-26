@@ -252,3 +252,72 @@ references = [
   "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-20 (at each epic's close: Lighthouse and the C4 profile against todo-test, at least 100 requests per endpoint); Consistency Conventions (Reports naming); Structural Seed (README contents)",
   "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: Key Flows (Flow 2: every core action by keyboard and screen reader), Accessibility Floor",
 ]
+
+# Entries 19-22 from epic-manage-todos' retrospective (action items A1-A4), added 2026-11-26 in the hands-off run on the
+# user's instruction: in-scope fixes, each built on a fix branch through the full gate, after every built entry; none waits on 18 (#65).
+
+[[entry]]
+id = 19
+type = "bug"
+title = "An edit made while a todo's add is pending is lost when the add fails"
+description = "From the retrospective's R1 and R2 (action A1): when a todo's add fails, the add field gets back the text the add sent, so an edit typed on the card while the add was pending is lost without a word, and a todo the user deleted while its add was pending comes back into the add field. The add field must get back the latest text the user gave the todo, and nothing for a todo the user deleted; tests also mix edit, complete and delete on one todo."
+verify = "With the add held then failed (page.route), edit the new card's text before the add fails: the add field then holds the edited text. Repeat, deleting the card instead: the add field stays empty."
+covers = ["R7", "R12"]
+after = []
+hitl = false
+risk = "medium"
+refine = true
+references = [
+  "retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: Diff-scope review, findings R1 and R2 and the verification gap on crossed kinds; Action items A1; Open questions (R1's fix choice)",
+  "ux — _bmad-output/initiative-todo-app/ux-todo-app/EXPERIENCE.md: State Patterns (Row states: Follow-ups on a failed add, Failed add removes a card in use; Add form states: Add failed, Add landed after all)",
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: U5 (follow-ups behind a failed create are dropped)",
+  "architecture — _bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md: AD-13 (the helper; a failed create drops its follow-ups)",
+]
+
+[[entry]]
+id = 20
+type = "story"
+title = "The tests pin how the catch-up gate is wired into the workflow"
+description = "From the retrospective's D4 (action A2): no test checks catch-up-gate's step id, the job output read from it, or the gate argument of the script, so a rename there would silently stop every scheduled deploy. Test only; the workflow does not change."
+verify = "Renaming the gate step's id, its job output's source, or the script's gate argument in ci.yml (restored afterwards) makes scripts/ci-workflow-steps.test.ts fail; pnpm test:all passes on the unchanged workflow."
+covers = []
+after = []
+hitl = false
+risk = "low"
+refine = true
+references = [
+  "retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: Diff-scope review, finding D4; Action items A2",
+]
+
+[[entry]]
+id = 21
+type = "bug"
+title = "The README overstates where the deploy secrets live and what the catch-up guarantees"
+description = "From the retrospective's D1, D2 and F6 (action A3): README says the five deploy secrets already live in the production environment limited to main, which holds only after 18 (#65); it says a scheduled deploy never replaces or undoes a rollback; and it gives no warning against re-running a scheduled run. The security report's S2 and S3 still say the Cloudflare edge was not checked, though it was checked on production on 2026-11-25. Docs only."
+verify = "README says the secrets are repository secrets until #65 moves them, makes no 'never' claim about scheduled deploys and rollbacks, and says not to re-run a scheduled run; the security report's S2 and S3 record the 2026-11-25 edge checks with their source."
+covers = ["R20"]
+after = []
+hitl = false
+risk = "low"
+refine = true
+references = [
+  "retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: findings D1, D2, D3 and F6; Action items A3",
+  "story — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/tickets/story-the-whole-app-s-security-review-is-written-with-every-findin.md: Notes, the Result: line of 2026-11-25 (the production edge checks)",
+  "report — docs/quality/2026-11-25-epic-manage-todos-security.md: S2, S3, S9, S10",
+]
+
+[[entry]]
+id = 22
+type = "story"
+title = "Edits, completions and deletes are proven to survive an API restart"
+description = "From the retrospective's F4 (action A4): the restart test I6 proves only that a created todo survives an API restart; it gains an edited and completed todo and a deleted one, so R11 is proven for every change this epic adds. Test only."
+verify = "pnpm test:all passes and its I6 test edits and completes one todo and deletes another before restarting the api container, then finds the first with its new text and completed, and the second gone."
+covers = ["R11", "R17"]
+after = []
+hitl = false
+risk = "low"
+refine = true
+references = [
+  "retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: finding F4; Action items A4",
+  "test strategy — _bmad-output/initiative-todo-app/test-strategy.md: I6",
+]

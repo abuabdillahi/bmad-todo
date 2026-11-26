@@ -3,3 +3,136 @@
 next_id = 14
 
 
+
+# Entries 14-24 from epic-manage-todos' retrospective (action items A6-A16), deferred to the backlog 2026-11-26 in the
+# hands-off run on the user's instruction. Source: _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md
+
+[[entry]]
+id = 14
+type = "spike"
+title = "Does the catch-up recognise a real deploy-prod group cancellation?"
+description = "Retrospective A6 (F9, D5): scripts/deploy-catch-up.mjs (GROUP_CANCELLATION) matches the documented annotation wording \"higher priority waiting request for '(deploy|***)-prod'\", never seen on this repo; if GitHub's real wording differs, a group-cancelled tip is read as deliberate and not deployed, leaving #26's main case unfixed. Settled by reading the annotation of the first real group cancellation on main."
+verify = "Notes quote the annotation of a real deploy-prod group cancellation on main (run id and text) and say whether the catch-up matched it; a mismatch becomes a bug that fixes the pattern."
+after = []
+hitl = false
+risk = "medium"
+refine = true
+references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: findings F9 and D5; Action items A6"]
+
+[[entry]]
+id = 15
+type = "bug"
+title = "A re-run scheduled deploy can skip its health check or miss a rollback"
+description = "Retrospective A7 (D3, D6, D7): re-running a failed scheduled run reuses attempt 1's CHECKED SHA, so the deploy's guard can take its skip branch after attempt 1 already deployed the tip and go green with no health check; and catch-up-gate reads the current attempt's start, so a rollback that finished between attempts is not seen. Also to decide: whether a rollback by hand must name a SHA on main, and how the catch-up behaves after a long SSH outage (failed scheduled runs pile up for one tip). Touches the deploy job's steps: the user decides."
+verify = "A re-run of a failed scheduled run either deploys and health-checks the tip or skips with a notice, and never deploys over a rollback that ran between attempts, shown by the job-graph and catch-up tests; the user's answers on rollback SHAs and SSH outages are dated Decisions in Notes."
+after = []
+hitl = false
+risk = "high"
+refine = true
+references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: findings D3, D6, D7; Action items A7"]
+
+[[entry]]
+id = 16
+type = "story"
+title = "The architecture spine describes the scheduled catch-up, the production environment and the write timeouts"
+description = "Retrospective A8 (F1, F11, R5): AD-18 still describes one workflow with test and deploy only; the Deferred line on a write that may have landed still says a resubmit mints a new id (story 2.1 made an unchanged resubmit reuse it); AD-4 and AD-13 do not record nginx's 10 s proxy_read_timeout for /api or the client's 15 s write abort. Amended through bmad-architecture with the user's consent."
+verify = "The spine's AD-18 names the schedule, catch-up, catch-up-gate, dispatch-off-main and environment production; its Deferred line records the id reuse and the follow-up case; AD-4 and AD-13 state the 10 s and 15 s limits; each change cites its story."
+after = []
+hitl = false
+risk = "medium"
+references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: findings F1, F11, R5; Decision records; Action items A8"]
+
+[[entry]]
+id = 17
+type = "story"
+title = "The e2e specs share one failure matrix and held-request helper"
+description = "Retrospective A9 (F2, R7): the [503 problem, no response] failure matrix is copied in five e2e specs and the held-PATCH setup in two; they move into e2e/helpers.ts. The e2e quoteText helper (and its copy in e2e/a11y/keyboard-pass.mjs) still cuts by code point and should cut on whole characters as quote() does. Test only."
+verify = "The five specs and two held-PATCH blocks use helpers from e2e/helpers.ts, quoteText cuts on whole characters, and pnpm test:all passes with the same scenarios listed."
+after = []
+hitl = false
+risk = "low"
+references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: findings F2 and R7; Action items A9"]
+
+[[entry]]
+id = 18
+type = "bug"
+title = "Failure announcements contradict the list when edits, completions and deletes of one todo overlap"
+description = "Retrospective A10 (R3, R4, R7, R8): with a delete queued behind a failing edit, the lead says the todo is back while the row stays gone; a queued delete's 404 announces Deleted right after deleted elsewhere; a toggle undone at once with both PATCHes failing names the wrong verb; a failed delete re-inserts at a stale index. The final list state is right; the announcements and the restore slot are not. Also: the 15 s write abort is untested on PATCH, and the whole-character cut is untested for the edit, reopen, delete and add leads."
+verify = "Unit tests for each overlap named in the Description pass with announcements that match the list, a reverted delete returns beside its neighbours, and the write-timeout and whole-character tests cover PATCH and every lead."
+after = []
+hitl = false
+risk = "low"
+refine = true
+references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: findings R3, R4, R7, R8; Action items A10"]
+
+[[entry]]
+id = 19
+type = "spike"
+title = "Does Flow 2 work with a real screen reader?"
+description = "Retrospective A11 (F5): R14's screen-reader half of the manual pass is not done; the accessibility report leaves a dated pending line for the user's own check, and its A4 (Chromium joins the field's description parts without punctuation) waits on it. The user runs Flow 2 with TalkBack or a desktop screen reader; any failure becomes a bug."
+verify = "Notes record, per screen reader and action of Flow 2, what was voiced, including the field's description parts, with a bug named for each failure; the accessibility report's pending line is answered."
+after = []
+hitl = true
+risk = "medium"
+references = [
+  "retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: finding F5; Action items A11",
+  "report — docs/quality/2026-11-25-epic-manage-todos-accessibility.md: A3, A4 and the pending screen-reader line",
+]
+
+[[entry]]
+id = 20
+type = "spike"
+title = "Does a multi-line drop keep one undo step in Firefox and Safari?"
+description = "Retrospective A12 (F8): story 2.12's guarded drop intercept was observed in Chromium and WebKit only; in Firefox a multi-line drop falls back to native-plus-clean, which may lose the single undo step. A person with Firefox (and Safari) drops two lines into the add and edit fields and presses undo once; any failure becomes a bug."
+verify = "Notes record, per browser and field, whether one undo restores the field after a multi-line drop, with a bug named for each failure."
+after = []
+hitl = true
+risk = "low"
+references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: finding F8; Action items A12"]
+
+[[entry]]
+id = 21
+type = "story"
+title = "Decide whether the scheduled catch-up records a deployment on every run"
+description = "Retrospective A13 (F10, D8): environment production on the catch-up job creates a GitHub deployment to production on every scheduled run, about 48 a day, and the Deployments view shows main's tip as active even when nothing deployed. deployment: false on catch-up would stop it; story 2.17 left it out on the user's instruction. A deploy-workflow setting: the user decides."
+verify = "Notes hold the user's dated Decision; if it is deployment: false, a scheduled run that deploys nothing creates no deployment and the job-graph test pins the setting."
+after = []
+hitl = false
+risk = "low"
+refine = true
+references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: findings F10 and D8; Action items A13"]
+
+[[entry]]
+id = 22
+type = "story"
+title = "Build review depth follows ticket risk"
+description = "Retrospective A14 (P1, P5; previous retrospective A8): .claude/skills/bmad-build-auto/customize.toml pins review = quick, and the auto setting maps the oneshot route to quick, so medium-risk 2.16 and 2.17, both changing ci.yml, got one quick lens. Medium and high tickets should get the thorough lenses whatever their route, and a high patched in the last allowed pass one fresh review before merge. A customize.toml change or an orchestrator rule: the user chooses."
+verify = "A medium-risk ticket on the oneshot route is reviewed with the thorough lenses, and the rule for a late high is written where the build or the orchestrator reads it."
+after = []
+hitl = false
+risk = "medium"
+refine = true
+references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: findings P1 and P5; Previous-retro follow-through (A8); Action items A14"]
+
+[[entry]]
+id = 23
+type = "story"
+title = "Refine settles platform-dependent decision matrices before a high-risk build"
+description = "Retrospective A15 (P5): bug 2.15 reached review before its decision matrix on GitHub's concurrency groups, skip tokens and cancellations was settled, halted on an intent gap, and needed a po Decision and a re-plan. Refining a high-risk ticket whose behaviour rests on a platform's semantics should settle that matrix first."
+verify = "The refine guidance the po follows names the check, and the next high-risk CI or platform ticket's Notes show its matrix settled before its build starts."
+after = []
+hitl = false
+risk = "low"
+refine = true
+references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: finding P5; Action items A15"]
+
+[[entry]]
+id = 24
+type = "story"
+title = "The agent instructions record the live-region strict-mode pitfall"
+description = "Retrospective A16 (P7; previous retrospective A9): AGENTS.md has only its Git section; the strict-mode pitfall (text shown in a visible element and in a frame-delayed live region makes a text locator match twice) is not recorded. Added through bmad-project-context."
+verify = "AGENTS.md (or the file it points agents to) names the pitfall and the fix used in e2e/helpers.ts (announcement() excludes the Field status)."
+after = []
+hitl = false
+risk = "low"
+references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-manage-todos/epic-manage-todos-retrospective.md: finding P7; Previous-retro follow-through (A9); Action items A16"]

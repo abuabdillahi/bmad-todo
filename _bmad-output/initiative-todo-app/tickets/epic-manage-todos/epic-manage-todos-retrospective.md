@@ -282,3 +282,9 @@ Criteria: **declared** (the epic file's Requirements R4–R14, R17–R20 and Don
 - **Session logs:** not available; process lessons rest on the ledger, briefs and plan logs.
 - **Action items, decision records and their routing** ((a) fix now on a fix branch, (b) backlog or user) are proposals; nothing was applied, no ticket was created, and no status was changed.
 - **Scheduled-run observation** is as of 00:30Z on 2026-11-26.
+
+## Action items filed
+
+Filed 2026-11-26 by the po (hands-off run on the user's instruction). (a) items are entries in this epic, parent #3; (b) items are backlog tickets with no parent, or lines on an existing ticket.
+
+A1 → 2.19 #70 (bug, medium); A2 → 2.20 #71 (story, low); A3 → 2.21 #72 (bug, low); A4 → 2.22 #73 (story, low); A5 → 2.15 #26, a Notes line, no new ticket; A6 → backlog/14 #74 (spike, medium); A7 → backlog/15 #75 (bug, high, user decides; blocked by #71, #72); A8 → backlog/16 #76 (story, medium, user decides); A9 → backlog/17 #77 (story, low); A10 → backlog/18 #78 (bug, low; blocked by #70); A11 → backlog/19 #79 (spike, medium, hitl); A12 → backlog/20 #80 (spike, low, hitl); A13 → backlog/21 #81 (story, low, user decides); A14 → backlog/22 #82 (story, medium); A15 → backlog/23 #83 (story, low); A16 → backlog/24 #84 (story, low); A17 → 2.18 #65, a Notes line, no new ticket.

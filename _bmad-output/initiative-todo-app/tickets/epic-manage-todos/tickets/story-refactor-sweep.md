@@ -3,7 +3,7 @@ id: 7
 type: story
 title: "Refactor sweep"
 parent: epic-manage-todos
-after: [1, 2, 3, 4, 5, 6, 10, 11, 12]
+after: [1, 2, 3, 4, 5, 6, 10, 11, 12, 14]
 hitl: false
 risk: low
 tracker_id: "48"
