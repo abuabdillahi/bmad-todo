@@ -11,7 +11,8 @@ export function AddForm({ fieldRef: externalFieldRef }: { fieldRef?: Ref<HTMLTex
   // The latest committed value, read after an add's promise resolves.
   const valueRef = useRef(value);
   valueRef.current = value;
-  // A failed add's text put back in the field, until its id is listed or it is replaced.
+  // A failed add's sent text put back in the field, until its id is listed or it is replaced.
+  // An edited text restored instead is not recorded here: it never reuses the id or clears.
   const restored = useRef<{ id: string; text: string } | null>(null);
   const caretToEnd = useRef(false);
   // The add field is a focus target outside the form too (Dismiss, Try again).
@@ -50,11 +51,16 @@ export function AddForm({ fieldRef: externalFieldRef }: { fieldRef?: Ref<HTMLTex
     const outcome = await addTodo(description, reuse);
     if (outcome.status !== 'failed') return;
 
-    // Add failed: the sent text comes back only into an empty field, so newer typing is kept.
+    // Add failed: the todo's latest text comes back (#70), the sent text or the last edit
+    // saved on its card while the add was pending; nothing if its delete was confirmed.
+    const latest = outcome.latestDescription;
+    if (latest === null) return;
+    // Only into an empty field, so newer typing is kept.
     if (valueRef.current !== '') return;
-    restored.current = { id: outcome.id, text: description };
+    // Only the sent text lends the failed add's id: an edited text is a new todo, sent with a new id.
+    if (latest === description) restored.current = { id: outcome.id, text: description };
     caretToEnd.current = true;
-    setValue((current) => (current === '' ? description : current));
+    setValue((current) => (current === '' ? latest : current));
     // The restored text is valid: clear an empty-submit error made while the add was pending.
     field.clearError();
   }

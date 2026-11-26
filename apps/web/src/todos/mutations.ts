@@ -12,8 +12,19 @@ export type MutationOutcome =
   | { readonly status: 'failed'; readonly failure: FailureInfo }
   | { readonly status: 'dropped' };
 
-/** An add's outcome, with its id (AD-7): the one the client minted, or the failed add's id passed back. */
-export type AddOutcome = MutationOutcome & { readonly id: string };
+/**
+ * An add's outcome, with its id (AD-7): the one the client minted, or the
+ * failed add's id passed back. A failed add also carries the todo's text as the
+ * follow-ups queued behind it left it (#70): the sent text, the last edit saved
+ * on its card while it was pending, or null if a queued delete removed it.
+ * Those follow-ups are still dropped (AD-13); only the add form reads this.
+ */
+export type AddOutcome =
+  | (Exclude<MutationOutcome, { readonly status: 'failed' }> & { readonly id: string })
+  | (Extract<MutationOutcome, { readonly status: 'failed' }> & {
+      readonly id: string;
+      readonly latestDescription: string | null;
+    });
 
 /** One optimistic change to one todo (AD-13). */
 export interface MutationSpec {
@@ -48,6 +59,8 @@ export interface MutationHelper {
    * Adds the todo on top of the cache at once (AD-7, AD-13), with a freshly
    * minted id, or with `id` when resubmitting a failed add's unchanged text, so
    * an add the server already stored replays instead of being stored twice (AD-6).
+   * A failed add resolves with `latestDescription`: the todo's text as its
+   * queued follow-ups left it, or null if one deleted it (#70).
    */
   addTodo(description: string, id?: string): Promise<AddOutcome>;
   /**
@@ -92,6 +105,11 @@ interface Entry {
   base: Todo | undefined;
   /** Where that value sat in the list, or -1 if it wasn't there. */
   index: number;
+  /**
+   * A failed create only: the todo as the follow-ups queued behind it left it,
+   * worked out at the failure before they are dropped; null if one removed it.
+   */
+  latest?: Todo | null;
 }
 
 interface Chain {
@@ -173,6 +191,30 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
     writeTodo(entry.spec.id, value, entry.index);
   }
 
+  /**
+   * The todo as the user last left it behind a create (#70): the create's value
+   * with every later pending call on it applied in order, up to a resubmitted
+   * create, applied to the cache or not; null if one removed it.
+   */
+  function latestAfter(entry: Entry, chain: Chain): Todo | null {
+    const at = chain.pending.indexOf(entry);
+    let value: Todo | undefined;
+    try {
+      value = entry.spec.apply(undefined) ?? undefined;
+    } catch {
+      // A broken apply leaves the value as it was, as in revert.
+    }
+    for (const next of chain.pending.slice(at + 1)) {
+      if (next.spec.kind === 'create') break;
+      try {
+        value = next.spec.apply(value) ?? undefined;
+      } catch {
+        // A broken apply leaves the value as it was, as in revert.
+      }
+    }
+    return value ?? null;
+  }
+
   function leave(entry: Entry, chain: Chain): void {
     const at = chain.pending.indexOf(entry);
     if (at !== -1) chain.pending.splice(at, 1);
@@ -201,7 +243,11 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
       await spec.send();
     } catch (error) {
       const failure = failureInfo(error);
-      if (spec.kind === 'create') chain.createFailed = true;
+      if (spec.kind === 'create') {
+        chain.createFailed = true;
+        // Before the revert and the drop: what the queued follow-ups made of the todo.
+        entry.latest = latestAfter(entry, chain);
+      }
       settle(() => {
         revert(entry, chain);
         leave(entry, chain);
@@ -220,6 +266,11 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
   }
 
   function run(spec: MutationSpec): Promise<MutationOutcome> {
+    return enqueue(spec).outcome;
+  }
+
+  /** Queues the call on its todo's chain; the entry stays readable once it settles. */
+  function enqueue(spec: MutationSpec): { entry: Entry; outcome: Promise<MutationOutcome> } {
     store.mutationStarted();
 
     let chain = chains.get(spec.id);
@@ -243,22 +294,31 @@ export function createMutationHelper({ queryClient, store, announce, now = Date.
         return { status: 'failed', failure: { kind: 'generic' } };
       });
     own.tail = outcome;
-    return outcome.finally(() => {
-      if (own.pending.length === 0 && chains.get(spec.id) === own) chains.delete(spec.id);
-    });
+    return {
+      entry,
+      outcome: outcome.finally(() => {
+        if (own.pending.length === 0 && chains.get(spec.id) === own) chains.delete(spec.id);
+      }),
+    };
   }
 
   function addTodo(description: string, reusedId?: string): Promise<AddOutcome> {
     const id = reusedId ?? crypto.randomUUID();
     const todo: Todo = { id, description, completed: false, createdAt: new Date().toISOString() };
-    return run({
+    const { entry, outcome } = enqueue({
       id,
       kind: 'create',
       apply: () => todo,
       send: () => createTodo({ id, description }),
       failureText: (failure) => messages.failureMessage('add', failure, description),
       successText: messages.added(description),
-    }).then((outcome) => ({ ...outcome, id }));
+    });
+    return outcome.then((result): AddOutcome => {
+      if (result.status !== 'failed') return { ...result, id };
+      // Nothing recorded (a failure outside the send step): the sent text.
+      const latest = entry.latest === undefined ? description : (entry.latest?.description ?? null);
+      return { ...result, id, latestDescription: latest };
+    });
   }
 
   function setCompleted({ id, description }: Pick<Todo, 'id' | 'description'>, completed: boolean): Promise<MutationOutcome> {

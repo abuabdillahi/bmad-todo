@@ -1,6 +1,18 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.ts';
-import { announcement, focusAddField, MESSAGES, resetList, todoItem, UNAVAILABLE_BODY, uniqueDescription } from './helpers.ts';
+import {
+  announcement,
+  deleteButton,
+  deleteConfirm,
+  editButton,
+  editField,
+  focusAddField,
+  MESSAGES,
+  resetList,
+  todoItem,
+  UNAVAILABLE_BODY,
+  uniqueDescription,
+} from './helpers.ts';
 
 /**
  * A failed add (E6, E8, story 6), by keyboard: the card shows at once and
@@ -28,14 +40,16 @@ async function holdCreate(page: Page): Promise<{ held: Promise<Route> }> {
   return { held };
 }
 
-for (const { name, reason, answer } of [
+const FAILURES = [
   {
     name: 'a 503 from the API',
     reason: MESSAGES.unavailable,
     answer: (route: Route) => route.fulfill({ status: 503, contentType: 'application/problem+json', body: UNAVAILABLE_BODY }),
   },
   { name: 'no response', reason: MESSAGES.network, answer: (route: Route) => route.abort() },
-]) {
+];
+
+for (const { name, reason, answer } of FAILURES) {
   test(`E6 E8 an add failing with ${name} shows the card, then removes it, says why and puts the text back`, async ({
     page,
   }, testInfo) => {
@@ -71,6 +85,87 @@ for (const { name, reason, answer } of [
     await expect(todoItem(page, later)).toHaveCount(1);
     await expect(todoItem(page, failing)).toHaveCount(0);
     await expect(todoItem(page, earlier)).toHaveCount(1);
+  });
+}
+
+/** Records every PATCH and DELETE the page sends: follow-ups dropped behind a failed add send none. */
+function recordFollowUps(page: Page): string[] {
+  const sent: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'PATCH' || request.method() === 'DELETE') sent.push(`${request.method()} ${request.url()}`);
+  });
+  return sent;
+}
+
+/** Waits for the next list fetch: the settle-time refetch after the add settles. */
+function nextListFetch(page: Page) {
+  return page.waitForResponse((r) => r.request().method() === 'GET' && new URL(r.url()).pathname === '/api/todos');
+}
+
+for (const { name, reason, answer } of FAILURES) {
+  test(`E6 an edit saved while the add is held comes back in the field when the add fails with ${name}, and no PATCH is sent`, async ({
+    page,
+  }, testInfo) => {
+    const sent = uniqueDescription('E6 sent', testInfo.project.name);
+    const edited = uniqueDescription('E6 edited', testInfo.project.name);
+    const field = await focusAddField(page);
+    const followUps = recordFollowUps(page);
+
+    const { held } = await holdCreate(page);
+    await page.keyboard.type(sent);
+    await page.keyboard.press('Enter');
+    const create = await held;
+    await expect(todoItem(page, sent)).toHaveCount(1);
+
+    // Edit the new card while its add is held: the Edit form opens with all text selected.
+    await editButton(page, sent).click();
+    await expect(editField(page)).toBeFocused();
+    await page.keyboard.type(edited);
+    await page.keyboard.press('Enter');
+    await expect(todoItem(page, edited)).toHaveCount(1);
+
+    await field.focus();
+    const refetched = nextListFetch(page);
+    await answer(create);
+
+    await expect(announcement(page, MESSAGES.addOutcome)).toHaveText(MESSAGES.addFailed(sent, reason));
+    await refetched;
+    await expect(todoItem(page, edited)).toHaveCount(0);
+    await expect(todoItem(page, sent)).toHaveCount(0);
+    await expect(field).toHaveValue(edited);
+    await expect(field).toBeFocused();
+    expect(await field.evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.selectionEnd])).toEqual([edited.length, edited.length]);
+    expect(followUps).toEqual([]);
+    await expectNoAxeViolations(page, 'edit behind a failed add restored');
+  });
+
+  test(`E6 a delete confirmed while the add is held leaves the field empty when the add fails with ${name}`, async ({
+    page,
+  }, testInfo) => {
+    const sent = uniqueDescription('E6 deleted', testInfo.project.name);
+    const field = await focusAddField(page);
+    const followUps = recordFollowUps(page);
+
+    const { held } = await holdCreate(page);
+    await page.keyboard.type(sent);
+    await page.keyboard.press('Enter');
+    const create = await held;
+    await expect(todoItem(page, sent)).toHaveCount(1);
+
+    await deleteButton(page, sent).click();
+    await deleteConfirm(page, sent).getByRole('button', { name: `Delete “${sent}”`, exact: true }).click();
+    await expect(todoItem(page, sent)).toHaveCount(0);
+
+    await field.focus();
+    const refetched = nextListFetch(page);
+    await answer(create);
+
+    await expect(announcement(page, MESSAGES.addOutcome)).toHaveText(MESSAGES.addFailed(sent, reason));
+    await refetched;
+    await expect(field).toHaveValue('');
+    await expect(todoItem(page, sent)).toHaveCount(0);
+    expect(followUps).toEqual([]);
+    await expectNoAxeViolations(page, 'delete behind a failed add');
   });
 }
 

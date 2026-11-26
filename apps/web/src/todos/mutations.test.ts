@@ -152,6 +152,20 @@ describe('mutation helper: add (U4)', () => {
     expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: todosQueryKey });
   });
 
+  it('U4 a failed add with no follow-ups carries the sent text as its latest description', async () => {
+    const { helper } = setup([first]);
+    fetchMock.mockResolvedValueOnce(problem('/problems/unavailable', 503));
+
+    const outcome = await helper.addTodo('Buy milk');
+
+    expect(outcome).toEqual({
+      status: 'failed',
+      failure: expect.objectContaining({ kind: 'unavailable' }),
+      id: expect.stringMatching(UUID),
+      latestDescription: 'Buy milk',
+    });
+  });
+
   it('U4 an add given a failed add\'s id sends that id, and a 200 replay announces Added', async () => {
     const { helper, announce, list } = setup([first]);
     const reused = 'b0000000-0000-4000-8000-000000000009';
@@ -579,7 +593,8 @@ describe('mutation helper: complete and reopen (U3, U4, U5)', () => {
     await flush();
 
     held.POST[0]!(() => problem('/problems/unavailable', 503));
-    await expect(added).resolves.toMatchObject({ status: 'failed' });
+    // A toggle leaves the text as sent.
+    await expect(added).resolves.toMatchObject({ status: 'failed', latestDescription: 'Buy milk' });
     await expect(completed).resolves.toEqual({ status: 'dropped' });
 
     expect(held.PATCH).toHaveLength(0);
@@ -752,6 +767,56 @@ describe('mutation helper: edit (U4, U5)', () => {
     expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't add “Buy milk”. ${UNAVAILABLE}`);
     expect(store.getSnapshot().pendingCount).toBe(0);
   });
+
+  it('U5 an edit behind a create that fails: the add outcome carries the edited text, the edit is still dropped', async () => {
+    const { helper, store, announce, list } = setup([second]);
+    const held = heldByMethod();
+
+    const added = helper.addTodo('Buy milk');
+    await flush();
+    const id = list()![0]!.id;
+    const edited = helper.editDescription({ id, description: 'Buy milk' }, 'Buy oat milk');
+    await flush();
+
+    held.POST[0]!(() => problem('/problems/unavailable', 503));
+    await expect(added).resolves.toEqual({
+      status: 'failed',
+      failure: expect.objectContaining({ kind: 'unavailable' }),
+      id,
+      latestDescription: 'Buy oat milk',
+    });
+    await expect(edited).resolves.toEqual({ status: 'dropped' });
+
+    expect(held.PATCH).toHaveLength(0);
+    expect(list()).toEqual([second]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't add “Buy milk”. ${UNAVAILABLE}`);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+  });
+
+  it('U5 two edits and a toggle behind a create that fails: the add outcome carries the last edit, all three are dropped', async () => {
+    const { helper, store, announce, list } = setup([second]);
+    const held = heldByMethod();
+
+    const added = helper.addTodo('Buy milk');
+    await flush();
+    const id = list()![0]!.id;
+    const edit1 = helper.editDescription({ id, description: 'Buy milk' }, 'Buy oat milk');
+    const toggled = helper.setCompleted({ id, description: 'Buy oat milk' }, true);
+    const edit2 = helper.editDescription({ id, description: 'Buy oat milk' }, 'Buy soy milk');
+    await flush();
+    expect(list()![0]).toMatchObject({ id, description: 'Buy soy milk', completed: true });
+
+    held.POST[0]!(() => problem('/problems/unavailable', 503));
+    await expect(added).resolves.toMatchObject({ status: 'failed', id, latestDescription: 'Buy soy milk' });
+    await expect(edit1).resolves.toEqual({ status: 'dropped' });
+    await expect(toggled).resolves.toEqual({ status: 'dropped' });
+    await expect(edit2).resolves.toEqual({ status: 'dropped' });
+
+    expect(held.PATCH).toHaveLength(0);
+    expect(list()).toEqual([second]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't add “Buy milk”. ${UNAVAILABLE}`);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+  });
 });
 
 describe('mutation helper: delete (U4, U5)', () => {
@@ -884,6 +949,70 @@ describe('mutation helper: delete (U4, U5)', () => {
     expect(calls.map(({ method }) => method)).toEqual(['POST']);
     expect(list()).toEqual([second]);
     expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't add “Buy milk”. ${UNAVAILABLE}`);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+  });
+
+  it.each([
+    ['a delete', [] as string[]],
+    ['an edit then a delete', ['Buy oat milk']],
+  ])('U5 %s behind a create that fails: the add outcome\'s latest description is null, and nothing is sent after the POST', async (_name, edits) => {
+    const { helper, store, announce, list } = setup([second]);
+    const calls = heldRequests();
+
+    const added = helper.addTodo('Buy milk');
+    await flush();
+    const id = list()![0]!.id;
+    const followUps = [
+      ...edits.map((text) => helper.editDescription({ id, description: 'Buy milk' }, text)),
+      helper.deleteTodo({ id, description: edits.at(-1) ?? 'Buy milk' }),
+    ];
+    await flush();
+
+    calls[0]!.settle(() => problem('/problems/unavailable', 503));
+    await expect(added).resolves.toMatchObject({ status: 'failed', id, latestDescription: null });
+    for (const followUp of followUps) await expect(followUp).resolves.toEqual({ status: 'dropped' });
+
+    expect(calls.map(({ method }) => method)).toEqual(['POST']);
+    expect(list()).toEqual([second]);
+    expect(announce).toHaveBeenCalledExactlyOnceWith('failure', `Couldn't add “Buy milk”. ${UNAVAILABLE}`);
+    expect(store.getSnapshot().pendingCount).toBe(0);
+  });
+
+  type Helper = ReturnType<typeof setup>['helper'];
+  const answer = (method: string) => (method === 'DELETE' ? new Response(null, { status: 204 }) : problem('/problems/unavailable', 503));
+
+  it.each([
+    ['an edit', 'edit-first', (helper: Helper) => helper.editDescription(first, 'Edited text')],
+    ['an edit', 'delete-first', (helper: Helper) => helper.editDescription(first, 'Edited text')],
+    ['a completion', 'edit-first', (helper: Helper) => helper.setCompleted(first, true)],
+    ['a completion', 'delete-first', (helper: Helper) => helper.setCompleted(first, true)],
+  ])('U4 U5 a delete answered 204 beside %s answered 503 of the same todo (%s): the todo stays absent', async (_name, order, other) => {
+    const { helper, store, list } = setup([first, second]);
+    const calls = heldRequests();
+
+    let deleted: Promise<unknown>;
+    let changed: Promise<unknown>;
+    if (order === 'delete-first') {
+      deleted = helper.deleteTodo(first);
+      changed = other(helper);
+    } else {
+      changed = other(helper);
+      deleted = helper.deleteTodo(first);
+    }
+    await flush();
+    expect(list()).toEqual([second]);
+
+    // Calls on one todo are sent in order: answer the first, then the second once it is sent.
+    calls[0]!.settle(() => answer(calls[0]!.method));
+    await flush();
+    await flush();
+    expect(list()).toEqual([second]);
+    calls[1]!.settle(() => answer(calls[1]!.method));
+
+    await expect(deleted).resolves.toEqual({ status: 'ok' });
+    await expect(changed).resolves.toMatchObject({ status: 'failed' });
+    expect(calls.map(({ method }) => method)).toEqual(order === 'delete-first' ? ['DELETE', 'PATCH'] : ['PATCH', 'DELETE']);
+    expect(list()).toEqual([second]);
     expect(store.getSnapshot().pendingCount).toBe(0);
   });
 });

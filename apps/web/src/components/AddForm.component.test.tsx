@@ -742,6 +742,106 @@ describe('AddForm: optimistic add', () => {
     expect(state.bodies[1]!.id).not.toBe(state.bodies[0]!.id);
   });
 
+  /** Records any PATCH or DELETE sent: a follow-up dropped behind a failed add sends none. */
+  function recordFollowUps(): string[] {
+    const sent: string[] = [];
+    const record = ({ request }: { request: Request }) => {
+      sent.push(`${request.method} ${new URL(request.url).pathname}`);
+      return new HttpResponse(null, { status: 204 });
+    };
+    server.use(http.patch('*/api/todos/:id', record), http.delete('*/api/todos/:id', record));
+    return sent;
+  }
+
+  it.each([
+    ['unchanged', '', 'Buy oat milk'],
+    ['changed', ' now', 'Buy oat milk now'],
+  ])('K1 an edit saved while the add is pending comes back in the field when it fails, sends no PATCH, and resubmitted %s gets a new id', async (_name, typed, resubmitted) => {
+    const state = replaying(unavailable, false);
+    const sent = recordFollowUps();
+    const { user, field, list } = await renderLoaded();
+
+    await user.type(field, 'Buy milk{Enter}');
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    await user.click(within(list).getByRole('button', { name: 'Edit “Buy milk”' }));
+    await user.keyboard('Buy oat milk{Enter}');
+    await waitFor(() => expect(items(list)).toEqual(['Buy oat milk', 'Already here']));
+    await user.click(field);
+
+    state.release.open();
+    await waitFor(() => expect(liveElement().textContent).toBe(`Couldn't add “Buy milk”. ${UNAVAILABLE}`));
+    await waitFor(() => expect(field.value).toBe('Buy oat milk'));
+    expect(document.activeElement).toBe(field);
+    expect(field.selectionStart).toBe(12);
+    expect(field.selectionEnd).toBe(12);
+    await waitFor(() => expect(state.lists).toBe(2));
+    expect(items(list)).toEqual(['Already here']);
+    expect(sent).toEqual([]);
+
+    await user.keyboard(`${typed}{Enter}`);
+
+    await waitFor(() => expect(liveElement().textContent).toBe(`Added “${resubmitted}”.`));
+    expect(state.bodies[1]).toEqual({ id: expect.stringMatching(UUID), description: resubmitted });
+    expect(state.bodies[1]!.id).not.toBe(state.bodies[0]!.id);
+    expect(state.statuses).toEqual([201]);
+    expect(sent).toEqual([]);
+  });
+
+  it('K1 an edited text restored after a failed add is never cleared when the add landed after all', async () => {
+    const state = serve(unavailable);
+    recordFollowUps();
+    const { user, field, list, queryClient } = await renderLoaded();
+
+    await user.type(field, 'Buy milk{Enter}');
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    await user.click(within(list).getByRole('button', { name: 'Edit “Buy milk”' }));
+    await user.keyboard('Buy oat milk{Enter}');
+    await waitFor(() => expect(items(list)).toEqual(['Buy oat milk', 'Already here']));
+    await user.click(field);
+
+    state.release.open();
+    await waitFor(() => expect(field.value).toBe('Buy oat milk'));
+    await waitFor(() => expect(state.lists).toBe(2));
+    await waitFor(() => expect(queryClient.getQueryState(['todos'])?.fetchStatus).toBe('idle'));
+
+    state.landed = [{ ...state.bodies[0]!, completed: false, createdAt: '2026-11-25T10:00:00.000Z' }];
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    expect(field.value).toBe('Buy oat milk');
+  });
+
+  it('K1 a delete confirmed while the add is pending leaves the field empty when it fails, and the same text typed later gets a new id', async () => {
+    const state = replaying(unavailable, false);
+    const sent = recordFollowUps();
+    const { user, field, list } = await renderLoaded();
+
+    await user.type(field, 'Buy milk{Enter}');
+    await waitFor(() => expect(items(list)).toEqual(['Buy milk', 'Already here']));
+    await user.click(within(list).getByRole('button', { name: 'Delete “Buy milk”' }));
+    const confirm = screen.getByRole('group', { name: 'Delete this todo? Buy milk' });
+    await user.click(within(confirm).getByRole('button', { name: 'Delete “Buy milk”' }));
+    await user.click(field);
+
+    state.release.open();
+    await waitFor(() => expect(liveElement().textContent).toBe(`Couldn't add “Buy milk”. ${UNAVAILABLE}`));
+    await waitFor(() => expect(state.lists).toBe(2));
+    await waitFor(() => expect(items(list)).toEqual(['Already here']));
+    expect(field.value).toBe('');
+    expect(screen.getByText('0/200')).toBeTruthy();
+    expect(sent).toEqual([]);
+
+    await user.type(field, 'Buy milk{Enter}');
+
+    await waitFor(() => expect(liveElement().textContent).toBe('Added “Buy milk”.'));
+    expect(state.bodies[1]).toEqual({ id: expect.stringMatching(UUID), description: 'Buy milk' });
+    expect(state.bodies[1]!.id).not.toBe(state.bodies[0]!.id);
+    expect(state.statuses).toEqual([201]);
+  });
+
   it('K1 two adds, the first failing: only its card goes', async () => {
     const firstAnswer = gate();
     const saved: Todo[] = [existing];
