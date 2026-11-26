@@ -22,6 +22,11 @@ Everything runs in Docker Compose: one `compose.yml` with three profiles, `dev`,
 
 The design is in `_bmad-output/initiative-todo-app/architecture-todo-app/architecture-todo-app.md`, cited below as AD-n, and the test plan is in `_bmad-output/initiative-todo-app/test-strategy.md`.
 
+[`docs/`](docs/) holds the rest of the project's documentation:
+
+- [`docs/quality/`](docs/quality/): the coverage, performance, accessibility and security reports for each epic (see [Quality reports](#quality-reports)).
+- [`docs/ai-integration.md`](docs/ai-integration.md): how the BMad method and its AI agents built the app, what the AI did well, and where a person was needed.
+
 ## Prerequisites
 
 - **Node.js 26.13.1**, the version in `.nvmrc`. With nvm: `nvm install && nvm use`.
