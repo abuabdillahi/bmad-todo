@@ -8,7 +8,7 @@ hitl: false
 risk: low
 tracker_id: "81"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/81"
-tracker_status: backlog
+tracker_status: dropped
 ---
 
 # Decide whether the scheduled catch-up records a deployment on every run
@@ -30,3 +30,4 @@ Verify: Notes hold the user's dated Decision; if it is deployment: false, a sche
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): deferred to the backlog by epic-manage-todos' retrospective (action item A13).
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): the user decides this one, because it is a deploy-workflow setting the 2.17 build left out on the user's instruction.
 - Open question: if #65 adds required reviewers or a wait timer to `production`, every half-hourly catch-up waits for approval; the user's answer on #65 (retrospective A17) bears on this one.
+- Dropped: 2026-11-26, po on the user's instruction (check, simplify and close epic-manage-todos): moot: the scheduled catch-up (`schedule`, `catch-up`, `catch-up-gate`, scripts/deploy-catch-up.mjs) it is about was removed by PR #87 after GitHub fired no scheduled run, and #26 was closed as not planned (user Decision 2026-11-26). Only `deploy` now names `production`, so a deployment is recorded only when a deploy runs.

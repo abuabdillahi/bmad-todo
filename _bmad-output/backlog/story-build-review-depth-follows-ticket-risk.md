@@ -8,7 +8,7 @@ hitl: false
 risk: medium
 tracker_id: "82"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/82"
-tracker_status: backlog
+tracker_status: dropped
 ---
 
 # Build review depth follows ticket risk
@@ -28,3 +28,4 @@ Verify: A medium-risk ticket on the oneshot route is reviewed with the thorough 
 ## Notes
 
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): deferred to the backlog by epic-manage-todos' retrospective (action item A14).
+- Dropped: 2026-11-26, po on the user's instruction (check, simplify and close epic-manage-todos): process-only: it changes how agents build and review, not the product, and the user stopped the hands-off run; it stays recorded as epic-manage-todos' retrospective action item A14, with no ticket.

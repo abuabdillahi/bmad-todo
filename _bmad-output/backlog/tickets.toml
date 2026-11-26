@@ -34,9 +34,9 @@ references = ["retrospective — _bmad-output/initiative-todo-app/tickets/epic-m
 [[entry]]
 id = 16
 type = "story"
-title = "The architecture spine describes the scheduled catch-up, the production environment and the write timeouts"
-description = "Retrospective A8 (F1, F11, R5): AD-18 still describes one workflow with test and deploy only; the Deferred line on a write that may have landed still says a resubmit mints a new id (story 2.1 made an unchanged resubmit reuse it); AD-4 and AD-13 do not record nginx's 10 s proxy_read_timeout for /api or the client's 15 s write abort. Amended through bmad-architecture with the user's consent."
-verify = "The spine's AD-18 names the schedule, catch-up, catch-up-gate, dispatch-off-main and environment production; its Deferred line records the id reuse and the follow-up case; AD-4 and AD-13 state the 10 s and 15 s limits; each change cites its story."
+title = "The architecture spine describes the production environment, dispatch-off-main and the write timeouts"
+description = "Retrospective A8 (F1, F11, R5): AD-18 still describes one workflow with test and deploy only, without #27's dispatch-off-main job or #64's `environment: production` on deploy; the Deferred line on a write that may have landed still says a resubmit mints a new id (story 2.1 made an unchanged resubmit reuse it); AD-4 and AD-13 do not record nginx's 10 s proxy_read_timeout for /api or the client's 15 s write abort. Amended through bmad-architecture with the user's consent."
+verify = "The spine's AD-18 names dispatch-off-main and deploy's environment production; its Deferred line records the id reuse and the follow-up case; AD-4 and AD-13 state the 10 s and 15 s limits; each change cites its story."
 after = []
 hitl = false
 risk = "medium"

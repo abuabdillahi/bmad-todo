@@ -11,7 +11,7 @@ risk: high
 severity: P3
 tracker_id: "26"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/26"
-tracker_status: in-progress
+tracker_status: dropped
 parent: epic-manage-todos
 ---
 
@@ -64,3 +64,5 @@ GitHub Actions keeps only one pending job per concurrency group, so a later-queu
 - Decision: 2026-11-25, po (hands-off run on the user's instruction): Built in one lane with 16 and 17, which also change `.github/workflows/ci.yml`, after story 8; risk high, because a broken deploy job is only seen on main.
 - Decision: 2026-11-25, po (hands-off run on the user's instruction), settling the build's intent gap (plan review, 2026-11-25): (1) a `[skip ci]` commit needs no deploy (AGENTS.md: those pushes get no CI and no deploy), so the check does nothing when every commit since production's SHA carries a skip token, and otherwise judges the newest commit without one; (2) the check deploys only the two cases criterion 1 names, a deploy cancelled by the `deploy-prod` concurrency group and a push with no run on main; any other cancelled test or deploy is taken as deliberate and is not deployed, only reported in the run's notice, and a cancellation the check cannot attribute to the group counts as deliberate. No kill switch is added. Chosen as the safest option: it never deploys what a person stopped and needs no new setup.
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): from epic-manage-todos' retrospective, action item A5 (P6): keep #26 open until a scheduled run of `ci.yml` is seen on `main` with its "Deploy catch-up" notice (criterion 3) and its `catch-up` job ran in environment `production`; if no scheduled run appears within a few hours of slots, investigate the schedule (default branch, workflow state). No new ticket.
+- Decision: 2026-11-26, user: close this bug as not planned. The scheduled catch-up built for it (PR #67) is removed (PR #87): in the two hours after its cron reached main, GitHub fired no scheduled run (slots 23:47, 00:17, 00:47 and 01:17 passed, `gh run list --event schedule` empty), so it could not be shown working, and it was complex for a rare case. README's Deploy section keeps the remedy: after a burst of merges, if the tip's deploy shows as cancelled, re-run it.
+- Dropped: 2026-11-26, per the user's Decision above (not planned; catch-up removed by PR #87).

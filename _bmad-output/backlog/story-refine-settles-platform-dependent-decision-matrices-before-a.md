@@ -8,7 +8,7 @@ hitl: false
 risk: low
 tracker_id: "83"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/83"
-tracker_status: backlog
+tracker_status: dropped
 ---
 
 # Refine settles platform-dependent decision matrices before a high-risk build
@@ -28,3 +28,4 @@ Verify: The refine guidance the po follows names the check, and the next high-ri
 ## Notes
 
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): deferred to the backlog by epic-manage-todos' retrospective (action item A15).
+- Dropped: 2026-11-26, po on the user's instruction (check, simplify and close epic-manage-todos): process-only: it changes how agents build and review, not the product, and the user stopped the hands-off run; it stays recorded as epic-manage-todos' retrospective action item A15, with no ticket.

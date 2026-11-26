@@ -8,7 +8,7 @@ hitl: false
 risk: medium
 tracker_id: "74"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/74"
-tracker_status: backlog
+tracker_status: dropped
 ---
 
 # Does the catch-up recognise a real deploy-prod group cancellation?
@@ -28,3 +28,4 @@ Verify: Notes quote the annotation of a real deploy-prod group cancellation on m
 ## Notes
 
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): deferred to the backlog by epic-manage-todos' retrospective (action item A6).
+- Dropped: 2026-11-26, po on the user's instruction (check, simplify and close epic-manage-todos): moot: the scheduled catch-up (`schedule`, `catch-up`, `catch-up-gate`, scripts/deploy-catch-up.mjs) it is about was removed by PR #87 after GitHub fired no scheduled run, and #26 was closed as not planned (user Decision 2026-11-26).

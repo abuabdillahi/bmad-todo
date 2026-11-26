@@ -9,7 +9,7 @@ risk: high
 severity: P2
 tracker_id: "75"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/75"
-tracker_status: backlog
+tracker_status: dropped
 ---
 
 # A re-run scheduled deploy can skip its health check or miss a rollback
@@ -32,3 +32,4 @@ Verify: A re-run of a failed scheduled run either deploys and health-checks the 
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): the user decides this one, because it changes the deploy job's steps, which the epic's Notes reserve to the user (Decision 2026-11-25, po). No build starts until the user has answered the two questions in the Description.
 - Waits on 2.20 (#71) and 2.21 (#72) because: 2.20 pins the gate's wiring this fix changes, and 2.21 writes the README's warning against re-running a scheduled run, which this fix revises.
 - Risk high: a wrong fix deploys over a rollback or leaves production unchecked, and a broken deploy job is seen only on main. Beyond the criteria, check on main after merge that a push run and the next scheduled run both behave as before.
+- Dropped: 2026-11-26, po on the user's instruction (check, simplify and close epic-manage-todos): moot: the scheduled catch-up (`schedule`, `catch-up`, `catch-up-gate`, scripts/deploy-catch-up.mjs) it is about was removed by PR #87 after GitHub fired no scheduled run, and #26 was closed as not planned (user Decision 2026-11-26). Its side questions (a rollback naming a SHA off main; an SSH outage) were about the catch-up and go with it.

@@ -10,7 +10,7 @@ hitl: false
 risk: low
 tracker_id: "71"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/71"
-tracker_status: backlog
+tracker_status: dropped
 ---
 
 # The tests pin how the catch-up gate is wired into the workflow
@@ -53,3 +53,4 @@ The scheduled catch-up deploys only when `catch-up-gate` reports `clear` (2.15, 
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): from the retrospective's action item A2, fixed in this epic on a fix branch through the full gate.
 - Risk low: test only, and a wrong test fails loudly on the branch.
 - Decision: 2026-11-26, user: all non-essential work stops and closing epic-manage-todos comes first; this ticket moves out of the epic to the backlog (po's call on what is non-essential: it is test- or docs-only and the epic's criteria do not need it). Partial work: /Users/idris/me/todo-wt/patches/ (and, for #72, branch bug-72-readme-deploy-accuracy, PR #85 closed unmerged).
+- Dropped: 2026-11-26, po on the user's instruction (check, simplify and close epic-manage-todos): moot: the scheduled catch-up (`schedule`, `catch-up`, `catch-up-gate`, scripts/deploy-catch-up.mjs) it is about was removed by PR #87 after GitHub fired no scheduled run, and #26 was closed as not planned (user Decision 2026-11-26).
