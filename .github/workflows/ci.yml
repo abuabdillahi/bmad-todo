@@ -11,6 +11,9 @@
 # commits need none); only then do `test` and `deploy` run for the tip, exactly as
 # for a push, with `catch-up-gate` between them so a rollback by hand is never
 # replaced or undone. Otherwise it says why and does nothing.
+# Secrets (S10): only `catch-up` and `deploy` read the deploy secrets, and both run in
+# GitHub environment `production`, which entry 18 limits to main and moves them into;
+# neither runs on another ref, so the branch rule never refuses a run.
 name: CI
 
 on:
@@ -56,6 +59,7 @@ jobs:
   catch-up:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 10
     permissions:
       contents: read
@@ -214,6 +218,7 @@ jobs:
       (github.event_name != 'schedule' ||
        (needs.catch-up.outputs.deploy == 'true' && needs.catch-up-gate.outputs.clear == 'true'))
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 20
     concurrency:
       group: deploy-prod

@@ -3,6 +3,8 @@
 // and, on schedule, skipping when production changed since `catch-up` read it; and
 // `catch-up`'s read of the SHA production runs, which fails on an SSH failure; and
 // `dispatch-off-main`'s refusal of a rollback started from another branch (#27).
+// Also pins which jobs run in GitHub environment `production` and read the deploy
+// secrets, and that none of them runs off main (S10, #64).
 // Also pins the job and step names scripts/deploy-catch-up.mjs reads runs by.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -366,8 +368,91 @@ describe('dispatch-off-main: a rollback started off main fails with the reason (
 
   it('needs no job, no job needs it, and it reads no secret or variable and reaches no host', () => {
     const block = jobBlock(OFF_MAIN_JOB).join('\n');
-    expect(block).not.toMatch(/secrets\.|vars\.|ssh|scp|docker|concurrency|needs:/);
+    expect(block).not.toMatch(/secrets\.|vars\.|ssh|scp|docker|concurrency|needs:|environment:/);
     expect(block).toContain('permissions: {}');
     for (const id of ['catch-up', TEST_JOB, 'catch-up-gate', DEPLOY_JOB]) expect(needsOf(id)).not.toContain(OFF_MAIN_JOB);
+  });
+});
+
+describe('the production environment holds the deploy secrets, and only main reaches it (S10, #64)', () => {
+  const DEPLOY_SECRETS = ['DEPLOY_SSH_KEY', 'DEPLOY_HOST', 'DEPLOY_USER', 'DEPLOY_KNOWN_HOSTS', 'TUNNEL_TOKEN'];
+  const IN_PRODUCTION = ['catch-up', DEPLOY_JOB];
+
+  /** Every job id under `jobs:`, so a job added later is checked too. */
+  const jobIds = () => {
+    const lines = workflow.split('\n');
+    const jobsAt = lines.indexOf('jobs:');
+    const end = lines.findIndex((line, i) => i > jobsAt && /^\S/.test(line));
+    return lines
+      .slice(jobsAt + 1, end < 0 ? undefined : end)
+      .map((line) => /^ {2}([\w-]+):\s*$/.exec(line)?.[1])
+      .filter((id): id is string => Boolean(id));
+  };
+  const namesProduction = (id: string) => jobBlock(id).includes('    environment: production');
+
+  it('the workflow has the five jobs the job graph evaluates', () => {
+    expect(jobIds().sort()).toEqual([OFF_MAIN_JOB, 'catch-up', TEST_JOB, 'catch-up-gate', DEPLOY_JOB].sort());
+  });
+
+  it('only catch-up and deploy name environment production, as a job key, and nothing else names an environment', () => {
+    expect(jobIds().filter(namesProduction)).toEqual(IN_PRODUCTION);
+    expect(workflow.match(/^\s*environment:.*$/gm)?.map((l) => l.trim())).toEqual(IN_PRODUCTION.map(() => 'environment: production'));
+  });
+
+  it('no other job reads any of the five deploy secrets', () => {
+    for (const id of jobIds()) {
+      const block = jobBlock(id).join('\n');
+      // GitHub matches context property names in any case.
+      const read = DEPLOY_SECRETS.filter((name) => new RegExp(`secrets\\.${name}\\b`, 'i').test(block));
+      if (namesProduction(id)) expect(read.length, id).toBeGreaterThan(0);
+      else expect(read, id).toEqual([]);
+    }
+  });
+
+  it('deploy reads all five, and catch-up the four it needs to reach the host', () => {
+    const reads = (id: string) => DEPLOY_SECRETS.filter((name) => jobBlock(id).join('\n').includes(`\${{ secrets.${name} }}`));
+    expect(reads(DEPLOY_JOB)).toEqual(DEPLOY_SECRETS);
+    expect(reads('catch-up')).toEqual(['DEPLOY_SSH_KEY', 'DEPLOY_HOST', 'DEPLOY_USER', 'DEPLOY_KNOWN_HOSTS']);
+  });
+
+  it('no job reads secrets by a computed name or as a whole, and none passes them on', () => {
+    // Function and context names are case-insensitive in GitHub expressions.
+    expect(workflow).not.toMatch(/secrets\s*\[|tojson\(\s*secrets|secrets:\s*inherit/i);
+  });
+
+  it('nothing outside those two jobs, such as the workflow-level env:, names a deploy secret', () => {
+    const count = (text: string) => DEPLOY_SECRETS.reduce((n, name) => n + (text.match(new RegExp(`secrets\\.${name}\\b`, 'gi'))?.length ?? 0), 0);
+    expect(count(workflow)).toBe(IN_PRODUCTION.reduce((n, id) => n + count(jobBlock(id).join('\n')), 0));
+  });
+
+  // Once entry 18 limits production's deployment branches to main, GitHub refuses a job
+  // that names it on any other ref. Schedules run on the default branch, main, only.
+  const refs = ['refs/heads/main', 'refs/heads/story-x', 'refs/heads/main-old', 'refs/tags/main'];
+  const scenarios: Scenario[] = [];
+  for (const test of ['success', 'failure']) {
+    for (const ref of refs) {
+      scenarios.push({ event: 'push', ref, test }, { event: 'workflow_dispatch', ref, test });
+    }
+    for (const catchUp of ['success', 'failure']) {
+      for (const deploy of ['true', 'false']) {
+        for (const gate of [{ result: 'success', clear: 'true' }, { result: 'success', clear: 'false' }, { result: 'failure' }]) {
+          scenarios.push({ event: 'schedule', ref: 'refs/heads/main', catchUp: { result: catchUp, deploy }, test, gate });
+        }
+      }
+    }
+  }
+
+  it.each(scenarios)('no job naming production runs off main: %j', (scenario) => {
+    const ran = jobsThatRun(scenario);
+    for (const id of IN_PRODUCTION) {
+      if (ran[id]) expect(scenario.ref, id).toBe('refs/heads/main');
+    }
+  });
+
+  it('a branch push and a dispatch off main run no job that names production', () => {
+    expect(IN_PRODUCTION.filter((id) => jobsThatRun({ event: 'push', ref: 'refs/heads/story-x' })[id])).toEqual([]);
+    for (const ref of ['refs/heads/x', 'refs/tags/main']) {
+      expect(IN_PRODUCTION.filter((id) => jobsThatRun({ event: 'workflow_dispatch', ref })[id])).toEqual([]);
+    }
   });
 });
