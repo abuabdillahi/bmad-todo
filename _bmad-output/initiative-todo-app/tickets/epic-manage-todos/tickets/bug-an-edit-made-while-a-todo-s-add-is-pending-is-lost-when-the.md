@@ -11,7 +11,7 @@ risk: medium
 severity: P2
 tracker_id: "70"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/70"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # An edit made while a todo's add is pending is lost when the add fails
@@ -83,3 +83,4 @@ The mutation helper drops every follow-up queued behind a failed create and reso
 - Open question: if the failed add landed after all, the refetch shows the todo with its original text while the add field holds the edited text; whether the field should then clear (today's rule) is answered in the build, and recorded in the plan.
 - Risk medium: a rare path (a stalled or failing add plus a quick edit), but it loses what the user typed and touches AD-13's helper, which every action uses.
 - Decision: 2026-11-26, po (hands-off run on the user's instruction): the PO's assumption holds: when a pending create fails, the latest edited text comes back in the add field, as a failed add's text already does (EXPERIENCE, Add failed), the safest reading of the epic's Outcome that a user never loses their work. This story updates EXPERIENCE.md's two rows ("Add failed", "Follow-ups on a failed add") to match, with a dated line. The mutation helper's contract as AD-13 states it does not change; if the fix needs it to, the build halts for the user rather than editing the spine.
+- Result: 2026-11-26, user (check, simplify and close epic-manage-todos), verified by the orchestrator: PR #86 merged as d0884e2 (head 2f82758, branch CI run 45737851297 success); main run 45738427453 test and deploy success, public health check ok. Done.

@@ -11,7 +11,7 @@ risk: low
 severity: P3
 tracker_id: "72"
 remote: "https://github.com/abuabdillahi/bmad-todo/issues/72"
-tracker_status: in-progress
+tracker_status: done
 ---
 
 # The closing reports of epic-manage-todos describe the code as it ends up
@@ -99,3 +99,4 @@ The reports were written by story 2.8 (security) and story 2.9 (coverage, access
 - Assumption: the builder chooses the reproducing command for criterion 4 (a script or a documented one-line Vitest call); adding a script would break criterion 7, so the command is written in the report.
 - Open question: PRs #67 and #68 made `vitest.config.ts` run `scripts/**/*.test.ts` in the unit project, so unit test counts rise without app code changing; the coverage report should say so rather than read the jump as PR #86's.
 - Decision: 2026-11-26, po (hands-off run): marked refined on the orchestrator's instruction with the two Assumptions above unconfirmed; they do not change what the criteria require, and the builder settles both in the report.
+- Result: 2026-11-26, user (check, simplify and close epic-manage-todos), verified by the orchestrator: PR #88 merged as 1e6fbb5 (head 63b2445, branch CI run 45740525675 success); main run 45741129446 test and deploy success, public health check ok. Done.
